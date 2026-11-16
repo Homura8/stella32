@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    name: Host tests, architecture guard, screenshots
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Pillow
+        run: python3 -m pip install Pillow
+      - name: Architecture guard
+        run: python3 tools/check_architecture.py
+      - name: Build (ASan + UBSan)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build -j
+      - name: Unit and integration tests
+        run: ./build/stella_tests
+      - name: Screenshots match docs/screenshots
+        run: python3 tools/screenshots.py --check
+      - name: No private configuration committed
+        run: test -z "$(git ls-files '*secrets.h')"
+
+  firmware:
+    name: CYD firmware (Arduino-ESP32 3.3.12)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Compile examples/CYD with the pinned profile (no secrets)
+        run: arduino-cli compile --profile cyd --warnings default examples/CYD
