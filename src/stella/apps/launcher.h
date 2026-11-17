@@ -44,6 +44,7 @@ class LauncherApp : public App {
     int columns_ = 3, rows_ = 2, gap_ = 8, page_ = 0, pressed_ = -1;
     char timeText_[16] = {0}, greetingText_[32] = {0}, dateText_[48] = {0}, noteTitle_[32] = {0}, noteText_[48] = {0};
     bool setupNote_ = false, notePressed_ = false;  // note invites Wi-Fi setup
+    bool twelveHour_ = false;                       // the time has an AM/PM
     bool prevPressed_ = false, nextPressed_ = false;
   };
 
