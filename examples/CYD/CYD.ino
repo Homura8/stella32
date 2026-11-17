@@ -3,7 +3,8 @@
 // Build (from the repository root):
 //   arduino-cli compile --profile cyd examples/CYD
 // Arduino IDE: install this repository as a library, open File > Examples >
-// Stella32 > CYD, select "ESP32 Dev Module" with the "Huge APP" partition.
+// Stella32 > CYD, select "ESP32 Dev Module" with the "Minimal SPIFFS (1.9MB APP
+// with OTA)" partition scheme (the two-slot layout over-the-air updates need).
 //
 // Wi-Fi: join from Settings > Wi-Fi on the device. Optionally, copy
 // secrets.example.h to secrets.h to pre-load a network on first boot.
@@ -20,11 +21,13 @@
 #define STELLA_WIFI_SSID ""
 #define STELLA_WIFI_PASSWORD ""
 #endif
-// Over-the-air updates (see docs/ARCHITECTURE.md, "Updates"): the manifest URL
-// and the public key that signed updates must verify against. Without both,
-// and without the OTA partition layout (profile cyd-ota), updates stay off.
+// Over-the-air updates (see docs/ARCHITECTURE.md, "Updates"). The default
+// address is where the "Publish update" workflow puts every merge to main
+// (GitHub Pages of this repository); set STELLA_UPDATE_URL in secrets.h to use
+// another host. Optionally set STELLA_UPDATE_PUBLIC_KEY to require signed
+// updates (tools/update_tool.py).
 #ifndef STELLA_UPDATE_URL
-#define STELLA_UPDATE_URL ""
+#define STELLA_UPDATE_URL "https://homura8.github.io/stella32/manifest.json"
 #endif
 #ifndef STELLA_UPDATE_PUBLIC_KEY
 #define STELLA_UPDATE_PUBLIC_KEY ""

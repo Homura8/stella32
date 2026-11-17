@@ -241,20 +241,23 @@ the device and stored in the system settings (record v5):
 ## Updates (over the air)
 
 `Settings > About > Software update` checks for, installs and restarts into a
-new firmware, safely. Nothing runs by itself and the device never trusts the
-network alone (`net/firmware_update.*`, `tools/update_tool.py`):
+new firmware, with no USB cable and nothing to set up beyond one flash.
+Nothing runs by itself (`net/firmware_update.*`, `tools/update_tool.py`):
 
-1. A **manifest** (HTTPS, JSON, no redirects) names `version`, the image
-   `url`, its `size`, its `sha256` and an ECDSA P-256 signature (`sig_r`,
-   `sig_s`, hex). It is parsed by the bounded JSON parser; every field is
-   validated (HTTPS only, sizes, hex lengths, a real `a.b.c` version).
-2. The image streams into the **other** app slot while it is hashed. Size and
+1. **Publishing is automatic.** The `Publish update` workflow runs on every
+   merge to `main`: it builds the firmware and publishes it with a
+   `manifest.json` to GitHub Pages (one-time: repository *Settings > Pages >
+   Source: GitHub Actions*). The device's built-in address is
+   `https://homura8.github.io/stella32/manifest.json` (override with
+   `STELLA_UPDATE_URL` in `secrets.h`). An update is offered when
+   `STELLA_VERSION` is *higher* than the running version, so bump it when you
+   want one.
+2. The **manifest** (HTTPS JSON, no redirects) names `version`, the image `url`,
+   `size` and `sha256`. It is parsed by the bounded JSON parser and every field
+   is validated (HTTPS only, sizes, hex lengths, a real `a.b.c` version).
+3. The image streams into the **other** app slot while it is hashed. Size and
    SHA-256 must match the manifest exactly (more or fewer bytes, or a cut
    download, abort the install).
-3. The signature covers SHA-256(`"stella-update-v1|<version>|<hex image
-   sha256>"`): the *version* is signed, so an old signed image cannot be
-   relabelled as new. It is checked with the public key built into the
-   firmware (mbedTLS on ESP32). **No key built in = no updates.**
 4. Only then is the slot chosen for the next boot, **pending**: the bootloader
    (rollback is enabled in Arduino-ESP32 3.3.12's SDK) returns to the previous
    image at the next reset unless the new one is confirmed. The runtime
@@ -265,29 +268,39 @@ network alone (`net/firmware_update.*`, `tools/update_tool.py`):
    itself. A new update is refused until the last one is confirmed.
 
 Every failure (unreachable server, bad manifest, damaged or oversize download,
-a flash write error, a rejected signature, an invalid image) aborts the slot
-write and leaves the running firmware untouched. The code never writes over the
-running image: a single-app layout (the default *Huge APP*) has no other slot,
-so updates report *unavailable* there.
+a flash write error, an invalid image) aborts the slot write and leaves the
+running firmware untouched. The code never writes over the running image: a
+single-app layout (the `cyd-huge` profile) has no other slot, so updates report
+*unavailable* there.
 
-**Setting it up.** Updates need the two-slot layout, one USB flash to switch:
-`arduino-cli compile --profile cyd-ota examples/CYD` (1.9 MB per slot; the
-firmware is 1.5 MB). Settings and the saved Wi-Fi network are kept: both
-layouts keep NVS at 0x9000. Then:
+**The one-time setup** is a USB flash of the default build: it uses the
+two-slot layout (1.9 MB per slot; the firmware is 1.5 MB). Settings and the
+saved Wi-Fi network are kept: both layouts keep NVS at 0x9000.
+
+**What protects it, and what does not.** The download is HTTPS to the
+update host (certificate chain verified against the core's bundle) and must
+match the manifest's SHA-256 and size; the new image must also boot well to be
+kept. That does *not* protect against a compromised update host: whoever can
+publish to your GitHub Pages (or take over the GitHub account or its CI) could
+publish firmware your device would install. For a personal device that is a
+reasonable trade for zero setup. To close it, **optionally** sign updates:
 
 ```bash
 pip install cryptography
 python3 tools/update_tool.py keygen --private update-key.pem --public update-public.pem  # private key: offline, never in git
-# put the printed STELLA_UPDATE_PUBLIC_KEY and your STELLA_UPDATE_URL in examples/CYD/secrets.h, build, flash by USB once
-python3 tools/update_tool.py sign --key update-key.pem --image build/CYD.ino.bin --version 0.6.1 \
-    --url https://example.com/stella/stella-0.6.1.bin --out manifest.json
-python3 tools/update_tool.py verify --public update-public.pem --manifest manifest.json --image build/CYD.ino.bin
-# upload manifest.json and the .bin to the HTTPS host (direct URLs: the client does not follow redirects)
+# put the printed STELLA_UPDATE_PUBLIC_KEY in examples/CYD/secrets.h and flash by USB once
+python3 tools/update_tool.py sign --key update-key.pem --image CYD.ino.bin --version 0.6.1 --url https://... --out manifest.json
 ```
 
+With a public key built in, the manifest must carry an ECDSA P-256 signature
+(`sig_r`, `sig_s`) over SHA-256(`"stella-update-v1|<version>|<hex image
+sha256>"`) that verifies with it (mbedTLS); the *version* is signed, so an old
+signed image cannot be relabelled as new. Then even a compromised host cannot
+install anything, but you must sign and upload each release yourself (the
+workflow does not hold your private key).
+
 The manifest's strings are limited to 95 characters (the device's JSON value
-buffer), so keep the image URL short. A new version must be *higher*; to go
-back, flash by USB.
+buffer). To go back to an older version, flash by USB.
 
 ## Persistence
 
@@ -301,10 +314,10 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,476,023 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 79,756 B; 247,924 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,495,185 B flash, 93,380 B static RAM |
-| OTA layout (`cyd-ota`) | the same 1,476,023 B in a 1,966,080 B app slot (75%) |
+| Program (flash) | 1,476,211 B of a 1,966,080 B app slot (75%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 79,788 B; 247,892 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,495,365 B flash, 93,412 B static RAM |
+| Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |

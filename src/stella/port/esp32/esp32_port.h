@@ -178,11 +178,11 @@ class Esp32WifiDriver : public WifiDriver {
   bool attempting_ = false;
 };
 
-// The other app slot of an OTA partition layout (two app partitions), with the
-// update signing key built into the firmware. Never writes over the running
-// image: with a single-app layout (e.g. Huge APP) there is no other slot and
-// updates are reported unavailable. The signature is checked with mbedTLS
-// (ECDSA P-256 over SHA-256); an empty key disables updates altogether.
+// The other app slot of an OTA partition layout (two app partitions). Never
+// writes over the running image: with a single-app layout (e.g. Huge APP, the `cyd-huge` profile)
+// there is no other slot and updates are reported unavailable. An optional
+// public key (PEM) makes the manifest's signature mandatory; it is checked
+// with mbedTLS (ECDSA P-256 over SHA-256).
 class Esp32Firmware : public FirmwareSlot {
  public:
   explicit Esp32Firmware(const char *publicKeyPem = nullptr) : pem_(publicKeyPem) {}
@@ -190,8 +190,9 @@ class Esp32Firmware : public FirmwareSlot {
 
   bool available() override {
     const esp_partition_t *p = target();
-    return pem_ && pem_[0] && p && p->size >= 256 * 1024;
+    return p && p->size >= 256 * 1024;
   }
+  bool requiresSignature() override { return pem_ && pem_[0]; }
   size_t capacity() override {
     const esp_partition_t *p = target();
     return p ? p->size : 0;

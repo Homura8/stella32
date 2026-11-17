@@ -58,7 +58,7 @@ void UpdateService::configure(HttpService *http, FirmwareSlot *slot, Platform *p
   } else {
     status_.state = UpdateState::Unavailable;
     copyText(status_.error, sizeof(status_.error),
-             !slot || !slot->available() ? "Needs the update layout and a signing key" : "No update server set");
+             !slot || !slot->available() ? "Needs the two-slot layout (flash by USB once)" : "No update server set");
   }
   topic_.publish(status_);
 }
@@ -121,9 +121,9 @@ void UpdateService::onValue(const JsonPath &path, const JsonValue &value) {
 }
 
 bool UpdateService::manifestComplete() const {
-  return manifest_.haveVersion && manifest_.haveUrl && manifest_.haveSize && manifest_.haveSha && manifest_.haveR &&
-         manifest_.haveS && compareVersions(manifest_.version, "0.0.0") != -2 &&
-         strncmp(manifest_.url, "https://", 8) == 0;
+  const bool signedOk = !signatureRequired() || (manifest_.haveR && manifest_.haveS);
+  return manifest_.haveVersion && manifest_.haveUrl && manifest_.haveSize && manifest_.haveSha && signedOk &&
+         compareVersions(manifest_.version, "0.0.0") != -2 && strncmp(manifest_.url, "https://", 8) == 0;
 }
 
 void UpdateService::doCheck() {
@@ -210,11 +210,13 @@ void UpdateService::doInstall() {
     fail("The download is damaged (checksum)");
     return;
   }
-  signedDigest(manifest_.version, digest, message);
-  if (!slot_->verify(message, manifest_.r, manifest_.s)) {
-    slot_->abort();
-    fail("The update's signature was rejected");
-    return;
+  if (signatureRequired()) {
+    signedDigest(manifest_.version, digest, message);
+    if (!slot_->verify(message, manifest_.r, manifest_.s)) {
+      slot_->abort();
+      fail("The update's signature was rejected");
+      return;
+    }
   }
   if (!slot_->finish()) {
     fail("That is not a valid firmware image");

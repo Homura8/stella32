@@ -32,8 +32,8 @@ apps and the runtime do not change.
    it in `Board::setup`; `Esp32SetupServer` is the Arduino-ESP32 version. Without
    it, *Settings > Wi-Fi > Phone* says setup isn't available.
    **Updates (optional).** Implement `stella::FirmwareSlot` (the other app slot:
-   `available`, `capacity`, `begin`/`write`/`finish`/`abort`, and `verify` for an
-   ECDSA P-256 signature) and `Platform::updatePending()`/`confirmUpdate()`
+   `available`, `capacity`, `begin`/`write`/`finish`/`abort`, and `requiresSignature`
+   plus `verify` for the optional ECDSA P-256 signature) and `Platform::updatePending()`/`confirmUpdate()`
    (a freshly written image must run on probation); put the slot in
    `Board::firmware`. `Esp32Firmware` is the Arduino-ESP32 version.
 6. **Sketch.** Copy `examples/CYD/` to `examples/<Board>/` with its own

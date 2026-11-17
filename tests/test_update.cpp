@@ -284,6 +284,36 @@ TEST(update_never_stages_an_image_that_fails_a_check) {
   CHECK(runInstall(again).state == UpdateState::Ready);
 }
 
+// Without a signing key an update is protected by HTTPS and its SHA-256: the
+// manifest needs no signature, but a damaged image is still refused.
+TEST(update_without_a_signing_key_needs_no_signature_but_still_checks_the_image) {
+  SimSession s(320, 240);
+  s.dev.firmware.keyed = false;
+  Offer o;
+  o.omitSig = true;
+  serve(s, o);
+  CHECK(runCheck(s).state == UpdateState::Available);
+  CHECK(runInstall(s).state == UpdateState::Ready);
+  CHECK_EQ(s.dev.firmware.verifies, 0);
+  CHECK(s.dev.firmware.finished);
+  SimSession damaged(320, 240);
+  damaged.dev.firmware.keyed = false;
+  Offer bad;
+  bad.omitSig = true;
+  bad.sha256 = std::string(64, '0');
+  serve(damaged, bad);
+  CHECK(runCheck(damaged).state == UpdateState::Available);
+  const UpdateStatus st = runInstall(damaged);
+  CHECK(st.state == UpdateState::Failed && has(st.error, "checksum") && !damaged.dev.firmware.finished);
+  // With a key built in, the same unsigned manifest is refused outright.
+  SimSession keyed(320, 240);
+  serve(keyed, bad);
+  Offer unsigned_;
+  unsigned_.omitSig = true;
+  serve(keyed, unsigned_);
+  CHECK(runCheck(keyed).state == UpdateState::Failed);
+}
+
 TEST(update_waits_for_the_last_update_to_be_confirmed) {
   Rig rig("https://updates.example/stella/manifest.json", /*pending=*/true);
   rig.run(1000);
@@ -324,7 +354,7 @@ TEST(update_is_unavailable_without_a_slot_a_key_or_a_server) {
   cfg.updateManifestUrl = "https://updates.example/stella/manifest.json";
   os.begin(dev.board(), cfg);
   CHECK(os.update().status().state == UpdateState::Unavailable &&
-        has(os.update().status().error, "update layout and a signing key"));
+        has(os.update().status().error, "two-slot layout"));
 }
 
 TEST(a_new_image_is_confirmed_only_after_a_healthy_minute) {

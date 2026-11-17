@@ -10,9 +10,12 @@ namespace stella {
 class FirmwareSlot {
  public:
   virtual ~FirmwareSlot() = default;
-  // True when an update can be installed: a second app slot exists and a
-  // signing key is built in (an unsigned update must never be accepted).
+  // True when an update can be installed: a second app slot exists.
   virtual bool available() = 0;
+  // True when a signing key is built in: the update's signature is then
+  // required and verified (the default is to require it). Without a key an
+  // update is protected by HTTPS and its SHA-256 only.
+  virtual bool requiresSignature() { return true; }
   virtual size_t capacity() = 0;  // bytes the other slot can hold
   virtual bool begin(size_t size) = 0;
   virtual bool write(const uint8_t *data, size_t size) = 0;

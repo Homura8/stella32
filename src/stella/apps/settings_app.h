@@ -175,7 +175,7 @@ class SettingsApp : public App {
     Rect card_, rows_[2], bar_, status_;
     Button action_;
     UpdateStatus st_;
-    char installed_[32] = {0}, offered_[40] = {0}, statusText_[96] = {0};
+    char installed_[32] = {0}, offered_[40] = {0}, statusText_[128] = {0};
   };
 
   class AboutScreen : public Screen {

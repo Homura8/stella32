@@ -43,7 +43,7 @@ jobs:
           version: "1.x"
       - name: Compile examples/CYD with the pinned profile (no secrets)
         run: arduino-cli compile --profile cyd --warnings default examples/CYD
-      - name: Compile the over-the-air update layout (two app slots)
-        run: arduino-cli compile --profile cyd-ota --warnings default examples/CYD
+      - name: Compile the single-app layout (Huge APP, no updates)
+        run: arduino-cli compile --profile cyd-huge --warnings default examples/CYD
       - name: Compile the optional DMA rendering path
         run: arduino-cli compile --profile cyd --warnings default --build-property "compiler.cpp.extra_flags=-DSTELLA_CYD_DMA=1" examples/CYD

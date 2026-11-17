@@ -988,7 +988,7 @@ void SettingsApp::UpdateScreen::refresh(AppContext &ctx) {
       label = "Check again";
       break;
     case UpdateState::Available:
-      snprintf(text, sizeof(text), "Version %.12s is ready. It is checked and signed; the device restarts to use it.",
+      snprintf(text, sizeof(text), "Version %.12s is ready. It is checked before it is installed; the device restarts to use it.",
                st_.version);
       label = "Install";
       break;

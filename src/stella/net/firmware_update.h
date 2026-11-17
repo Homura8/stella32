@@ -2,13 +2,15 @@
 // Over-the-air updates, safe by construction. The device never trusts the
 // network alone:
 //   1. A manifest (HTTPS, JSON) names the new version, the image URL, its
-//      size, its SHA-256 and an ECDSA P-256 signature (r and s, hex).
+//      size and its SHA-256 (and, if signing is on, an ECDSA P-256 signature:
+//      r and s, hex).
 //   2. The image streams into the *other* app slot while it is hashed. Size
 //      and SHA-256 must match the manifest exactly.
-//   3. The signature covers the version *and* the image digest
-//      (signedDigest()), so an old signed image cannot be relabelled as new,
-//      and is checked against a public key built into this firmware. No key
-//      built in means no updates at all.
+//   3. Optionally (a public key built into this firmware), the manifest must
+//      carry an ECDSA P-256 signature over the version *and* the image digest
+//      (signedDigest()), so an old signed image cannot be relabelled as new.
+//      Without a key the update relies on HTTPS to the update host and the
+//      digest; with one, a compromised host cannot install anything.
 //   4. Only then is the slot made the next boot image, *pending*: if the new
 //      firmware does not run healthily long enough to be confirmed, the
 //      bootloader returns to the previous one by itself.
@@ -31,7 +33,7 @@ constexpr uint16_t kUpdate = 3;  // Topic<UpdateStatus>
 }
 
 enum class UpdateState : uint8_t {
-  Unavailable,  // not set up: no second app slot, no signing key or no manifest URL
+  Unavailable,  // not set up: no second app slot or no manifest URL
   Idle,
   Checking,
   UpToDate,
@@ -107,6 +109,7 @@ class UpdateService : public Job, public UpdateControl, public JsonHandler {
   void doInstall();
   void fail(const char *reason);
   bool manifestComplete() const;
+  bool signatureRequired() const { return slot_ && slot_->requiresSignature(); }
 
   Topic<UpdateStatus> &topic_;
   HttpService *http_ = nullptr;

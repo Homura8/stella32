@@ -71,18 +71,19 @@ more RAM). It is off by default until verified on hardware.
 
 In the Arduino IDE: add this repository as a library, open
 *File > Examples > Stella32 > CYD*, choose *ESP32 Dev Module* with the
-*Huge APP* partition scheme.
+*Minimal SPIFFS (1.9MB APP with OTA)* partition scheme.
 
 ### Over-the-air updates
 
-`Settings > About > Software update` installs a new firmware without USB: it
-is downloaded over HTTPS, checked (size, SHA-256 and an ECDSA signature over
-the version and the image, made with a key only you hold) and written to the
-spare app slot; the new version is confirmed after a healthy minute, and
-otherwise the bootloader returns to the previous one. It needs the two-slot
-build (`arduino-cli compile --profile cyd-ota examples/CYD`, one USB flash;
-settings and Wi-Fi are kept) and your key and URL in `secrets.h`. See
-[Architecture > Updates](docs/ARCHITECTURE.md) and `tools/update_tool.py`.
+After one USB flash of the default build (it has two app slots), updating is:
+merge to `main`, then on the device **Settings > About > Software update >
+Check > Install > Restart**. GitHub builds and publishes the firmware on every
+merge (one-time: repository *Settings > Pages > Source: GitHub Actions*; bump
+`STELLA_VERSION` for a release). The download is checked (size, SHA-256) and the
+new version is confirmed after a healthy minute; otherwise the bootloader
+returns to the previous one. Your settings and Wi-Fi are kept. Signing updates
+is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
+`--profile cyd-huge` builds the single-app layout (no updates).
 
 ## Repository guide
 
@@ -148,13 +149,14 @@ settings and Wi-Fi are kept) and your key and URL in `secrets.h`. See
 10. *Lists*: on Settings > Time (time zones), Settings > About, the Wi-Fi
    network list and the weather places, the up/down buttons at the right edge
    scroll by a page; the rail shows where you are.
-11. *Software update* (the `cyd-ota` build, a signing key and a manifest URL,
-    see above): About > Software update > Check shows the offered version;
-    Install downloads it with a progress bar, then Restart now. After the
-    restart the About screen shows the new version and, a minute later, the
-    update is confirmed. To test the rollback: install a build whose firmware
-    hangs or resets at boot (never confirmed): the device returns to the
-    previous version by itself.
+11. *Software update*: after the one-time USB flash of the default build and
+    enabling Pages (see above), merge a PR that bumps `STELLA_VERSION`; once
+    the *Publish update* workflow has run, About > Software update > Check
+    shows the new version; Install shows progress, then Restart now. After the
+    restart the About screen shows it and, a minute later, the `health` log
+    says the update is confirmed. To test the rollback: install a build whose
+    firmware hangs or resets at boot (never confirmed): the device returns to
+    the previous version by itself.
 12. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
 13. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it

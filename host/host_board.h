@@ -176,6 +176,7 @@ class SimHttp : public HttpClient {
 class SimFirmware : public FirmwareSlot {
  public:
   bool availableFlag = true, failBegin = false, failFinish = false;
+  bool keyed = true;  // a signing key is built in: signatures are required
   int failWriteAfter = -1;  // fail the write that would pass this many bytes (-1: never)
   size_t slotSize = 1u << 20;
   std::vector<uint8_t> image;
@@ -183,6 +184,7 @@ class SimFirmware : public FirmwareSlot {
   int verifies = 0;
 
   bool available() override { return availableFlag; }
+  bool requiresSignature() override { return keyed; }
   size_t capacity() override { return slotSize; }
   bool begin(size_t size) override {
     if (failBegin || size > slotSize) return false;
