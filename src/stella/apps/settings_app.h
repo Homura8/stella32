@@ -66,12 +66,12 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 5;
+    static constexpr int kRows = 6;
     SettingsApp &app_;
     Rect card_, rows_[kRows], labels_[kRows];
     Slider brightness_;
     Toggle nightDim_;
-    Segmented dim_, off_;
+    Segmented dim_, off_, bedside_;
     ListRow calibrate_;
     char calibrateDetail_[24] = {0};
     bool night_ = false;  // the night phase (by the clock) is on now

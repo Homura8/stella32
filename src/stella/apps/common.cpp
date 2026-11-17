@@ -45,5 +45,15 @@ void formatLongDate(const LocalTime &t, char *out, size_t capacity) {
   snprintf(out, capacity, "%s %d %s", weekdayName(t.weekday), t.day, monthName(t.month));
 }
 
+void describeWait(int minutes, char *out, size_t capacity) {
+  if (minutes < 60) snprintf(out, capacity, "%d min", minutes < 1 ? 1 : minutes);
+  else if (minutes < 1440) {
+    if (minutes % 60) snprintf(out, capacity, "%d h %d min", minutes / 60, minutes % 60);
+    else snprintf(out, capacity, "%d h", minutes / 60);
+  } else {
+    snprintf(out, capacity, "%d d %d h", minutes / 1440, (minutes % 1440) / 60);
+  }
+}
+
 }  // namespace apps
 }  // namespace stella

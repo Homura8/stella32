@@ -16,13 +16,14 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.3.2, CYD calibration: per-mode contrast, white level, warmth |
+| Version | 0.4.0, bedside clock |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 93 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 102 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
-Built-in apps: **Home** (launcher), **Clock**, **Weather** (Open-Meteo, no
+Built-in apps: **Home** (launcher), **Clock** (with a dim fullscreen *bedside*
+mode that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
 API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Settings**
 (Wi-Fi, display, appearance, time, about) and **Touch test** (calibration aid).
 Wi-Fi is set up on the device itself: scan, pick a network, type the password
@@ -94,7 +95,7 @@ In the Arduino IDE: add this repository as a library, open
 
 ## Hardware checklist (first CYD flash)
 
-1. Boot log shows `Stella 0.3.2 on ESP32-2432S028R (CYD), 320x240 compact`;
+1. Boot log shows `Stella 0.4.0 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
@@ -119,18 +120,23 @@ In the Arduino IDE: add this repository as a library, open
    defaults unless the screen shimmers.
    The home screen's ‹ › buttons page through apps while *Set up Wi-Fi* shows;
    tapping a sky in *Appearance* keeps it.
-8. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
+8. *Bedside clock*: with *Settings > Display > Bedside* on *Night*, leave the
+   device idle at night (or open *Clock > Bedside*): the screen switches to a
+   dim clock on a flat dark background with the date and "06:45 · in 8 h 15
+   min" when an alarm is set; any tap returns to the Clock. Is the dimness
+   right for a dark room, and does the flat background still flicker?
+9. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
-9. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
+10. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
-10. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
+11. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
    sleeping screen; *Again* restarts it. An alarm set for the next minute
    rings, *Snooze* brings it back nine minutes later, and a one-off alarm
    switches itself off. With a small speaker on the *SPEAK* connector the
    chime is audible but gentle (`STELLA_CYD_TONE_DUTY` adjusts it).
-11. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+12. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-12. Leave it running overnight; no `restarting` line in the log and the
+13. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

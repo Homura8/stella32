@@ -153,6 +153,11 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
 - **Home:** greeting, date, a grid of square app tiles. When the apps span
   several pages, a glass pill of ‹ › buttons sits beside the greeting
   (swiping also works; resistive panels make swipes hard).
+- **Bedside clock:** fullscreen on `bedBg` (near-black, flat); the time in
+  the display font in `bedText` (dim lilac), the date in `bedMuted`, and
+  "[bell] 06:45 · in 8 h 15 min" when an alarm is set. No chrome, no sky.
+  *Settings > Display > Bedside* (Off / Night / Always) chooses when it starts
+  by itself; the Clock's *Bedside* button starts it by hand.
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

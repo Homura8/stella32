@@ -108,6 +108,16 @@ forget), `TextEntryScreen` (text or password entry with the on-screen
 keyboard), `ctx.requestJob(job)` (refresh now), `ctx.requestTick()` (restart
 a screen's `onTick` after it returned `kNoTick`).
 
+## Idle faces and fullscreen screens
+
+A screen can cover the whole display: override `fullscreen()` to return true
+(no sky, status bar or back gesture under it; `layout()` gets the full display;
+`draw()` must paint every pixel, e.g. `c.fill(p.bedBg)` first) and handle
+leaving yourself (`ctx.pop()` on a tap). Flag the app `kAppIdleFace` and handle
+the route `"bedside"` in `onRoute()` to be started after the idle dim at night.
+The Clock app's `BedsideScreen` is the example. `ctx.setNextAlarm(epoch)` lets
+the shell and the bedside clock show when your app next rings.
+
 ## Time-based work and alerts
 
 Things that must happen whether or not the app is open (an alarm, a timer)

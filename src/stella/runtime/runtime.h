@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.3.2"
+#define STELLA_VERSION "0.4.0"
 #endif
 
 namespace stella {
@@ -115,6 +115,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void invalidateAll() override { dirty_.addAll(); }
   uint32_t millis() const override;
   LocalTime localTime() const override;
+  LocalTime localTimeAt(int64_t epochSeconds) const override;
   void formatTime(const LocalTime &t, char *out, size_t capacity) const override;
   void requestTick() override {
     if (callbackApp_ && callbackApp_ != foreground()) return;
@@ -136,6 +137,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   bool showAlert(const Alert &alert) override;
   void dismissAlert(uint16_t tag) override;
   void scheduleWake(uint32_t delayMs) override;
+  void setNextAlarm(int64_t epochSeconds) override;
   void requestJob(const Job &job) override { jobs_.requestRun(job); }
   RecordStatus loadAppRecord(const char *key, uint16_t version, void *data, size_t size) override;
   bool saveAppRecord(const char *key, uint16_t version, const void *data, size_t size) override;
@@ -149,6 +151,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     Screen *stack[kMaxDepth] = {};
     uint8_t depth = 0;
     bool started = false;
+    int64_t nextAlarm = 0;   // see AppContext::setNextAlarm
     bool wakeArmed = false;  // onWake() due at wakeAt
     uint32_t wakeAt = 0;
   };
@@ -193,6 +196,14 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void pollTouch(uint32_t now);
   void updatePower(uint32_t now);
   void applyBrightness();
+  void maybeIdleFace();
+  // The rectangle the screen lays out in: the content area, or the whole
+  // display for a fullscreen screen.
+  Rect areaFor(const Screen *s) const { return s && s->fullscreen() ? screen_ : content_; }
+  bool topFullscreen() const {
+    const Screen *s = topScreen();
+    return s && s->fullscreen();
+  }
   void applyPanelTrim(bool force);
   void superviseThreads(uint32_t now);
   AppSlot *slot(int index) { return index >= 0 && (size_t)index < appCount_ ? &apps_[index] : nullptr; }

@@ -63,6 +63,7 @@ struct Palette {
   Color surface;         // opaque soft chip (--white-soft)
   Color good, warn, danger;
   Color tints[4];        // icon bubbles: pink, lavender, sky, peach
+  Color bedBg, bedText, bedMuted;  // the bedside clock: near-black, dim lilac text
 };
 
 struct Metrics {

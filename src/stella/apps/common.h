@@ -20,6 +20,9 @@ struct MoonPhase {
 // Same synodic model as the Celestia Glow site.
 MoonPhase moonPhase(int64_t epochSeconds);
 
+// "25 min", "9 h 5 min", "2 d 3 h".
+void describeWait(int minutes, char *out, size_t capacity);
+
 // "Tuesday 16 November" (or a placeholder when the time is unknown).
 void formatLongDate(const LocalTime &t, char *out, size_t capacity);
 

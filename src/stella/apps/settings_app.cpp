@@ -272,6 +272,7 @@ bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
 
 namespace {
 
+const char *const kBedsideLabels[] = {"Off", "Night", "Always"};
 const char *const kRefreshLabels[] = {"Default", "90 Hz", "100 Hz", "119 Hz"};
 const uint8_t kRefreshHz[] = {0, 90, 100, 119};
 const char *const kTabLabels[] = {"Tone", "Colour", "Panel"};
@@ -302,8 +303,9 @@ void SettingsApp::DisplayScreen::layout(const Rect &content, const Theme &t) {
     if (i == 1) nightDim_.bounds = rows_[i];
     if (i == 2) dim_.bounds = control.inset(0, t.dp(2));
     if (i == 3) off_.bounds = control.inset(0, t.dp(2));
+    if (i == 4) bedside_.bounds = control.inset(0, t.dp(2));
   }
-  calibrate_.bounds = Rect(card_.x, rows_[4].y, card_.w, rows_[4].h);
+  calibrate_.bounds = Rect(card_.x, rows_[5].y, card_.w, rows_[5].h);
   calibrate_.title = "Calibrate";
   calibrate_.icon = nullptr;
   calibrate_.chevron = true;
@@ -321,6 +323,9 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   off_.labels = kOffLabels;
   off_.count = 4;
   off_.selected = nearestIndex(kOffSeconds, 4, s.sleepAfterSec);
+  bedside_.labels = kBedsideLabels;
+  bedside_.count = 3;
+  bedside_.selected = s.bedside;
   const LocalTime now = ctx.localTime();
   night_ = !now.valid || phaseForHour(now.hour) == SkyPhase::Night;
   snprintf(calibrateDetail_, sizeof(calibrateDetail_), "%s \xc2\xb7 %u%%", toneName(s.colorTone),
@@ -331,7 +336,8 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
 void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
   paintGlass(c, t, card_, t.m.radiusCard);
-  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off"};
+  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off",
+                                                 "Bedside"};
   for (int i = 0; i < kRows - 1; ++i) {
     c.drawTextIn(*t.font.body, kLabels[i], labels_[i], p.text);
     paintHairline(c, t, rows_[i].x, rows_[i].bottom() - 1, rows_[i].w);
@@ -345,6 +351,7 @@ void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   nightDim_.draw(c, t);
   dim_.draw(c, t);
   off_.draw(c, t);
+  bedside_.draw(c, t);
   calibrate_.draw(c, t);
 }
 
@@ -369,6 +376,11 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
   }
   if (off_.handle(e, ctx)) {
     s.sleepAfterSec = kOffSeconds[off_.selected];
+    ctx.applySettings(s);
+    return true;
+  }
+  if (bedside_.handle(e, ctx)) {
+    s.bedside = bedside_.selected;
     ctx.applySettings(s);
     return true;
   }

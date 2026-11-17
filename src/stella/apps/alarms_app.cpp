@@ -85,16 +85,6 @@ void describeDays(uint8_t days, char *out, size_t capacity) {
   }
 }
 
-void describeWait(int minutes, char *out, size_t capacity) {
-  if (minutes < 60) snprintf(out, capacity, "%d min", minutes < 1 ? 1 : minutes);
-  else if (minutes < 1440) {
-    if (minutes % 60) snprintf(out, capacity, "%d h %d min", minutes / 60, minutes % 60);
-    else snprintf(out, capacity, "%d h", minutes / 60);
-  } else {
-    snprintf(out, capacity, "%d d %d h", minutes / 1440, (minutes % 1440) / 60);
-  }
-}
-
 // ------------------------------------------------------------------ app
 
 AlarmsApp::AlarmsApp() : list_(*this), edit_(*this) {}
@@ -125,6 +115,16 @@ bool AlarmsApp::setAlarm(int index, const AlarmEntry &alarm, AppContext &ctx) {
 
 void AlarmsApp::save(AppContext &ctx) {
   if (!ctx.saveAppRecord("book", AlarmBook::kVersion, &book_, sizeof(book_))) ctx.toast("Couldn't save alarms");
+  publishNext(ctx);
+}
+
+void AlarmsApp::publishNext(AppContext &ctx) {
+  const LocalTime now = ctx.localTime();
+  int64_t next = 0;
+  int minutes = 0;
+  if (now.valid && nextAlarm(book_, now, minutes) >= 0) next = (now.epoch / 60 + minutes) * 60;
+  if (snoozeUntil_ && (next == 0 || snoozeUntil_ < next)) next = snoozeUntil_;
+  ctx.setNextAlarm(next);
 }
 
 void AlarmsApp::formatAlarm(const AppContext &ctx, int hour, int minute, char *time, size_t timeCap, char *suffix,
@@ -160,10 +160,12 @@ uint32_t AlarmsApp::onWake(AppContext &ctx) {
       ring(now, book_.alarms[due].hour, book_.alarms[due].minute, false, ctx);
     }
     if (list_.isVisible()) list_.refresh(ctx);  // "next alarm" moves on every minute
+    publishNext(ctx);
   }
   if (snoozeUntil_ && now.epoch >= snoozeUntil_) {
     snoozeUntil_ = 0;
     ring(now, ringingHour_, ringingMinute_, true, ctx);
+    publishNext(ctx);
   }
   // Just after the next minute boundary, or when the snooze ends if sooner.
   uint32_t next = (uint32_t)(60 - now.second) * 1000u + 100u;
@@ -199,11 +201,13 @@ void AlarmsApp::onAlert(uint16_t tag, int action, AppContext &ctx) {
   if (tag != kAlarmTag) return;
   if (action != kAlertSecondary) {
     snoozeUntil_ = 0;
+    publishNext(ctx);
     return;
   }
   const LocalTime now = ctx.localTime();
   if (!now.valid) return;
   snoozeUntil_ = now.epoch + kSnoozeSec;
+  publishNext(ctx);
   char text[40];
   snprintf(text, sizeof(text), "Snoozed for %lu min", (unsigned long)(kSnoozeSec / 60));
   ctx.toast(text);

@@ -94,6 +94,27 @@ or display I/O.
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
 
+## Fullscreen screens and the idle face
+
+A `Screen` may be `fullscreen()`: the shell then draws no sky and no status bar
+under it (and offers no back or home gestures), `layout()` gets the whole
+display, `draw()` paints every pixel, and the backlight runs at a third of
+its level (never below the minimum). The screen handles its own events,
+including leaving. The bedside clock is one: a flat near-black background
+(`Palette::bedBg`, so nothing to dither), dim lilac text, the date and the
+next alarm.
+
+An app flagged `kAppIdleFace` offers such a face. After the idle dim, if the
+setting *Bedside* is *Night* (and it is night by the clock) or *Always*, and
+the time is known, the runtime calls `launch(id, "bedside")`, but only when
+Home or that app is in front, so nothing the user is doing is replaced. Any
+tap on the face leaves it (`pop()`), landing on the Clock.
+
+Apps that ring tell the shell when with `AppContext::setNextAlarm(epoch)`;
+`SystemStatus::nextAlarm` is the earliest. `localTimeAt(epoch)` gives that
+time's wall-clock components in the configured zone (daylight saving
+included).
+
 ## Alerts
 
 `AppContext::showAlert()` puts a modal glass card over everything (status bar
@@ -204,9 +225,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,358,203 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 72,732 B; 254,948 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,377,425 B flash, 86,372 B static RAM |
+| Program (flash) | FLASH_PLACEHOLDER B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | RAM_PLACEHOLDER B; FREE_PLACEHOLDER B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | DMAFLASH_PLACEHOLDER B flash, DMARAM_PLACEHOLDER B static RAM |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~98 KB |

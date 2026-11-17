@@ -133,9 +133,9 @@ void capture(int width, int height, const std::string &root) {
     const Point display = s.settingsRow(1);
     s.tap(display.x, display.y);
     const Rect area = sc.inset(st.m.margin, st.m.gapS);
-    const int want = st.m.control + st.dp(4), fit = (area.h - 2 * st.dp(4)) / 5;
+    const int want = st.m.control + st.dp(4), fit = (area.h - 2 * st.dp(4)) / 6;
     const int rowH = want <= fit ? want : fit < st.dp(32) ? st.dp(32) : fit;
-    s.tap(area.centerX(), area.y + st.dp(4) + 4 * rowH + rowH / 2);
+    s.tap(area.centerX(), area.y + st.dp(4) + 5 * rowH + rowH / 2);
     s.run(2500);
     save(17, "calibrate-tone");
     const int tabsW = area.w - st.dp(72) - st.m.gapM;
@@ -151,6 +151,12 @@ void capture(int width, int height, const std::string &root) {
     s.tap(area.right() - st.dp(52), area.bottom() - st.m.control / 2);
     s.run(100);
     save(20, "touch-calibrate");
+
+    // The bedside clock, with the alarm set earlier.
+    s.os.goHome();
+    s.os.launch("clock", "bedside");
+    s.run(300);
+    save(21, "bedside");
   }
 }
 

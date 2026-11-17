@@ -178,7 +178,7 @@ uint32_t Runtime::step() {
   const int minuteKey = lt.valid ? lt.hour * 60 + lt.minute : -1;
   if (minuteKey != lastMinute_) {
     lastMinute_ = minuteKey;
-    invalidate(statusBarRect());
+    if (!topFullscreen()) invalidate(statusBarRect());
     updateTheme(false);
   }
 
@@ -250,9 +250,13 @@ void Runtime::run() {
 uint32_t Runtime::millis() const { return board_.platform ? board_.platform->millis() : 0; }
 
 LocalTime Runtime::localTime() const {
-  LocalTime out;
   int64_t epoch = 0;
-  if (!board_.platform || !board_.platform->wallClock(epoch)) return out;
+  if (!board_.platform || !board_.platform->wallClock(epoch)) return LocalTime{};
+  return localTimeAt(epoch);
+}
+
+LocalTime Runtime::localTimeAt(int64_t epoch) const {
+  LocalTime out;
   const time_t t = (time_t)epoch;
   struct tm tmv;
   if (!localtime_r(&t, &tmv)) return out;
@@ -324,13 +328,13 @@ Screen *Runtime::topScreen() const {
 const AppInfo *Runtime::appAt(size_t index) const { return index < appCount_ ? &apps_[index].app->info() : nullptr; }
 
 void Runtime::layoutTop() {
-  if (Screen *s = topScreen()) s->layout(content_, theme_);
+  if (Screen *s = topScreen()) s->layout(areaFor(s), theme_);
 }
 
 void Runtime::showTop() {
   Screen *s = topScreen();
   if (!s) return;
-  s->layout(content_, theme_);
+  s->layout(areaFor(s), theme_);
   s->setVisible(true);
   callbackApp_ = foreground();
   s->onShow(*this);
@@ -338,6 +342,7 @@ void Runtime::showTop() {
   tickArmed_ = true;
   nextTickAt_ = millis();
   invalidateAll();
+  if (board_.display) applyBrightness();  // a fullscreen screen runs the backlight low
 }
 
 void Runtime::hideTop() {
@@ -471,7 +476,7 @@ void Runtime::dispatchPointer(const Event &e) {
     }
     return;
   }
-  if (e.type == EventType::Press) pointerToShell_ = statusBarRect().contains(e.x, e.y);
+  if (e.type == EventType::Press) pointerToShell_ = !topFullscreen() && statusBarRect().contains(e.x, e.y);
   if (pointerToShell_) {
     if (e.type == EventType::LongPress) {
       goHome();
@@ -500,7 +505,7 @@ void Runtime::handleTopicEvent(uint16_t id) {
   for (size_t i = 0; i < topicCount_; ++i) {
     if (topics_[i]->id() == id) topics_[i]->acknowledge();
   }
-  if (id == topics::kNetwork) invalidate(statusBarRect());
+  if (id == topics::kNetwork && !topFullscreen()) invalidate(statusBarRect());
   for (size_t i = 0; i < appCount_; ++i) {
     if (!apps_[i].started) continue;
     callbackApp_ = apps_[i].app;
@@ -521,6 +526,22 @@ void Runtime::updatePower(uint32_t now) {
   if (power_ == PowerState::Off && next == PowerState::Dimmed) return;
   power_ = next;
   applyBrightness();
+  if (next == PowerState::Dimmed) maybeIdleFace();
+}
+
+// After the idle dim, at night, an app that offers an idle face (the Clock's
+// bedside mode) takes over, but only from Home or from that app itself, so
+// nothing the user is in the middle of is replaced.
+void Runtime::maybeIdleFace() {
+  if (!settings_.bedside) return;
+  if (settings_.bedside == 1 && timePhase_ != SkyPhase::Night) return;
+  if (!localTime().valid || topFullscreen() || alertCount_) return;
+  for (size_t i = 0; i < appCount_; ++i) {
+    if (!(apps_[i].app->info().flags & kAppIdleFace)) continue;
+    if (foreground_ != home_ && foreground_ != (int)i) return;
+    launch(apps_[i].app->info().id, "bedside");
+    return;
+  }
 }
 
 void Runtime::applyBrightness() {
@@ -528,6 +549,7 @@ void Runtime::applyBrightness() {
   // Bedside comfort: the night sky also caps the backlight.
   if (settings_.nightDim && timePhase_ == SkyPhase::Night) level = nightBrightness(level);
   if (power_ == PowerState::Dimmed) level = level / 2 < 16 ? 16 : level / 2;
+  if (topFullscreen()) level = level / 3 < 16 ? 16 : level / 3;  // idle face: dim
   level = backlightDuty(level);  // perceived level -> PWM duty
   if (power_ == PowerState::Off) level = 0;
   if (brightnessKnown_ && level == appliedBrightness_) return;
@@ -594,6 +616,10 @@ SystemStatus Runtime::status() const {
   s.uiStackFree = uiStackFree_.load();
   s.serviceStackFree = serviceStackFree_.load();
   s.panelTrim = board_.display && board_.display->supportsPanelTrim();
+  for (size_t i = 0; i < appCount_; ++i) {
+    const int64_t t = apps_[i].nextAlarm;
+    if (t > 0 && (s.nextAlarm == 0 || t < s.nextAlarm)) s.nextAlarm = t;
+  }
   return s;
 }
 
@@ -647,9 +673,17 @@ void Runtime::serviceMain(void *self) {
 void Runtime::drawFrame(Canvas &canvas, void *self) { static_cast<Runtime *>(self)->draw(canvas); }
 
 void Runtime::draw(Canvas &c) {
+  Screen *s = topScreen();
+  if (s && s->fullscreen()) {
+    const Rect previous = c.pushClip(screen_);
+    s->draw(c, theme_);
+    c.restoreClip(previous);
+    if (toastVisible_) drawToast(c);
+    if (alertCount_) drawAlert(c);
+    return;
+  }
   paintSky(c, theme_, screen_);
   if (c.visible(statusBarRect())) drawStatusBar(c);
-  Screen *s = topScreen();
   if (s && c.visible(content_)) {
     const Rect previous = c.pushClip(content_);
     s->draw(c, theme_);
@@ -720,6 +754,11 @@ int Runtime::callerIndex() const {
   for (size_t i = 0; i < appCount_; ++i)
     if (apps_[i].app == app) return (int)i;
   return -1;
+}
+
+void Runtime::setNextAlarm(int64_t epochSeconds) {
+  const int index = callerIndex();
+  if (index >= 0) apps_[index].nextAlarm = epochSeconds;
 }
 
 void Runtime::scheduleWake(uint32_t delayMs) {
