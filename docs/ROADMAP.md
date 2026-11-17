@@ -74,6 +74,16 @@ people, not commit messages). Optional follow-up: an "install updates
 overnight" setting that still only installs inside a window and never without
 the person having turned it on.
 
+**Portrait mode, not just landscape.** The owner wants the CYD usable upright
+too (a phone-like stand, or on a wall). The foundation is there: the HAL does
+not assume 320x240 and the host tests already render 240x320; what is missing is
+polish and a way to choose it. So this item is more than the rotation setting
+below: every screen needs a deliberate portrait layout (the Home header's time
+and words do not fit side by side at 240 px wide, and the Weather screen's
+sunrise/sunset line hides itself there), the touch calibration is per rotation,
+and the screenshots must include a 240x320 set that is *looked at*, not only
+rendered. Do it together with the rotation setting.
+
 **Manual screen rotation.** Settings > Display: 0 / 90 / 180 / 270 degrees,
 for desk or wall use (the CYD has no accelerometer, so it is a setting).
 Needs `Display::setRotation`-style support in the HAL and CYD driver, the
