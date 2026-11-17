@@ -255,7 +255,25 @@ bool WeatherApp::publishGlance(AppContext &ctx) {
 // Apps that were never opened get no topic notifications, so the glance is
 // also published from here: soon while there is nothing yet, then every 10 min
 // (which also withdraws data that has grown too old).
-uint32_t WeatherApp::onWake(AppContext &ctx) { return publishGlance(ctx) ? 10u * 60u * 1000u : 30u * 1000u; }
+uint32_t WeatherApp::onWake(AppContext &ctx) {
+  publishSun(ctx);
+  return publishGlance(ctx) ? 10u * 60u * 1000u : 30u * 1000u;
+}
+
+// Today's sunrise and sunset at the chosen place, to the shell: it needs no
+// forecast (only the place and the date), so this works before the first fetch.
+void WeatherApp::publishSun(AppContext &ctx) {
+  const LocalTime now = ctx.localTime();
+  int count = 0;
+  const WeatherPlace *places = weatherPlaces(count);
+  if (!now.valid || place_ >= count) {
+    ctx.setSun(0, 0, 0);
+    return;
+  }
+  const int64_t midnight = now.epoch - (now.hour * 3600 + now.minute * 60 + now.second);
+  const SunTimes sun = sunTimes(midnight + 12 * 3600, places[place_].latitude, places[place_].longitude);
+  ctx.setSun(sun.valid ? sun.sunrise : 0, sun.valid ? sun.sunset : 0, sun.polarDay ? 1 : sun.polarNight ? 2 : 0);
+}
 
 void WeatherApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "places") == 0) ctx.push(places_);
@@ -267,6 +285,7 @@ void WeatherApp::choosePlace(uint8_t place, AppContext &ctx) {
   ctx.saveAppRecord("place", kPlaceVersion, &place_, sizeof(place_));
   service_.setPlace(place_);
   ctx.requestJob(service_);
+  publishSun(ctx);  // a new place has its own sun
 }
 
 // ------------------------------------------------------------------ main screen

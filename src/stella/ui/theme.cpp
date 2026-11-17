@@ -129,6 +129,14 @@ SkyPhase phaseForHour(int hour) {
   return SkyPhase::Night;
 }
 
+SkyPhase phaseForSun(int64_t now, int64_t sunrise, int64_t sunset) {
+  if (now < sunrise - 45 * 60) return SkyPhase::Night;
+  if (now < sunrise + 75 * 60) return SkyPhase::Dawn;
+  if (now < sunset - 60 * 60) return SkyPhase::Day;
+  if (now < sunset + 45 * 60) return SkyPhase::Dusk;
+  return SkyPhase::Night;
+}
+
 bool resolveDark(Appearance appearance, SkyPhase phase) {
   if (appearance == Appearance::Light) return false;
   if (appearance == Appearance::Dark) return true;

@@ -25,12 +25,19 @@ change those, not individual screens.
 pink (top-left), sky-tint (top-right) and gold (bottom) washes, using ordered
 dithering so RGB565 never bands.
 
-| Phase | Hours | Light accent | Dark accent |
+| Phase | By the clock (fallback) | Light accent | Dark accent |
 | --- | --- | --- | --- |
 | Dawn | 05–08 | `#85586b` | `#e1bccb` |
 | Day | 08–17 | `#5d6980` | `#c1cbe0` |
 | Dusk | 17–20 | `#775386` | `#d6b7e5` |
 | Night | 20–05 | `#625e84` | `#bdbde7` |
+
+The phase follows the **real sun** whenever the Weather place has told the shell
+about today (`AppContext::setSun`, from `core/solar`): dawn runs from 45 minutes
+before sunrise to 75 minutes after it, day until an hour before sunset, dusk until
+45 minutes after sunset, then night; in polar summer it is day all day, in polar
+winter night. The hours in the table are the fallback (no time, no Weather app).
+Night dimming and the bedside face's auto-start use the same phase.
 
 Appearance `Auto` is light at dawn/day and dark ("starlit") at dusk/night;
 `Light` and `Dark` pin the mode while the sky still follows the phase.

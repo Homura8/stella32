@@ -72,8 +72,13 @@ TEST(theme_follows_the_sky) {
   CHECK(!morning.os.theme().color.dark && morning.os.theme().phase == SkyPhase::Day);
   SimSession unknown(320, 240, 0);
   CHECK(unknown.os.theme().phase == SkyPhase::Night);
-  // Crossing into dusk re-themes on the minute check.
+  // Crossing into dusk re-themes on the minute check. On 16 November in
+  // Melbourne the sun sets at 20:10, so the sky is still day at 17:05 and
+  // turns to dusk an hour before sunset.
   morning.dev.platform.setEpoch(kMorningEpoch + 7 * 3600 + 50 * 60);  // 17:05
+  morning.run(100);
+  CHECK(morning.os.theme().phase == SkyPhase::Day);
+  morning.dev.platform.setEpoch(kMorningEpoch + 9 * 3600);  // 19:15
   morning.run(100);
   CHECK(morning.os.theme().phase == SkyPhase::Dusk && morning.os.theme().color.dark);
 }

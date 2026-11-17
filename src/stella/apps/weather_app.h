@@ -173,6 +173,7 @@ class WeatherApp : public App {
   };
 
   void choosePlace(uint8_t place, AppContext &ctx);
+  void publishSun(AppContext &ctx);
   bool publishGlance(AppContext &ctx);  // "14° Overcast" for idle faces (the bedside clock); false if none
 
   Topic<WeatherSnapshot> topic_{topics::kWeather};
