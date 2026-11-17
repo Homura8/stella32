@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../core/text.h"
 #include "../ui/layout.h"
 #include "../ui/materials.h"
 
@@ -56,23 +57,31 @@ void sectionLabel(Canvas &c, const Theme &t, const Rect &r, const char *text) {
 
 }  // namespace
 
-SettingsApp::SettingsApp() : main_(*this) {}
+SettingsApp::SettingsApp() : main_(*this), wifi_(*this) {}
 
 const AppInfo &SettingsApp::info() const {
   static const AppInfo kInfo{"settings", "Settings", icons::gear, 1, 0};
   return kInfo;
 }
 
-void SettingsApp::onTopic(uint16_t, AppContext &) {}
+void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
+  if (topicId == topics::kNetwork || topicId == topics::kWifiScan) wifi_.refresh(ctx);
+}
+
+void SettingsApp::onRoute(const char *route, AppContext &ctx) {
+  if (route && strcmp(route, "wifi") == 0) ctx.push(wifi_);
+}
 
 // ------------------------------------------------------------------ main list
 
 void SettingsApp::MainScreen::layout(const Rect &content, const Theme &t) {
   const Rect area = content.inset(t.m.margin, t.m.gapS);
-  card_ = Rect(area.x, area.y, area.w, 4 * t.m.row);
-  for (int i = 0; i < 4; ++i) {
-    rows_[i].bounds = Rect(card_.x, card_.y + i * t.m.row, card_.w, t.m.row);
-    rows_[i].separator = i < 3;
+  // Rows shrink a little on short panels so all five stay visible.
+  const int rowH = kRows * t.m.row <= area.h ? t.m.row : area.h / kRows;
+  card_ = Rect(area.x, area.y, area.w, kRows * rowH);
+  for (int i = 0; i < kRows; ++i) {
+    rows_[i].bounds = Rect(card_.x, card_.y + i * rowH, card_.w, rowH);
+    rows_[i].separator = i < kRows - 1;
   }
 }
 
@@ -80,20 +89,29 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
   const SystemSettings &s = ctx.settings();
   snprintf(appearance_, sizeof(appearance_), "%s", kAppearanceLabels[(int)s.appearance]);
   snprintf(time_, sizeof(time_), "%s \xc2\xb7 %s", s.clock24h ? "24 h" : "12 h", zoneLabel(s.timezone));
-  rows_[0].title = "Display";
-  rows_[0].icon = icons::sun;
-  rows_[0].tint = 3;
-  rows_[1].title = "Appearance";
-  rows_[1].icon = icons::appearance;
-  rows_[1].tint = 1;
-  rows_[1].detail = appearance_;
-  rows_[2].title = "Time";
-  rows_[2].icon = icons::clock;
-  rows_[2].tint = 2;
-  rows_[2].detail = time_;
-  rows_[3].title = "About";
-  rows_[3].icon = icons::info;
-  rows_[3].tint = 0;
+  const NetworkStatus net = ctx.network().status();
+  snprintf(wifi_, sizeof(wifi_), "%s",
+           !net.present                              ? "Not available"
+           : net.state == WifiState::Connected       ? net.ssid
+           : net.state == WifiState::Connecting      ? "Joining..."
+           : net.state == WifiState::NotConfigured   ? "Off"
+                                                     : "Not connected");
+  const struct {
+    const char *title;
+    IconFn icon;
+    uint8_t tint;
+    const char *detail;
+  } rows[kRows] = {{"Wi-Fi", icons::wifi, 2, wifi_},
+                   {"Display", icons::sun, 3, nullptr},
+                   {"Appearance", icons::appearance, 1, appearance_},
+                   {"Time", icons::clock, 2, time_},
+                   {"About", icons::info, 0, nullptr}};
+  for (int i = 0; i < kRows; ++i) {
+    rows_[i].title = rows[i].title;
+    rows_[i].icon = rows[i].icon;
+    rows_[i].tint = rows[i].tint;
+    rows_[i].detail = rows[i].detail;
+  }
 }
 
 void SettingsApp::MainScreen::draw(Canvas &c, const Theme &t) {
@@ -102,14 +120,155 @@ void SettingsApp::MainScreen::draw(Canvas &c, const Theme &t) {
 }
 
 bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
-  Screen *targets[] = {&app_.display_, &app_.appearance_, &app_.time_, &app_.about_};
-  for (int i = 0; i < 4; ++i) {
+  Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.appearance_, &app_.time_, &app_.about_};
+  for (int i = 0; i < kRows; ++i) {
     if (rows_[i].handle(e, ctx)) {
       ctx.push(*targets[i]);
       return true;
     }
   }
   return false;
+}
+
+// ------------------------------------------------------------------ wi-fi
+
+void SettingsApp::WifiScreen::layout(const Rect &content, const Theme &t) {
+  Rect r[3];
+  column(content.inset(t.m.margin, t.m.gapS), {px(t.m.row + t.dp(4)), px(t.m.control - t.dp(8)), flex()},
+         t.m.gapS, r);
+  statusCard_ = r[0];
+  Rect s[3];
+  row(r[0].inset(t.m.padding, 0), {px(t.m.icon + t.dp(4)), flex(), px(t.dp(64))}, t.m.gapM, s);
+  statusIcon_ = s[0];
+  statusText_ = s[1];
+  forget_.bounds = layout::center(s[2], s[2].w, t.m.control - t.dp(10));
+  forget_.label = "Forget";
+  forget_.style = ButtonStyle::Quiet;
+  header_ = r[1];
+  Rect h[2];
+  row(r[1], {flex(), px(t.dp(64))}, t.m.gapS, h);
+  scan_.bounds = h[1];
+  scan_.label = "Scan";
+  scan_.style = ButtonStyle::Quiet;
+  listCard_ = r[2];
+  list_.bounds = r[2].inset(t.dp(2), t.dp(4));
+  list_.rowHeight = t.dp(32);
+}
+
+void SettingsApp::WifiScreen::refresh(AppContext &ctx) {
+  net_ = ctx.network().status();
+  networks_ = ctx.network().scan();
+  list_.count = networks_.count;
+  if (list_.offset > list_.maxOffset()) list_.offset = list_.maxOffset();
+  switch (net_.state) {
+    case WifiState::Unavailable:
+      snprintf(headline_, sizeof(headline_), "No Wi-Fi on this device");
+      detail_[0] = '\0';
+      break;
+    case WifiState::NotConfigured:
+      snprintf(headline_, sizeof(headline_), "Not connected");
+      snprintf(detail_, sizeof(detail_), "Choose a network below");
+      break;
+    case WifiState::Connecting:
+      snprintf(headline_, sizeof(headline_), "Joining %s", net_.ssid);
+      snprintf(detail_, sizeof(detail_), "Connecting\xe2\x80\xa6");
+      break;
+    case WifiState::Connected:
+      snprintf(headline_, sizeof(headline_), "%s", net_.ssid);
+      snprintf(detail_, sizeof(detail_), "Connected \xc2\xb7 %s", net_.ip);
+      break;
+    case WifiState::Disconnected:
+      snprintf(headline_, sizeof(headline_), "%s", net_.ssid);
+      snprintf(detail_, sizeof(detail_), "%.32s \xc2\xb7 retrying", net_.error[0] ? net_.error : "Not connected");
+      break;
+  }
+  forget_.enabled = net_.state != WifiState::NotConfigured && net_.state != WifiState::Unavailable;
+  scan_.enabled = net_.present && !networks_.scanning;
+  scan_.label = networks_.scanning ? "Scanning" : "Scan";
+  if (isVisible()) ctx.invalidate(ctx.contentRect());
+}
+
+void SettingsApp::WifiScreen::onShow(AppContext &ctx) {
+  refresh(ctx);
+  if (net_.present) ctx.network().requestScan();
+}
+
+void SettingsApp::WifiScreen::drawNetwork(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed,
+                                          void *self) {
+  const WifiScreen &screen = *static_cast<const WifiScreen *>(self);
+  const WifiNetwork &n = screen.networks_.networks[index];
+  const bool current = screen.net_.state == WifiState::Connected && strcmp(n.ssid, screen.net_.ssid) == 0;
+  if (pressed) c.fillRoundRect(row.inset(t.dp(4), 1), t.m.radiusControl, t.color.accent, 36);
+  Rect parts[3];
+  layout::row(row.inset(t.m.padding, 0), {flex(), px(t.dp(16)), px(t.dp(18))}, t.m.gapS, parts);
+  c.drawTextIn(*t.font.body, n.ssid, parts[0], current ? t.color.accent : t.color.text);
+  if (n.secured) icons::lock(c, center(parts[1], t.dp(16), t.dp(16)), t.color.textMuted);
+  icons::wifiBars(c, center(parts[2], t.dp(16), t.dp(16)), current ? t.color.accent : t.color.textMuted,
+                  signalBars(n.rssi));
+  if (index < screen.networks_.count - 1)
+    paintHairline(c, t, row.x + t.m.padding, row.bottom() - 1, row.w - 2 * t.m.padding);
+}
+
+void SettingsApp::WifiScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, statusCard_, t.m.radiusCard);
+  const int r = statusIcon_.w / 2;
+  paintBubble(c, t, statusIcon_.centerX(), statusIcon_.centerY(), r, 2);
+  icons::wifiBars(c, center(statusIcon_, t.dp(16), t.dp(16)), p.accent,
+                  net_.state == WifiState::Connected ? signalBars(net_.rssi) : 0);
+  Rect lines[2];
+  column(center(statusText_, statusText_.w, t.font.body->lineHeight + t.font.caption->lineHeight),
+         {px(t.font.body->lineHeight), px(t.font.caption->lineHeight)}, 0, lines);
+  c.drawTextIn(*t.font.body, headline_, lines[0], p.text);
+  c.drawTextIn(*t.font.caption, detail_, lines[1], net_.state == WifiState::Disconnected ? p.danger : p.textMuted);
+  if (forget_.enabled) forget_.draw(c, t);
+
+  c.drawTextIn(*t.font.caption, "Networks", header_.inset(t.dp(4), 0), p.textMuted);
+  scan_.draw(c, t);
+  paintGlass(c, t, listCard_, t.m.radiusCard);
+  if (networks_.count == 0) {
+    const char *empty = !net_.present ? "" : networks_.scanning ? "Looking for networks\xe2\x80\xa6"
+                        : networks_.failed                        ? "Scan failed \xc2\xb7 tap Scan to retry"
+                                                                  : "No networks found";
+    c.drawTextIn(*t.font.caption, empty, listCard_, p.textMuted, Align::Center);
+  }
+  list_.draw(c, t, drawNetwork, this);
+}
+
+void SettingsApp::WifiScreen::submitPassword(const char *text, void *self, AppContext &ctx) {
+  WifiScreen &screen = *static_cast<WifiScreen *>(self);
+  ctx.network().join(screen.joining_, text);
+  ctx.pop();
+  char message[48];
+  snprintf(message, sizeof(message), "Joining %.30s", screen.joining_);
+  ctx.toast(message);
+}
+
+bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (forget_.enabled && forget_.handle(e, ctx)) {
+    ctx.network().forget();
+    ctx.toast("Network forgotten");
+    return true;
+  }
+  if (scan_.enabled && scan_.handle(e, ctx)) {
+    ctx.network().requestScan();
+    return true;
+  }
+  const int picked = list_.handle(e, ctx);
+  if (picked < 0) return true;
+  const WifiNetwork &n = networks_.networks[picked];
+  copyText(joining_, sizeof(joining_), n.ssid);
+  if (n.secured) {
+    app_.password_.open(joining_, "Join", /*secret=*/true, submitPassword, this, /*minLength=*/8);
+    ctx.push(app_.password_);
+  } else {
+    // Open network: join directly (no password screen to close).
+    ctx.network().join(joining_, "");
+    char message[48];
+    snprintf(message, sizeof(message), "Joining %.30s", joining_);
+    ctx.toast(message);
+  }
+  return true;
 }
 
 // ------------------------------------------------------------------ display
@@ -175,22 +334,28 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
 // ------------------------------------------------------------------ appearance
 
 void SettingsApp::AppearanceScreen::layout(const Rect &content, const Theme &t) {
-  Rect r[3];
-  column(content.inset(t.m.margin, t.m.gapS), {px(t.m.control), px(2 * t.font.body->lineHeight), flex()},
-         t.m.gapM, r);
+  Rect r[4];
+  column(content.inset(t.m.margin, t.m.gapS),
+         {px(t.m.control), px(2 * t.font.body->lineHeight), px(t.m.control), flex()}, t.m.gapS, r);
   mode_.bounds = r[0];
   note_ = r[1];
-  skies_ = Rect(r[2].x, r[2].y, r[2].w, r[2].h < t.dp(64) ? r[2].h : t.dp(64));
+  nightCard_ = r[2];
+  nightDim_.bounds = r[2].inset(t.m.padding, 0);
+  skies_ = Rect(r[3].x, r[3].y, r[3].w, r[3].h < t.dp(64) ? r[3].h : t.dp(64));
 }
 
 void SettingsApp::AppearanceScreen::onShow(AppContext &ctx) {
   mode_.labels = kAppearanceLabels;
   mode_.count = 3;
   mode_.selected = (uint8_t)ctx.settings().appearance;
+  nightDim_.on = ctx.settings().nightDim;
 }
 
 void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
   mode_.draw(c, t);
+  paintGlass(c, t, nightCard_, t.m.radiusCard);
+  c.drawTextIn(*t.font.body, "Dim at night", nightDim_.bounds, t.color.text);
+  nightDim_.draw(c, t);
   c.drawWrapped(*t.font.body,
                 mode_.selected == 0 ? "Auto follows the sky: light through the day, starlit from dusk."
                                     : "The sky still drifts from dawn to night.",
@@ -220,6 +385,12 @@ void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
 }
 
 bool SettingsApp::AppearanceScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (nightDim_.handle(e, ctx)) {
+    SystemSettings s = ctx.settings();
+    s.nightDim = nightDim_.on;
+    ctx.applySettings(s);
+    return true;
+  }
   if (!mode_.handle(e, ctx)) return false;
   SystemSettings s = ctx.settings();
   s.appearance = (Appearance)mode_.selected;

@@ -13,7 +13,19 @@ bool JobScheduler::add(Job &job, uint32_t nowMs, uint32_t firstDelayMs) {
   Entry &e = entries_[count_++];
   e.job = &job;
   e.dueMs = nowMs + firstDelayMs;
+  e.runNow.store(false);
   return true;
+}
+
+bool JobScheduler::requestRun(const Job &job) {
+  for (size_t i = 0; i < count_; ++i) {
+    if (entries_[i].job == &job) {
+      entries_[i].runNow.store(true);
+      if (wake_) wake_->notify();
+      return true;
+    }
+  }
+  return false;
 }
 
 uint32_t JobScheduler::backoff(const JobPolicy &p, uint8_t failures) const {
@@ -29,6 +41,9 @@ uint32_t JobScheduler::runDue(Clock clock, void *context) {
       entries_[i].dueMs = now;
       entries_[i].failures = 0;
     }
+  }
+  for (size_t i = 0; i < count_; ++i) {
+    if (entries_[i].runNow.exchange(false)) entries_[i].dueMs = now;
   }
   const int8_t network = network_.load();
   const bool up = network != 0;
@@ -56,17 +71,20 @@ uint32_t JobScheduler::runDue(Clock clock, void *context) {
     now = clock(context);
     e.last = r;
     e.everRan = true;
+    // A job's policy may depend on its state (e.g. poll faster while
+    // connecting), so schedule with the policy as it is after the run.
+    const JobPolicy after = e.job->policy();
     switch (r) {
       case JobResult::Ok:
         e.failures = 0;
-        e.dueMs = now + p.intervalMs;
+        e.dueMs = now + after.intervalMs;
         break;
       case JobResult::Failed:
         if (e.failures < 255) ++e.failures;
-        e.dueMs = now + backoff(p, e.failures);
+        e.dueMs = now + backoff(after, e.failures);
         break;
       case JobResult::Deferred:
-        e.dueMs = now + p.deferMs;
+        e.dueMs = now + after.deferMs;
         break;
     }
   }

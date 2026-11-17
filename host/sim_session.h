@@ -17,14 +17,20 @@ constexpr const char *kMelbourneTz = "AEST-10AEDT,M10.1.0,M4.1.0/3";
 
 class SimSession {
  public:
-  SimSession(int width, int height, int64_t epoch = kEveningEpoch, Appearance appearance = Appearance::Auto);
+  // threaded = false runs background jobs synchronously inside run(), so
+  // network-dependent screens are deterministic.
+  // online = true pre-provisions the simulated "Starlight" network, so Wi-Fi
+  // connects and the weather fixture loads during construction.
+  SimSession(int width, int height, int64_t epoch = kEveningEpoch, Appearance appearance = Appearance::Auto,
+             bool threaded = false, bool online = true);
 
   // Run the UI loop for `ms` of simulated time, honouring its sleep requests.
   void run(uint32_t ms);
   void tap(int x, int y);
   void longPress(int x, int y);
   void drag(int x0, int y0, int x1, int y1);
-  // Centre of settings row `i` on the Settings main screen.
+  // Centre of settings row `i` on the Settings main screen
+  // (0 Wi-Fi, 1 Display, 2 Appearance, 3 Time, 4 About).
   Point settingsRow(int i) const;
   Point backButton() const;
 
@@ -34,6 +40,7 @@ class SimSession {
   apps::ClockApp clock;
   apps::SettingsApp settings;
   apps::TouchTestApp touchTest;
+  apps::WeatherApp weather;
   RuntimeConfig config;
 };
 

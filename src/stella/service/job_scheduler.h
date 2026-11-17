@@ -13,6 +13,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../osal/osal.h"
+
 namespace stella {
 
 enum class JobResult : uint8_t { Ok, Failed, Deferred };
@@ -44,6 +46,7 @@ class JobScheduler {
     uint8_t failures = 0;
     JobResult last = JobResult::Ok;
     bool everRan = false;
+    std::atomic<bool> runNow{false};
   };
 
   using Clock = uint32_t (*)(void *context);
@@ -53,6 +56,11 @@ class JobScheduler {
   // Thread-safe requests, applied at the start of the next runDue().
   void requestRefresh() { refresh_.store(true); }           // all jobs due now, backoff cleared
   void setNetworkAvailable(bool up) { network_.store(up ? 1 : 0); }
+  // Run one job as soon as possible (thread-safe; keeps its backoff state).
+  bool requestRun(const Job &job);
+  // Signal to notify when a request arrives, so a sleeping service thread
+  // wakes immediately instead of at its next deadline.
+  void setWakeSignal(osal::Signal *signal) { wake_ = signal; }
 
   // Runs every due job once (reading the clock after each job, because jobs
   // can take seconds). Returns milliseconds until the next job is due.
@@ -69,6 +77,7 @@ class JobScheduler {
   std::atomic<bool> refresh_{false};
   std::atomic<int8_t> network_{1};
   bool networkUp_ = true;
+  osal::Signal *wake_ = nullptr;
 };
 
 }  // namespace stella

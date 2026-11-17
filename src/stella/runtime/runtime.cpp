@@ -25,7 +25,10 @@ void applyTimezone(const char *posix) {
 
 }  // namespace
 
-Runtime::Runtime() { topics_[topicCount_++] = &network_; }
+Runtime::Runtime() {
+  topics_[topicCount_++] = &network_;
+  topics_[topicCount_++] = &scan_;
+}
 
 Runtime::~Runtime() {
   if (!serviceRunning_) return;
@@ -42,15 +45,19 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   }
   board_ = board;
   config_ = config;
-  renderer_ = Renderer(config.renderBuffer, config.renderBufferPixels);
+  renderer_ = Renderer(config.renderBuffer, config.renderBufferPixels, config.renderBuffer2);
   screen_ = Rect(0, 0, board.display->width(), board.display->height());
   dirty_.setBounds(screen_);
   for (size_t i = 0; i < topicCount_; ++i) topics_[i]->attach(this);
 
   settings_ = config.defaults;
   settings_.sanitize();
-  const RecordStatus loaded = loadSettings(board.storage, settings_);
-  if (loaded != RecordStatus::Ok && loaded != RecordStatus::Missing) {
+  bool migrated = false;
+  const RecordStatus loaded = loadSettings(board.storage, settings_, &migrated);
+  if (migrated) {
+    LOGI(kTag, "settings migrated to v%u", (unsigned)SystemSettings::kVersion);
+    saveSettings(board.storage, settings_);
+  } else if (loaded != RecordStatus::Ok && loaded != RecordStatus::Missing) {
     LOGW(kTag, "settings %s; using defaults", recordStatusName(loaded));
   }
   applyTimezone(settings_.timezone);
@@ -65,6 +72,11 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
     }
     supervisorRestarts_ = record.restarts;
   }
+
+  wifi_.configure(board.wifi, board.storage, &jobs_, config.wifiSsid, config.wifiPassword);
+  if (wifi_.available()) jobs_.add(wifi_, millis());
+  http_.configure(board.http, &networkResource_);
+  jobs_.setWakeSignal(&serviceWake_);
 
   lastInteraction_ = millis();
   updateTheme(true);
@@ -89,6 +101,7 @@ bool Runtime::install(App &app) {
   apps_[appCount_].app = &app;
   if ((info.flags & kAppHome) && home_ < 0) home_ = (int)appCount_;
   ++appCount_;
+  app.onInstall(*this);
   return true;
 }
 
@@ -111,7 +124,7 @@ bool Runtime::start() {
   uiWatch_ = supervisor_.watch("ui", config_.uiStallLimitMs, now);
   // The service thread runs background jobs and also supervises the UI loop
   // (a thread cannot notice its own stall), so it starts whenever either is needed.
-  if (jobs_.size() > 0 || config_.supervise) {
+  if (config_.serviceThread && (jobs_.size() > 0 || config_.supervise)) {
     serviceWatch_ = supervisor_.watch("svc", config_.serviceStallLimitMs, now);
     osal::ThreadSpec spec;
     spec.name = "stella-svc";
@@ -190,6 +203,11 @@ uint32_t Runtime::step() {
   return wait;
 }
 
+uint32_t Runtime::serviceStep() {
+  if (serviceRunning_) return JobScheduler::kIdleWaitMs;
+  return jobs_.runDue(clockThunk, this);
+}
+
 void Runtime::run() {
   const uint32_t wait = step();
   if (wait > 0) events_.wait(wait);
@@ -239,6 +257,7 @@ void Runtime::updateTheme(bool force) {
   if (!force && phase == theme_.phase && dark == theme_.color.dark && density == theme_.density) return;
   theme_ = makeTheme(density, dark, phase);
   content_ = Rect(screen_.x, screen_.y + theme_.m.statusBar, screen_.w, screen_.h - theme_.m.statusBar);
+  if (board_.display) applyBrightness();
   GestureConfig g;
   g.slop = theme_.m.touchSlop;
   gestures_.configure(g);
@@ -268,6 +287,7 @@ void Runtime::showTop() {
   Screen *s = topScreen();
   if (!s) return;
   s->layout(content_, theme_);
+  s->setVisible(true);
   callbackApp_ = foreground();
   s->onShow(*this);
   callbackApp_ = nullptr;
@@ -281,6 +301,7 @@ void Runtime::hideTop() {
     callbackApp_ = foreground();
     s->onHide(*this);
     callbackApp_ = nullptr;
+    s->setVisible(false);
   }
   tickArmed_ = false;
 }
@@ -324,13 +345,20 @@ void Runtime::goHome() {
   launch(apps_[home_].app->info().id);
 }
 
-bool Runtime::launch(const char *appId) {
+bool Runtime::launch(const char *appId, const char *route) {
   int index = -1;
   for (size_t i = 0; i < appCount_; ++i) {
     if (strcmp(apps_[i].app->info().id, appId) == 0) index = (int)i;
   }
   if (index < 0) return false;
-  if (index == foreground_) return true;
+  if (index == foreground_) {
+    if (route) {
+      callbackApp_ = apps_[index].app;
+      apps_[index].app->onRoute(route, *this);
+      callbackApp_ = nullptr;
+    }
+    return true;
+  }
   hideTop();
   foreground_ = index;
   AppSlot &s = apps_[index];
@@ -342,6 +370,11 @@ bool Runtime::launch(const char *appId) {
   }
   if (s.depth == 0) s.stack[s.depth++] = &s.app->root();
   showTop();
+  if (route) {
+    callbackApp_ = s.app;
+    s.app->onRoute(route, *this);
+    callbackApp_ = nullptr;
+  }
   return true;
 }
 
@@ -430,6 +463,8 @@ void Runtime::updatePower(uint32_t now) {
 
 void Runtime::applyBrightness() {
   uint8_t level = settings_.brightness;
+  // Bedside comfort: the night sky also caps the backlight.
+  if (settings_.nightDim && theme_.phase == SkyPhase::Night) level = nightBrightness(level);
   if (power_ == PowerState::Dimmed) level = level / 4 < 12 ? 12 : level / 4;
   if (power_ == PowerState::Off) level = 0;
   if (brightnessKnown_ && level == appliedBrightness_) return;
@@ -577,7 +612,12 @@ void Runtime::drawStatusBar(Canvas &c) {
   // Right: network indicator + clock.
   Rect right = parts[1];
   if (net.present) {
-    icons::wifi(c, layout::leading(right, iconSize), net.connected ? p.textMuted : p.danger);
+    // Settled: muted. Joining: accent. Problem: soft danger pink. Unset: faint.
+    const Color wifiColor = net.state == WifiState::Connected    ? p.textMuted
+                            : net.state == WifiState::Connecting ? p.accent
+                            : net.state == WifiState::Disconnected ? p.danger
+                                                                   : blend(p.glass, p.textMuted, 120);
+    icons::wifi(c, layout::leading(right, iconSize), wifiColor);
     right = Rect(right.x + iconSize + t.dp(6), right.y, right.w - iconSize - t.dp(6), right.h);
   }
   c.drawTextIn(*t.font.caption, clock, right, p.textMuted, Align::Right);

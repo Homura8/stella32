@@ -102,6 +102,55 @@ class MemoryStore : public KeyValueStore {
   size_t writes_ = 0;
 };
 
+// Simulated access points: joining succeeds with the right password after a
+// few polls; wrong passwords and unknown networks fail.
+class SimWifi : public WifiDriver {
+ public:
+  struct Ap {
+    std::string ssid, password;
+    int8_t rssi;
+  };
+  std::vector<Ap> aps{{"Starlight", "moonbeam", -52}, {"Observatory", "", -63}, {"Neighbour 5G", "x", -81},
+                      {"Starlight", "moonbeam", -70}};
+  int connectPolls = 3;  // link() calls before an attempt resolves
+  int scanPolls = 2;
+  bool timeSyncStarted = false;
+  int connects = 0;
+
+  bool begin() override { return true; }
+  bool connect(const char *ssid, const char *password) override;
+  void disconnect() override { link_ = WifiLink::Idle; }
+  WifiLink link() override;
+  int8_t rssi() override { return -55; }
+  void address(char *out, size_t capacity) override;
+  bool startScan() override {
+    scanLeft_ = scanPolls;
+    return true;
+  }
+  int scanResults(WifiNetwork *out, int capacity) override;
+  void startTimeSync() override { timeSyncStarted = true; }
+  void dropLink() { link_ = WifiLink::Idle; }
+
+ private:
+  WifiLink link_ = WifiLink::Idle;
+  bool willSucceed_ = false;
+  int pollsLeft_ = 0, scanLeft_ = -1;
+};
+
+// Canned HTTP responses keyed by a URL substring.
+class SimHttp : public HttpClient {
+ public:
+  struct Route {
+    std::string match, body;
+    int status;
+  };
+  std::vector<Route> routes;
+  int requests = 0;
+  int failWith = 0;  // non-zero: every request returns this
+  std::string lastUrl;
+  int get(const char *url, uint32_t timeoutMs, size_t maxBodyBytes, HttpSink &sink) override;
+};
+
 // A complete simulated device.
 struct SimDevice {
   SimDevice(int width, int height) : display(width, height), buffer((size_t)width * 20) {}
@@ -109,8 +158,10 @@ struct SimDevice {
   ScriptedTouch touch;
   SimPlatform platform;
   MemoryStore storage;
+  SimWifi wifi;
+  SimHttp http;
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage}; }
+  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http}; }
 };
 
 }  // namespace host

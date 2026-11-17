@@ -49,14 +49,17 @@ class Renderer {
     uint32_t pixels = 0;  // pixels sent to the display
   };
 
-  Renderer(Color *buffer, size_t capacityPixels) : buffer_(buffer), capacity_(capacityPixels) {}
+  // With a second buffer and a display that supports async transfers, the
+  // next chunk is drawn while the previous one is still being sent.
+  Renderer(Color *buffer, size_t capacityPixels, Color *second = nullptr)
+      : buffers_{buffer, second}, capacity_(capacityPixels) {}
 
   // Renders and clears `region`. The chunk height adapts to each rectangle's
   // width, so narrow updates (a clock digit, a toggle) need a single pass.
   Stats render(Display &display, DirtyRegion &region, DrawFn draw, void *context);
 
  private:
-  Color *buffer_;
+  Color *buffers_[2];
   size_t capacity_;
 };
 

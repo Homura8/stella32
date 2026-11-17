@@ -61,21 +61,33 @@ void DirtyRegion::insertMerged(Rect r) {
 Renderer::Stats Renderer::render(Display &display, DirtyRegion &region, DrawFn draw, void *context) {
   Stats stats;
   Canvas canvas;
+  // Double buffering: while chunk N is in flight, chunk N+1 is drawn into the
+  // other buffer. The display starts N+1 only after N completed, so a buffer
+  // is never redrawn while still being read.
+  const bool async = buffers_[1] && display.supportsAsync();
+  int next = 0;
   for (int i = 0; i < region.count(); ++i) {
     const Rect r = region[i];
     const int rows = r.w > 0 ? (int)(capacity_ / (size_t)r.w) : 0;
     if (rows <= 0) continue;  // Wider than the buffer: misconfigured board.
     for (int y = r.y; y < r.bottom(); y += rows) {
       const Rect chunk(r.x, y, r.w, (r.bottom() - y) < rows ? (r.bottom() - y) : rows);
+      Color *buffer = buffers_[next];
       // Deterministic start state; draw code must still paint every pixel.
-      memset(buffer_, 0, (size_t)chunk.area() * sizeof(Color));
-      canvas.begin(buffer_, chunk);
+      memset(buffer, 0, (size_t)chunk.area() * sizeof(Color));
+      canvas.begin(buffer, chunk);
       draw(canvas, context);
-      display.writePixels(chunk, buffer_);
+      if (async) {
+        display.writePixelsAsync(chunk, buffer);
+        next ^= 1;
+      } else {
+        display.writePixels(chunk, buffer);
+      }
       ++stats.chunks;
       stats.pixels += (uint32_t)chunk.area();
     }
   }
+  if (async) display.waitIdle();
   region.clear();
   return stats;
 }

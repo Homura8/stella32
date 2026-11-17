@@ -51,5 +51,55 @@ std::vector<uint8_t> *MemoryStore::raw(const char *ns, const char *key) {
   return it == values_.end() ? nullptr : &it->second;
 }
 
+bool SimWifi::connect(const char *ssid, const char *password) {
+  ++connects;
+  willSucceed_ = false;
+  for (const Ap &ap : aps)
+    if (ap.ssid == ssid && ap.password == (password ? password : "")) willSucceed_ = true;
+  link_ = WifiLink::Connecting;
+  pollsLeft_ = connectPolls;
+  return true;
+}
+
+WifiLink SimWifi::link() {
+  if (link_ == WifiLink::Connecting && --pollsLeft_ <= 0) link_ = willSucceed_ ? WifiLink::Connected : WifiLink::Failed;
+  return link_;
+}
+
+void SimWifi::address(char *out, size_t capacity) { snprintf(out, capacity, "192.168.1.42"); }
+
+int SimWifi::scanResults(WifiNetwork *out, int capacity) {
+  if (scanLeft_ < 0) return -2;
+  if (scanLeft_-- > 0) return -1;
+  int n = 0;
+  for (const Ap &ap : aps) {
+    if (n >= capacity) break;
+    snprintf(out[n].ssid, sizeof(out[n].ssid), "%s", ap.ssid.c_str());
+    out[n].rssi = ap.rssi;
+    out[n].secured = !ap.password.empty();
+    ++n;
+  }
+  scanLeft_ = -1;
+  return n;
+}
+
+int SimHttp::get(const char *url, uint32_t, size_t maxBodyBytes, HttpSink &sink) {
+  ++requests;
+  lastUrl = url;
+  if (failWith) return failWith;
+  for (const Route &r : routes) {
+    if (!strstr(url, r.match.c_str())) continue;
+    if (r.status < 200 || r.status >= 300) return r.status;
+    if (r.body.size() > maxBodyBytes) return kHttpErrTooLarge;
+    // Deliver in small pieces, as a network would.
+    for (size_t i = 0; i < r.body.size(); i += 37) {
+      const size_t n = r.body.size() - i < 37 ? r.body.size() - i : 37;
+      if (!sink.onData(reinterpret_cast<const uint8_t *>(r.body.data() + i), n)) return kHttpErrAborted;
+    }
+    return r.status;
+  }
+  return 404;
+}
+
 }  // namespace host
 }  // namespace stella

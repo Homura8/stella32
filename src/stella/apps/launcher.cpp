@@ -17,6 +17,10 @@ const AppInfo &LauncherApp::info() const {
   return kInfo;
 }
 
+void LauncherApp::onTopic(uint16_t topicId, AppContext &ctx) {
+  if (topicId == topics::kNetwork) home_.refreshText(ctx);
+}
+
 int LauncherApp::HomeScreen::pageCount() const {
   const int n = (int)apps_.size();
   return n == 0 ? 1 : (n + perPage() - 1) / perPage();
@@ -30,13 +34,14 @@ void LauncherApp::HomeScreen::layout(const Rect &content, const Theme &t) {
 
 void LauncherApp::HomeScreen::arrange() {
   const Theme &t = theme_;
-  columns_ = t.density == Density::Regular ? 4 : 3;
+  columns_ = t.density == Density::Regular ? 5 : 4;
   gap_ = t.m.gapM;
   const int count = (int)apps_.size();
-  rows_ = count > columns_ ? 2 : 1;
-  // Tiles are as wide as the columns allow but never taller than wide.
+  // While Wi-Fi setup is pending the note must stay visible: one row, paged.
+  rows_ = count > columns_ && !setupNote_ ? 2 : 1;
+  // Square tiles, as wide as the columns allow.
   const int tileW = (area_.w - gap_ * (columns_ - 1)) / columns_;
-  const int tileH = tileW * 4 / 5;
+  const int tileH = tileW;
   const bool paged = count > columns_ * rows_;
   Rect parts[6];
   column(area_,
@@ -80,7 +85,18 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
     ctx.invalidate(date_);
   }
   char title[sizeof(noteTitle_)], text[sizeof(noteText_)];
-  if (now.valid) {
+  const NetworkStatus net = ctx.network().status();
+  const bool setup = net.present && net.state == WifiState::NotConfigured;
+  if (setup != setupNote_) {
+    setupNote_ = setup;
+    arrange();
+    if (page_ >= pageCount()) page_ = 0;
+    ctx.invalidate(ctx.contentRect());
+  }
+  if (setup) {
+    snprintf(title, sizeof(title), "Set up Wi-Fi");
+    snprintf(text, sizeof(text), "For the time and the weather");
+  } else if (now.valid) {
     const MoonPhase moon = moonPhase(now.epoch);
     snprintf(title, sizeof(title), "%s", moon.name);
     snprintf(text, sizeof(text), "%d%% lit \xc2\xb7 %s sky", (int)(moon.illumination * 100 + 0.5f),
@@ -138,15 +154,17 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
     paintGlass(c, t, note_, t.m.radiusCard);
     Rect inner = note_.inset(t.m.padding, 0);
     const int r = t.m.icon / 2 + t.dp(2);
-    paintBubble(c, t, inner.x + r, inner.centerY(), r, 1);
-    icons::moon(c, center(Rect(inner.x, inner.y, 2 * r, inner.h), t.dp(16), t.dp(16)), p.accent);
+    if (notePressed_) c.fillRoundRect(note_, t.m.radiusCard, p.accent, 40);
+    paintBubble(c, t, inner.x + r, inner.centerY(), r, setupNote_ ? 2 : 1);
+    (setupNote_ ? icons::wifi : icons::moon)(c, center(Rect(inner.x, inner.y, 2 * r, inner.h), t.dp(16), t.dp(16)),
+                                             p.accent);
     inner = Rect(inner.x + 2 * r + t.m.gapM, inner.y, inner.w - 2 * r - t.m.gapM, inner.h);
     Rect lines[2];
     column(center(inner, inner.w, t.font.body->lineHeight + t.font.caption->lineHeight),
            {px(t.font.body->lineHeight), px(t.font.caption->lineHeight)}, 0, lines);
     c.drawTextIn(*t.font.body, noteTitle_, lines[0], p.text);
     c.drawTextIn(*t.font.caption, noteText_, lines[1], p.textMuted);
-    icons::sparkle(c, trailing(inner, t.dp(12)), p.accent);
+    (setupNote_ ? icons::chevronRight : icons::sparkle)(c, trailing(inner, t.dp(12)), p.accent);
   }
 
   const int pages = pageCount();
@@ -160,6 +178,10 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
 
 bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
   const Theme &t = ctx.theme();
+  if (setupNote_ && trackPress(note_, e, notePressed_, ctx, note_.inset(-glassOutset(t)))) {
+    ctx.launch("settings", "wifi");
+    return true;
+  }
   switch (e.type) {
     case EventType::Press:
       pressed_ = tileAt(e.x, e.y);

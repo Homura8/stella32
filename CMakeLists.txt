@@ -29,7 +29,7 @@ target_link_libraries(stella PUBLIC Threads::Threads)
 
 # Host port: simulated display/touch/storage/platform.
 file(GLOB STELLA_HOST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/host/*.cpp)
-list(FILTER STELLA_HOST_SOURCES EXCLUDE REGEX "/host/sim_main.cpp$")
+list(FILTER STELLA_HOST_SOURCES EXCLUDE REGEX "/host/(sim|bench)_main.cpp$")
 add_library(stella_host STATIC ${STELLA_HOST_SOURCES})
 target_include_directories(stella_host PUBLIC ${CMAKE_SOURCE_DIR}/host)
 target_link_libraries(stella_host PUBLIC stella)
@@ -38,6 +38,10 @@ target_compile_options(stella_host PRIVATE ${STELLA_WARNINGS} ${STELLA_SAN})
 add_executable(stella_sim ${CMAKE_SOURCE_DIR}/host/sim_main.cpp)
 target_link_libraries(stella_sim PRIVATE stella_host)
 target_compile_options(stella_sim PRIVATE ${STELLA_WARNINGS} ${STELLA_SAN})
+
+add_executable(stella_bench ${CMAKE_SOURCE_DIR}/host/bench_main.cpp)
+target_link_libraries(stella_bench PRIVATE stella_host)
+target_compile_options(stella_bench PRIVATE ${STELLA_WARNINGS} ${STELLA_SAN})
 
 enable_testing()
 file(GLOB STELLA_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/*.cpp)

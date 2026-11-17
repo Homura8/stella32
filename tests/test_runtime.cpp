@@ -16,10 +16,10 @@ const char *topApp(SimSession &s) { return s.os.foreground() ? s.os.foreground()
 Point launcherTile(SimSession &s, int index) {
   const Theme &t = s.os.theme();
   const Rect c = s.os.contentRect().inset(t.m.margin, t.m.gapS);
-  const int columns = t.density == Density::Regular ? 4 : 3;
-  const int tileW = (c.w - t.m.gapM * (columns - 1)) / columns;
+  const int columns = t.density == Density::Regular ? 5 : 4;
+  const int tileW = (c.w - t.m.gapM * (columns - 1)) / columns;  // square tiles
   const int top = c.y + t.font.headline->lineHeight + t.font.caption->lineHeight + 2 * t.m.gapS;
-  return Point{(int16_t)(c.x + index * (tileW + t.m.gapM) + tileW / 2), (int16_t)(top + tileW * 2 / 5)};
+  return Point{(int16_t)(c.x + index * (tileW + t.m.gapM) + tileW / 2), (int16_t)(top + tileW / 2)};
 }
 
 }  // namespace
@@ -40,7 +40,7 @@ TEST(settings_navigation_uses_the_screen_stack) {
   SimSession s(320, 240);
   s.os.launch("settings");
   s.run(50);
-  const Point row = s.settingsRow(0);
+  const Point row = s.settingsRow(1);
   s.tap(row.x, row.y);
   CHECK(s.os.topScreen() && strcmp(s.os.topScreen()->title(), "Display") == 0);
   const Point back = s.backButton();
@@ -55,6 +55,7 @@ TEST(settings_persist_after_debounce_and_reload) {
   SystemSettings changed = s.os.settings();
   changed.appearance = Appearance::Light;
   changed.brightness = 90;
+  changed.nightDim = false;  // the fixture is at night
   const size_t writesBefore = s.dev.storage.writes();
   s.os.applySettings(changed);
   CHECK(!s.os.theme().color.dark);  // applied immediately
@@ -99,6 +100,17 @@ TEST(power_dims_sleeps_and_wake_touch_is_consumed) {
   CHECK(strcmp(topApp(s), "clock") == 0);
 }
 
+TEST(night_dimming_caps_the_backlight) {
+  SimSession night(320, 240, kEveningEpoch);
+  CHECK_EQ(night.dev.display.backlight(), nightBrightness(night.os.settings().brightness));
+  SystemSettings s = night.os.settings();
+  s.nightDim = false;
+  night.os.applySettings(s);
+  CHECK_EQ(night.dev.display.backlight(), s.brightness);
+  SimSession day(320, 240, kMorningEpoch);
+  CHECK_EQ(day.dev.display.backlight(), day.os.settings().brightness);
+}
+
 TEST(toast_expires_and_repaints) {
   SimSession s(320, 240);
   s.os.toast("Hello");
@@ -126,7 +138,7 @@ TEST(incremental_frames_match_full_redraw) {
   SimSession s(320, 240);
   s.os.launch("settings");
   s.run(100);
-  const Point row = s.settingsRow(0);
+  const Point row = s.settingsRow(1);
   s.tap(row.x, row.y);  // Display screen
   const Rect c = s.os.contentRect();
   s.drag(c.x + 30, c.y + 45, c.x + 150, c.y + 45);  // move the brightness slider
@@ -138,7 +150,7 @@ TEST(incremental_frames_match_full_redraw) {
 }
 
 TEST(supervisor_restarts_a_stalled_ui) {
-  SimSession s(320, 240);
+  SimSession s(320, 240, kEveningEpoch, Appearance::Auto, /*threaded=*/true);
   // The UI loop stops running; the service thread must notice and restart.
   s.dev.platform.advance(s.config.uiStallLimitMs + 1000);
   for (int i = 0; i < 300 && s.dev.platform.restarts() == 0; ++i) osal::sleepMs(10);
@@ -164,7 +176,7 @@ TEST(every_screen_renders_at_every_size) {
   const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
   for (const auto &sz : sizes) {
     SimSession s(sz[0], sz[1]);
-    for (const char *app : {"home", "clock", "settings", "touch"}) {
+    for (const char *app : {"home", "clock", "weather", "settings", "touch"}) {
       s.os.launch(app);
       s.run(100);
       CHECK(!s.os.renderPending());
@@ -172,7 +184,7 @@ TEST(every_screen_renders_at_every_size) {
       CHECK(s.dev.display.framebuffer().size() == (size_t)sz[0] * sz[1]);
     }
     s.os.launch("settings");
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
       const Point row = s.settingsRow(i);
       s.tap(row.x, row.y);
       CHECK(s.os.topScreen() != &s.settings.root());

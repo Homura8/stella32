@@ -11,21 +11,6 @@ namespace {
 inline float clamp01(float v) { return v < 0.f ? 0.f : v > 1.f ? 1.f : v; }
 inline float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-// Coverage of a pixel centre (px, py) by a rounded rectangle in continuous
-// coordinates [x0, x1) x [y0, y1) with corner radius r.
-inline float roundRectCoverage(float px, float py, float x0, float y0, float x1, float y1, float r) {
-  if (px < x0 - 1.f || px > x1 + 1.f || py < y0 - 1.f || py > y1 + 1.f) return 0.f;
-  const float cx = clampf(px, x0 + r, x1 - r), cy = clampf(py, y0 + r, y1 - r);
-  const float dx = px - cx, dy = py - cy;
-  if (r <= 0.f) {
-    // Square corners: per-axis coverage of the half-open box.
-    const float covX = clamp01(fminf(px + 0.5f - x0, x1 - (px - 0.5f)));
-    const float covY = clamp01(fminf(py + 0.5f - y0, y1 - (py - 0.5f)));
-    return covX * covY;
-  }
-  return clamp01(r + 0.5f - sqrtf(dx * dx + dy * dy));
-}
-
 }  // namespace
 
 void Canvas::begin(Color *buffer, Rect target) {
@@ -69,15 +54,20 @@ void Canvas::fillRoundRect(const Rect &r, int radius, Color c, uint8_t alpha) {
   if (r.empty()) return;
   const float rad = fminf((float)radius, fminf(r.w, r.h) / 2.f);
   const float x0 = r.x, y0 = r.y, x1 = r.right(), y1 = r.bottom();
-  // Interior rows/columns away from the corners are solid: fill them directly.
+  // Only the four corner squares need anti-aliasing maths; everything else
+  // is fully covered (edges are integer-aligned), so it is a plain fill.
   const int ri = (int)ceilf(rad);
   const int topH = ri < r.h ? ri : r.h;
   const int bottomY = r.bottom() - ri > r.y + topH ? r.bottom() - ri : r.y + topH;
+  const int cornerW = 2 * ri < r.w ? ri : r.w / 2;
   fillRect(Rect(r.x, r.y + topH, r.w, bottomY - (r.y + topH)), c, alpha);
-  const Rect topBand(r.x, r.y, r.w, topH), bottomBand(r.x, bottomY, r.w, r.bottom() - bottomY);
+  fillRect(Rect(r.x + cornerW, r.y, r.w - 2 * cornerW, topH), c, alpha);
+  fillRect(Rect(r.x + cornerW, bottomY, r.w - 2 * cornerW, r.bottom() - bottomY), c, alpha);
   auto cov = [=](float px, float py) { return roundRectCoverage(px, py, x0, y0, x1, y1, rad); };
-  paint(topBand, c, alpha, cov);
-  paint(bottomBand, c, alpha, cov);
+  paint(Rect(r.x, r.y, cornerW, topH), c, alpha, cov);
+  paint(Rect(r.right() - cornerW, r.y, cornerW, topH), c, alpha, cov);
+  paint(Rect(r.x, bottomY, cornerW, r.bottom() - bottomY), c, alpha, cov);
+  paint(Rect(r.right() - cornerW, bottomY, cornerW, r.bottom() - bottomY), c, alpha, cov);
 }
 
 void Canvas::strokeRoundRect(const Rect &r, int radius, int thickness, Color c, uint8_t alpha) {
@@ -87,19 +77,22 @@ void Canvas::strokeRoundRect(const Rect &r, int radius, int thickness, Color c, 
   const float x0 = r.x, y0 = r.y, x1 = r.right(), y1 = r.bottom();
   const float inner = fmaxf(rad - t, 0.f);
   auto cov = [=](float px, float py) {
-    return clamp01(roundRectCoverage(px, py, x0, y0, x1, y1, rad)
-                   - roundRectCoverage(px, py, x0 + t, y0 + t, x1 - t, y1 - t, inner));
+    const float outer = roundRectCoverage(px, py, x0, y0, x1, y1, rad);
+    return outer <= 0.f ? 0.f
+                        : fmaxf(outer - roundRectCoverage(px, py, x0 + t, y0 + t, x1 - t, y1 - t, inner), 0.f);
   };
+  // Corner squares get exact coverage; the straight runs between them are
+  // solid lines `thickness` wide.
   const int band = (int)ceilf(fmaxf(rad, t)) + 1;
-  // Only the four edge bands can contain stroke pixels; they never overlap.
-  const int topH = band < r.h ? band : r.h;
-  const int bottomY = r.bottom() - band > r.y + topH ? r.bottom() - band : r.y + topH;
-  const int midH = bottomY - (r.y + topH);
-  const int sideW = 2 * band < r.w ? band : r.w / 2;
-  paint(Rect(r.x, r.y, r.w, topH), c, alpha, cov);
-  paint(Rect(r.x, bottomY, r.w, r.bottom() - bottomY), c, alpha, cov);
-  paint(Rect(r.x, r.y + topH, sideW, midH), c, alpha, cov);
-  paint(Rect(r.right() - sideW, r.y + topH, sideW, midH), c, alpha, cov);
+  const int bh = 2 * band < r.h ? band : r.h / 2, bw = 2 * band < r.w ? band : r.w / 2;
+  paint(Rect(r.x, r.y, bw, bh), c, alpha, cov);
+  paint(Rect(r.right() - bw, r.y, bw, bh), c, alpha, cov);
+  paint(Rect(r.x, r.bottom() - bh, bw, bh), c, alpha, cov);
+  paint(Rect(r.right() - bw, r.bottom() - bh, bw, bh), c, alpha, cov);
+  fillRect(Rect(r.x + bw, r.y, r.w - 2 * bw, thickness), c, alpha);
+  fillRect(Rect(r.x + bw, r.bottom() - thickness, r.w - 2 * bw, thickness), c, alpha);
+  fillRect(Rect(r.x, r.y + bh, thickness, r.h - 2 * bh), c, alpha);
+  fillRect(Rect(r.right() - thickness, r.y + bh, thickness, r.h - 2 * bh), c, alpha);
 }
 
 void Canvas::fillCircle(int cx, int cy, int radius, Color c, uint8_t alpha) {

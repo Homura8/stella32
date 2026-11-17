@@ -22,6 +22,16 @@ void sun(Canvas &c, const Rect &box, Color color);
 void wifi(Canvas &c, const Rect &box, Color color);
 void appearance(Canvas &c, const Rect &box, Color color);
 void check(Canvas &c, const Rect &box, Color color);
+void lock(Canvas &c, const Rect &box, Color color);
+// Weather.
+void cloud(Canvas &c, const Rect &box, Color color);
+void partlyCloudy(Canvas &c, const Rect &box, Color color);
+void rain(Canvas &c, const Rect &box, Color color);
+void snow(Canvas &c, const Rect &box, Color color);
+void storm(Canvas &c, const Rect &box, Color color);
+void fog(Canvas &c, const Rect &box, Color color);
+// Wi-Fi strength (0..4 bars); inactive arcs are drawn faint.
+void wifiBars(Canvas &c, const Rect &box, Color color, int bars);
 }  // namespace icons
 
 }  // namespace stella

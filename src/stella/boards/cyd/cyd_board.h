@@ -17,6 +17,13 @@
 #include "../../input/touch_calibration.h"
 #include "../../port/esp32/esp32_port.h"
 
+// DMA display transfers with double-buffered rendering: the next chunk is
+// drawn while the previous one is sent. Costs a second 12.5 KiB buffer.
+// Off until verified on hardware; define STELLA_CYD_DMA 1 before including.
+#ifndef STELLA_CYD_DMA
+#define STELLA_CYD_DMA 0
+#endif
+
 namespace stella {
 namespace cyd {
 
@@ -45,6 +52,9 @@ class CydDisplay : public Display {
     tft_.invertDisplay(Profile::kInverted);
     tft_.setSwapBytes(true);  // native RGB565 -> panel byte order
     tft_.fillScreen(TFT_BLACK);
+#if STELLA_CYD_DMA
+    dma_ = tft_.initDMA();
+#endif
   }
   int16_t width() const override { return Profile::kWidth; }
   int16_t height() const override { return Profile::kHeight; }
@@ -53,8 +63,36 @@ class CydDisplay : public Display {
   }
   void setBacklight(uint8_t level) override { analogWrite(Profile::kBacklight, level); }
 
+  bool supportsAsync() const override { return dma_; }
+  void writePixelsAsync(const Rect &area, Color *pixels) override {
+#if STELLA_CYD_DMA
+    if (dma_) {
+      if (!inTransaction_) {
+        tft_.startWrite();
+        inTransaction_ = true;
+      }
+      // Waits for the previous DMA transfer, byte-swaps `pixels` in place
+      // (allowed by the Display contract), then starts this one.
+      tft_.pushImageDMA(area.x, area.y, area.w, area.h, pixels);
+      return;
+    }
+#endif
+    writePixels(area, pixels);
+  }
+  void waitIdle() override {
+#if STELLA_CYD_DMA
+    if (inTransaction_) {
+      tft_.dmaWait();
+      tft_.endWrite();
+      inTransaction_ = false;
+    }
+#endif
+  }
+
  private:
   TFT_eSPI tft_;
+  bool dma_ = false;
+  bool inTransaction_ = false;
 };
 
 class CydTouch : public TouchInput {
@@ -94,16 +132,26 @@ class CydBoard {
     display_.begin();
     touch_.begin();
   }
-  Board board() { return Board{&display_, &touch_, &platform_, &storage_}; }
+  Board board() { return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_}; }
   Color *renderBuffer() { return buffer_; }
   size_t renderBufferPixels() const { return sizeof(buffer_) / sizeof(buffer_[0]); }
+#if STELLA_CYD_DMA
+  Color *secondRenderBuffer() { return buffer2_; }
+#else
+  Color *secondRenderBuffer() { return nullptr; }
+#endif
 
  private:
   CydDisplay display_;
   CydTouch touch_;
   esp32::Esp32Platform platform_;
   esp32::NvsStore storage_;
+  esp32::Esp32WifiDriver wifi_;
+  esp32::Esp32HttpClient http_;
   Color buffer_[Profile::kWidth * Profile::kRenderRows];
+#if STELLA_CYD_DMA
+  Color buffer2_[Profile::kWidth * Profile::kRenderRows];
+#endif
 };
 
 }  // namespace cyd

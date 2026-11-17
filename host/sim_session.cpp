@@ -1,11 +1,41 @@
 #include "sim_session.h"
 
+#include <stdio.h>
 #include <string.h>
+
+#include <string>
 
 namespace stella {
 namespace host {
 
-SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance) : dev(width, height) {
+namespace {
+
+// An Open-Meteo response captured in shape (values chosen for the fixture).
+std::string weatherFixture(bool day) {
+  char json[1024];
+  snprintf(json, sizeof(json),
+           "{\"latitude\":-37.8,\"longitude\":144.96,\"timezone\":\"Australia/Sydney\","
+           "\"current_units\":{\"temperature_2m\":\"\u00b0C\"},"
+           "\"current\":{\"time\":1794828600,\"interval\":900,\"temperature_2m\":17.4,"
+           "\"apparent_temperature\":15.9,\"relative_humidity_2m\":71,\"weather_code\":2,\"is_day\":%d,"
+           "\"wind_speed_10m\":13.7},"
+           "\"daily\":{\"time\":[1794747600,1794834000,1794920400,1795006800],\"weather_code\":[3,61,1,95],"
+           "\"temperature_2m_max\":[21.3,18.9,24.6,26.1],\"temperature_2m_min\":[12.4,13.1,11.8,15.2],"
+           "\"precipitation_probability_max\":[20,80,5,null]}}",
+           day ? 1 : 0);
+  return json;
+}
+
+}  // namespace
+
+SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online)
+    : dev(width, height) {
+  config.serviceThread = threaded;
+  if (online) {
+    config.wifiSsid = "Starlight";
+    config.wifiPassword = "moonbeam";
+  }
+  dev.http.routes.push_back({"api.open-meteo.com", weatherFixture(epoch != kEveningEpoch), 200});
   if (epoch) dev.platform.setEpoch(epoch);
   config.renderBuffer = dev.buffer.data();
   config.renderBufferPixels = dev.buffer.size();
@@ -15,16 +45,21 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.begin(dev.board(), config);
   os.install(launcher);
   os.install(clock);
+  os.install(weather);
   os.install(settings);
   os.install(touchTest);
   os.start();
-  run(100);
+  run(online ? 4000 : 100);  // join Wi-Fi and fetch the forecast
 }
 
 void SimSession::run(uint32_t ms) {
   uint32_t left = ms;
   for (;;) {
     uint32_t wait = os.step();
+    if (!config.serviceThread) {
+      const uint32_t service = os.serviceStep();
+      if (service < wait) wait = service;
+    }
     if (left == 0) break;
     if (wait == 0) wait = 1;
     if (wait > left) wait = left;
