@@ -113,9 +113,10 @@ Point SimSession::settingsRow(int i) const {
   const Theme &t = os.theme();
   const Rect c = os.contentRect();
   // Settings' list shrinks its rows when all of them do not fit (see MainScreen::layout).
-  constexpr int kRows = 6;
+  constexpr int kRows = 7;
   const int areaH = c.h - 2 * t.m.gapS;
-  const int rowH = kRows * t.m.row <= areaH ? t.m.row : areaH / kRows;
+  int rowH = kRows * t.m.row <= areaH ? t.m.row : areaH / kRows;
+  if (rowH < t.dp(32)) rowH = t.dp(32);
   return Point{(int16_t)c.centerX(), (int16_t)(c.y + t.m.gapS + i * rowH + rowH / 2)};
 }
 

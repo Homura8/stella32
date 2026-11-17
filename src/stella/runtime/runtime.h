@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.9.0"
+#define STELLA_VERSION "0.10.0"
 #endif
 
 namespace stella {
@@ -202,6 +202,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void updatePreview(uint32_t now);
   // Status LED and ambient light.
   void applyLed(bool force);
+  void maybeShowWhatsNew(uint32_t now);
   void updateLed(uint32_t now);
   void updateLight(uint32_t now);
   void noteUpdateForLed();
@@ -295,6 +296,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   uint32_t nextLightAt_ = 0, holdUntil_ = 0;
   uint8_t appliedScale_ = 255;  // the ambient fraction of the brightness in use, slewed
   bool lightWarm_ = false;
+  bool whatsNewPending_ = false;
   LightCalibration appliedCal_;
   int holdDuty_ = -1;
   char resetNote_[40] = {0};

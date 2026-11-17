@@ -24,10 +24,11 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 6;
+    static constexpr int kRows = 7;
+    static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     SettingsApp &app_;
     Rect card_;
-    ListRow rows_[kRows];
+    ListView list_;
     char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0};
   };
 
@@ -266,6 +267,22 @@ class SettingsApp : public App {
     char installed_[32] = {0}, offered_[40] = {0}, statusText_[128] = {0};
   };
 
+  // Settings > About > What's new (and once by itself after an update): the
+  // changelog as a scrolling list, newest version first.
+  class WhatsNewScreen : public Screen {
+   public:
+    const char *title() const override { return "What's new"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+
+   private:
+    static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
+    Rect card_;
+    ListView list_;
+  };
+
   class AboutScreen : public Screen {
    public:
     explicit AboutScreen(SettingsApp &app) : app_(app) {}
@@ -283,7 +300,7 @@ class SettingsApp : public App {
     SettingsApp &app_;
     Rect card_;
     ListView list_;
-    Button update_;
+    Button update_, whatsNew_;
     char values_[kRows][40] = {};
   };
 
@@ -299,6 +316,7 @@ class SettingsApp : public App {
   LedFindScreen ledFind_;
   LightCalibrateScreen light_;
   UpdateScreen softwareUpdate_;
+  WhatsNewScreen whatsNew_;
   AboutScreen about_;
 };
 
