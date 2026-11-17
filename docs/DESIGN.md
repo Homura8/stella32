@@ -100,6 +100,15 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   *Show/Hide* toggle.
 - **Wi-Fi:** signal shown as 0-4 arcs (`icons::wifiBars`); the status bar
   icon is muted when connected, accent while joining, soft pink on failure.
+- **Alert:** a soft veil over the whole screen and a near-opaque glass card:
+  icon bubble (in the app's tint) with a `headline` title, a muted message of
+  up to two lines, then a glass secondary and an accent primary button.
+- **Alarms:** "Next alarm in ..." caption; a glass list of alarms (time in
+  `title`, days in `caption`, a switch). The editor has display-font hour and
+  minute digits (tap the top/bottom half or drag to change), an AM/PM pill in
+  12-hour mode, Monday-first day chips (accent when on) and Delete/Save.
+- **Timer:** display-font countdown over a thin accent progress track, a
+  muted "Ends at ..." line, preset chips and Reset / +1 min / Start.
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

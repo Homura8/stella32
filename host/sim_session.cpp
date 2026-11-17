@@ -46,6 +46,8 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.install(launcher);
   os.install(clock);
   os.install(weather);
+  os.install(alarms);
+  os.install(timer);
   os.install(settings);
   os.install(touchTest);
   os.start();

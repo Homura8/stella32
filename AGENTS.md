@@ -31,6 +31,7 @@ At minimum, read the files you will touch plus:
 | A new or changed app | `docs/APPS.md`, `src/stella/app/app.h`, an existing app in `src/stella/apps/` |
 | A new board or display | `docs/PORTING.md`, `src/stella/hal/hal.h`, `src/stella/boards/cyd/` |
 | Threads, jobs, data from the network | `docs/ARCHITECTURE.md` (threads, networking), `src/stella/service/`, `src/stella/net/`, the Weather app as an example |
+| Time-based work, alerts, sound | `docs/APPS.md` (time-based work and alerts), the Timer and Alarms apps |
 | Persistent data | `src/stella/storage/record.h` |
 
 ## 3. Authority order
@@ -114,6 +115,9 @@ change needs to break one, stop and ask the owner; then update this file.
   `topics::kFirstUser`), fetch with `HttpService::getJson`, track freshness
   with `DataStatus`, and return `FetchResult::jobResult()` (lease contention
   is `Deferred`). Copy the Weather app's structure.
+- **Do something at a time, in any app:** use `App::onWake()` (returning the
+  nearest deadline) and raise a system alert with `AppContext::showAlert()`;
+  `onTick()` only runs while a screen is visible. Copy the Timer app.
 - **Add a board or display:** follow `docs/PORTING.md`. Do not touch apps.
 - **Change fonts or sizes:** edit `ROLES` in `tools/fontgen.py`, run it, commit
   the regenerated `fonts_*.cpp`, and check flash size.

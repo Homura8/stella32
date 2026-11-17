@@ -62,6 +62,24 @@ class Screen {
   bool visible_ = false;
 };
 
+// A system alert: a modal glass card over everything, which wakes the display
+// and (with `sound`) plays the alert chime until answered. The owning app is
+// told the outcome in App::onAlert(). Strings are copied when shown.
+constexpr int kAlertPrimary = 0;
+constexpr int kAlertSecondary = 1;
+constexpr int kAlertTimedOut = -1;
+
+struct Alert {
+  const char *title = "";           // short, e.g. "7:00" or "Time's up"
+  const char *message = "";         // one or two lines
+  IconFn icon = nullptr;
+  const char *primary = "OK";       // accent button
+  const char *secondary = nullptr;  // optional glass button
+  uint16_t tag = 0;                 // app-defined; identifies the alert to its app
+  bool sound = false;
+  uint32_t timeoutMs = 0;           // 0 = until answered
+};
+
 enum AppFlags : uint8_t {
   kAppHome = 1 << 0,    // the launcher; shown at boot and by "home"
   kAppHidden = 1 << 1,  // not listed in the launcher
@@ -106,6 +124,21 @@ class App {
     (void)topicId;
     (void)ctx;
   }
+  // Background timer for every installed app, foreground or not (alarms,
+  // timers). First called right after the system starts, possibly before
+  // onStart(); return ms until the next call, or kNoTick. Keep it short: it
+  // runs on the UI thread. Repaints from a background app are ignored.
+  virtual uint32_t onWake(AppContext &ctx) {
+    (void)ctx;
+    return kNoTick;
+  }
+  // The user answered one of this app's alerts (kAlertPrimary/Secondary) or
+  // it timed out (kAlertTimedOut). Not called for dismissAlert().
+  virtual void onAlert(uint16_t tag, int action, AppContext &ctx) {
+    (void)tag;
+    (void)action;
+    (void)ctx;
+  }
 };
 
 struct LocalTime {
@@ -141,6 +174,9 @@ class AppContext : public Invalidator {
   virtual uint32_t millis() const = 0;
   virtual LocalTime localTime() const = 0;
   virtual void formatTime(const LocalTime &t, char *out, size_t capacity) const = 0;  // honours 12/24 h
+  // Run the top screen's onTick() again soon (after it returned kNoTick).
+  // Ignored for a background app.
+  virtual void requestTick() = 0;
 
   // Navigation.
   virtual bool push(Screen &screen) = 0;
@@ -157,6 +193,16 @@ class AppContext : public Invalidator {
   virtual void applySettings(const SystemSettings &settings) = 0;
   virtual SystemStatus status() const = 0;
   virtual NetworkControl &network() = 0;
+  // Show a system alert owned by the calling app; one with the same tag is
+  // replaced. Alerts queue (a few) while another is showing. False if full.
+  virtual bool showAlert(const Alert &alert) = 0;
+  // Withdraw the calling app's alert with this tag (shown or queued) without
+  // an onAlert() callback.
+  virtual void dismissAlert(uint16_t tag) = 0;
+  // Run the calling app's onWake() after `delayMs` (sooner than it asked).
+  // Each onWake() return value then sets the next wake, so an app with
+  // several deadlines returns the nearest one.
+  virtual void scheduleWake(uint32_t delayMs) = 0;
   // Ask the service thread to run a background job now (e.g. "refresh").
   virtual void requestJob(const Job &job) = 0;
   // Per-app persistent records, namespaced by AppInfo::id.

@@ -20,8 +20,8 @@ input, rendering, background work, storage, power and supervision.
 ## Layers
 
 ```
- apps/        Launcher, Clock, Settings, Touch test            (only via AppContext)
- runtime/     Runtime: navigation, shell, power, settings, supervision, event loop
+ apps/        Launcher, Clock, Weather, Alarms, Timer, Settings  (only via AppContext)
+ runtime/     Runtime: navigation, shell, alerts, power, settings, supervision, event loop
  app/         App / Screen / AppContext contract, system settings
  ui/          Theme (Celestia Glow tokens), materials, icons, layout DSL, widgets
  net/         WifiManager (Wi-Fi service), HttpService, streaming JSON parser
@@ -29,7 +29,7 @@ input, rendering, background work, storage, power and supervision.
  storage/     Versioned, checksummed records over KeyValueStore
  input/       Events, gesture recognizer, touch calibration
  gfx/ fonts/  Canvas (anti-aliased primitives, text), dirty-rect Renderer, fonts
- hal/         Display, TouchInput, Platform, KeyValueStore, WifiDriver, HttpClient
+ hal/         Display, TouchInput, Platform, KeyValueStore, WifiDriver, HttpClient, Sound
  osal/        Mutex, RecursiveMutex, Signal, threads (FreeRTOS | std)
  core/        Geometry, colour, wrap-safe time, fixed containers, text, logging
  ───────────────────────────────────────────────────────────────────────────
@@ -64,6 +64,10 @@ code does not allocate on the heap. CI runs it on every change.
 - **Background apps cannot repaint.** The runtime ignores `invalidate()` from
   any app other than the foreground one; `Screen::isVisible()` lets screens
   skip work while hidden.
+- **Background timers.** `App::onWake()` runs for every installed app, in
+  front or not, at the delay it returns (`AppContext::scheduleWake()` brings
+  it forward). Alarms check once a minute; the timer wakes when it ends. It
+  runs on the UI thread, so it must be short.
 - **Retry policy** is declarative (`JobPolicy`): interval, exponential retry
   backoff with a cap, deferral delay, and "needs network" gating. Reconnecting
   or a manual refresh clears backoff.
@@ -90,6 +94,21 @@ or display I/O.
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
 
+## Alerts
+
+`AppContext::showAlert()` puts a modal glass card over everything (status bar
+included) with one or two buttons, for things that must not be missed: alarms,
+timers. The runtime:
+
+- queues up to four (an app's alert with the same tag is updated in place);
+- wakes the display and keeps it awake while an alert is up;
+- cancels a touch that was in progress, so an alert is never answered by a
+  finger that was already down, and routes all input to the alert's buttons;
+- plays the chime (a soft C-E-G arpeggio, then a rest) on the board's optional
+  `Sound` while an alert with `sound` is up, sequenced from the UI loop;
+- closes it after its `timeoutMs` and tells the owning app the outcome in
+  `App::onAlert()` (primary, secondary or timed out).
+
 ## Rendering
 
 There is no framebuffer (it would cost 150 KiB). The runtime keeps a
@@ -99,7 +118,7 @@ buffer (12.5 KiB on the CYD), and streams each chunk to the display. Narrow
 updates (a toggle, the clock digits) fit in a single chunk.
 
 The frame is: sky backdrop (`paintSky`) → status bar → top screen (clipped to the
-content area) → toast. Draw code must be deterministic and must repaint every
+content area) → toast → alert (veil and card), if any. Draw code must be deterministic and must repaint every
 pixel it covers; translucent glass blends over the backdrop drawn first.
 
 Invariant (tested): any sequence of incremental frames produces the same pixels
@@ -161,9 +180,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,327,663 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of the growth |
-| Static RAM (globals) | 69,860 B; 257,820 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,347,009 B flash, 83,500 B static RAM |
+| Program (flash) | 1,347,167 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 71,892 B; 255,788 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,366,281 B flash, 85,532 B static RAM |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~98 KB |
@@ -173,7 +192,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 Near-term work this foundation is designed for:
 
 1. Screen transitions and gentle animations, opt-in and frame-budgeted.
-2. Notifications and an alarm/timer app on the clock.
-3. A setup access point + web page as an alternative Wi-Fi onboarding path.
-4. More boards (e.g. 3.5" 480x320 panels, capacitive touch) and an ESP-IDF port.
-5. OTA updates with rollback.
+2. A setup access point + web page as an alternative Wi-Fi onboarding path.
+3. More boards (e.g. 3.5" 480x320 panels, capacitive touch) and an ESP-IDF port.
+4. OTA updates with rollback.
+
+Done: alarms, timer and system alerts (0.3.0).

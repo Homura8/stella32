@@ -24,6 +24,12 @@
 #define STELLA_CYD_DMA 0
 #endif
 
+// Alert chime loudness: PWM duty out of 1023 on the speaker pin. A narrow
+// pulse has a weaker fundamental, so small values are gentler (512 = loudest).
+#ifndef STELLA_CYD_TONE_DUTY
+#define STELLA_CYD_TONE_DUTY 64
+#endif
+
 namespace stella {
 namespace cyd {
 
@@ -36,6 +42,7 @@ struct Profile {
   static constexpr uint8_t kTouchCs = 33, kTouchIrq = 36, kTouchSck = 25, kTouchMiso = 39, kTouchMosi = 32;
   static constexpr TouchCalibration kTouch{240, 3850, 220, 3850, false, false, false, 200};
   static constexpr int kRenderRows = 20;  // 320 x 20 x 2 B = 12.5 KiB chunk buffer
+  static constexpr uint8_t kSpeaker = 26;  // "SPEAK" connector, through the on-board amplifier
 };
 
 #if defined(TFT_BL)
@@ -124,6 +131,27 @@ class CydTouch : public TouchInput {
   XPT2046_Touchscreen touch_;
 };
 
+// Square-wave tones on the speaker connector (LEDC PWM). Silent unless a
+// speaker is plugged in.
+class CydSound : public Sound {
+ public:
+  void begin() { attached_ = ledcAttach(Profile::kSpeaker, 2000, 10); }
+  void tone(uint16_t hz) override {
+    if (!attached_ || hz == current_) return;
+    current_ = hz;
+    if (hz == 0) {
+      ledcWrite(Profile::kSpeaker, 0);
+      return;
+    }
+    ledcChangeFrequency(Profile::kSpeaker, hz, 10);
+    ledcWrite(Profile::kSpeaker, STELLA_CYD_TONE_DUTY);
+  }
+
+ private:
+  bool attached_ = false;
+  uint16_t current_ = 0;
+};
+
 // Everything the runtime needs, ready to hand to Runtime::begin().
 class CydBoard {
  public:
@@ -131,8 +159,9 @@ class CydBoard {
   void begin() {
     display_.begin();
     touch_.begin();
+    sound_.begin();
   }
-  Board board() { return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_}; }
+  Board board() { return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_}; }
   Color *renderBuffer() { return buffer_; }
   size_t renderBufferPixels() const { return sizeof(buffer_) / sizeof(buffer_[0]); }
 #if STELLA_CYD_DMA
@@ -148,6 +177,7 @@ class CydBoard {
   esp32::NvsStore storage_;
   esp32::Esp32WifiDriver wifi_;
   esp32::Esp32HttpClient http_;
+  CydSound sound_;
   Color buffer_[Profile::kWidth * Profile::kRenderRows];
 #if STELLA_CYD_DMA
   Color buffer2_[Profile::kWidth * Profile::kRenderRows];

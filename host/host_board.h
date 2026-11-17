@@ -151,6 +151,22 @@ class SimHttp : public HttpClient {
   int get(const char *url, uint32_t timeoutMs, size_t maxBodyBytes, HttpSink &sink) override;
 };
 
+// Records the tone sequence so tests can check alert chimes.
+class SimSound : public Sound {
+ public:
+  void tone(uint16_t hz) override {
+    if (hz == current_) return;
+    current_ = hz;
+    if (hz) ++tones_;
+  }
+  uint16_t current() const { return current_; }
+  int tones() const { return tones_; }  // tones started so far
+
+ private:
+  uint16_t current_ = 0;
+  int tones_ = 0;
+};
+
 // A complete simulated device.
 struct SimDevice {
   SimDevice(int width, int height) : display(width, height), buffer((size_t)width * 20) {}
@@ -160,8 +176,9 @@ struct SimDevice {
   MemoryStore storage;
   SimWifi wifi;
   SimHttp http;
+  SimSound sound;
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http}; }
+  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound}; }
 };
 
 }  // namespace host
