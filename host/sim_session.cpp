@@ -32,7 +32,11 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
     : dev(width, height) {
   config.serviceThread = threaded;
   config.updateManifestUrl = "https://updates.example/stella/manifest.json";
-  config.defaults.animations = false;  // screens cut instantly; transitions are tested on their own
+  // The board's usual LED wiring; ledMode stays 1 (alerts and progress).
+  config.defaults.ledPin[0] = 4;
+  config.defaults.ledPin[1] = 16;
+  config.defaults.ledPin[2] = 17;
+  config.defaults.ledInverted = true;
   config.defaults.autoUpdate = false;  // the daily check is tested on its own; other tests count requests
   if (online) {
     config.wifiSsid = "Starlight";

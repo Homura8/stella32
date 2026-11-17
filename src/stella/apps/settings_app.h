@@ -103,20 +103,91 @@ class SettingsApp : public App {
     bool night_ = false;  // the night phase (by the clock) is on now
   };
 
-  // Settings > Sound: the alert volume. Letting go of the slider plays a short
-  // chime at the new level.
+  // Settings > Sound & light: the alert volume (letting go of the slider plays a
+  // short chime at the new level), the status LED (mode, brightness, finding
+  // which pins it is on) and ambient-light dimming (on/off, calibration).
   class SoundScreen : public Screen {
    public:
-    const char *title() const override { return "Sound"; }
+    const char *title() const override { return "Sound & light"; }
     void layout(const Rect &content, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
     bool onEvent(const Event &e, AppContext &ctx) override;
     void onShow(AppContext &ctx) override;
 
    private:
-    Rect card_, label_, note_;
-    Slider volume_;
+    static constexpr int kRows = 6;
+    explicit SoundScreen(SettingsApp &app) : app_(app) {}
+    friend class SettingsApp;
+    SettingsApp &app_;
+    Rect card_, rows_[kRows], labels_[kRows];
+    Slider volume_, ledLevel_;
+    Segmented ledMode_;
+    Toggle autoBrightness_;
+    ListRow findLed_, lightSensor_;
+    char ledDetail_[24] = {0}, lightDetail_[24] = {0};
     bool changed_ = false;
+  };
+
+  // Settings > Sound & light > Find my LED: boards of the same name wire the
+  // back LED differently, and it cannot be sensed, so the person is asked. It
+  // lights each candidate pin in turn (both polarities if needed) and asks
+  // which colour appeared; the answers become the wiring.
+  class LedFindScreen : public Screen {
+   public:
+    const char *title() const override { return "Find my LED"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void onHide(AppContext &ctx) override;
+
+   private:
+    enum class Phase : uint8_t { Intro, Asking, Found, NotFound };
+    void probe(AppContext &ctx);
+    void answer(int colour, AppContext &ctx);  // 0 red, 1 green, 2 blue, -1 none
+    void setPhase(Phase p, AppContext &ctx);
+    Rect body_, buttonRow_;
+    int buttonGap_ = 0;
+    Button buttons_[4];
+    int buttonCount_ = 0;
+    Phase phase_ = Phase::Intro;
+    uint8_t pins_[8] = {};
+    int pinCount_ = 0, index_ = 0;
+    bool activeLow_ = true, polarityKnown_ = false, triedBoth_ = false;
+    LedWiring found_;
+    char text_[160] = {0};
+  };
+
+  // Settings > Sound & light > Light sensor: measures the sensor in its case
+  // and room, with the screen's own light separated out (see ambient.h).
+  class LightCalibrateScreen : public Screen {
+   public:
+    const char *title() const override { return "Light sensor"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void onHide(AppContext &ctx) override;
+    uint32_t onTick(AppContext &ctx) override;
+
+   private:
+    enum class Phase : uint8_t { Intro, MeasuringDark, AskBright, MeasuringBright, Done, Failed };
+    static constexpr int kDarkSteps = 4;
+    void setPhase(Phase p, AppContext &ctx);
+    void finish(AppContext &ctx);
+    static constexpr int kBrightDuty = 128;
+    Rect body_, bar_, buttonRow_;
+    int buttonGap_ = 0, progress_ = 0;
+    Button buttons_[2];
+    int buttonCount_ = 0;
+    Phase phase_ = Phase::Intro;
+    int step_ = 0;           // which backlight step is being measured
+    uint32_t stepStart_ = 0, nextSample_ = 0;
+    uint32_t sum_ = 0;
+    int samples_ = 0;
+    float duty_[kDarkSteps] = {}, reading_[kDarkSteps] = {};
+    float brightRaw_ = 0;
+    char text_[160] = {0};
   };
 
   // Settings > Display > Calibrate: tune the panel until it matches a good
@@ -153,9 +224,8 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    Rect note_, skies_, skyNote_, animRow_;
+    Rect note_, skies_, skyNote_;
     Segmented mode_;
-    Toggle animations_;
     uint8_t skyPin_ = 0;
     int pressedSky_ = -1;
   };
@@ -225,7 +295,9 @@ class SettingsApp : public App {
   CalibrateScreen calibrate_;
   AppearanceScreen appearance_;
   TimeScreen time_;
-  SoundScreen sound_;
+  SoundScreen sound_{*this};
+  LedFindScreen ledFind_;
+  LightCalibrateScreen light_;
   UpdateScreen softwareUpdate_;
   AboutScreen about_;
 };

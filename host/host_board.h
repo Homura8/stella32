@@ -26,7 +26,6 @@ class SimDisplay : public Display {
     ++trims;
   }
   bool trimmable = true;
-  std::function<void(const Rect &)> onWrite;  // tests: make the panel slow by advancing the clock
   PanelTrim lastTrim;
   int trims = 0;
 
@@ -273,9 +272,85 @@ class SimSound : public Sound {
   uint8_t volume_ = 255;  // until the runtime sets it
 };
 
+// A status LED with a ground truth: how it is really wired. What the person
+// would see lit is computed from that, so tests can play the person in
+// "Find my LED" and check what normal operation shows.
+class SimLed : public Led {
+ public:
+  LedWiring truth{{4, 16, 17}, true};  // what is soldered on the board
+  LedWiring wiring;                    // what the firmware configured
+  int configures = 0, sets = 0, probes = 0;
+  uint8_t probePin = kNoPin;
+  bool probeActiveLow = true;
+  uint8_t r = 0, g = 0, b = 0;  // the last colour set
+
+  bool configure(const LedWiring &w) override {
+    wiring = w;
+    ++configures;
+    r = g = b = 0;
+    return true;
+  }
+  void set(uint8_t red, uint8_t green, uint8_t blue) override {
+    r = red;
+    g = green;
+    b = blue;
+    ++sets;
+  }
+  int candidatePins(uint8_t *out, int capacity) const override {
+    static const uint8_t kPins[] = {4, 16, 17};
+    int n = 0;
+    for (uint8_t p : kPins)
+      if (n < capacity) out[n++] = p;
+    return n;
+  }
+  void probe(uint8_t pin, bool activeLow) override {
+    probePin = pin;
+    probeActiveLow = activeLow;
+    ++probes;
+  }
+  bool probing() const { return probePin != kNoPin; }
+  // Does real channel c (0 red, 1 green, 2 blue) light during the current probe?
+  // Only the probed pin is driven (low or high); a low pin lights an active-low
+  // LED and a high pin an active-high one.
+  bool probeLit(int c) const {
+    if (probePin == kNoPin || truth.pin[c] == kNoPin || truth.pin[c] != probePin) return false;
+    return probeActiveLow == truth.inverted;
+  }
+  // The brightness (0..255) real channel c shows in normal operation, given the
+  // wiring the firmware configured.
+  int shown(int c) const {
+    if (truth.pin[c] == kNoPin) return 0;
+    for (int i = 0; i < 3; ++i) {
+      if (wiring.pin[i] != truth.pin[c]) continue;
+      if (wiring.inverted != truth.inverted) return 0;  // wrong polarity: it would be lit when it should not
+      return i == 0 ? r : i == 1 ? g : b;
+    }
+    return 0;
+  }
+};
+
+// An LDR beside the screen: the room's light, the backlight's own glow and a
+// polarity, all under the test's control.
+class SimLight : public LightSensor {
+ public:
+  const SimDisplay *display = nullptr;
+  float ambient = 0.f;    // 0 dark room .. 1 bright room
+  int dark = 700;         // reading in the dark, backlight off
+  int range = 2200;       // change from dark to a bright room
+  int self = 420;         // change with the backlight at full
+  bool inverted = false;  // reads LOWER in light
+  int reads = 0;
+  uint16_t read() override {
+    ++reads;
+    const float screen = display ? self * (display->backlight() / 255.f) : 0.f;
+    const float v = dark + (inverted ? -1.f : 1.f) * (range * ambient + screen);
+    return (uint16_t)(v < 0.f ? 0.f : v > 4095.f ? 4095.f : v);
+  }
+};
+
 // A complete simulated device.
 struct SimDevice {
-  SimDevice(int width, int height) : display(width, height), buffer((size_t)width * 20) {}
+  SimDevice(int width, int height) : display(width, height), buffer((size_t)width * 20) { light.display = &display; }
   SimDisplay display;
   ScriptedTouch touch;
   SimPlatform platform;
@@ -285,8 +360,10 @@ struct SimDevice {
   SimSound sound;
   SimSetupServer setup;
   SimFirmware firmware;
+  SimLed led;
+  SimLight light;
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware}; }
+  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware, &led, &light}; }
 };
 
 }  // namespace host

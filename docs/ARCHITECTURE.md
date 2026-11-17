@@ -149,6 +149,45 @@ Apps that ring tell the shell when with `AppContext::setNextAlarm(epoch)`;
 time's wall-clock components in the configured zone (daylight saving
 included).
 
+## Status LED and ambient light
+
+Two optional HAL devices (`Board::led`, `Board::light`). Both are data-driven
+because boards of the same name differ.
+
+**LED** (`runtime/led_engine.*`, `Led` in `hal/hal.h`): several things may want
+it at once, so each is a *source* with a pattern (off, steady, breathe, blink)
+and the most important active one wins: alert > app flash > update > Wi-Fi >
+bedside glow. The runtime feeds the sources: an alert breathes amber until
+answered; an update breathes blue while it downloads, green when it waits for
+the restart, and flashes red if it fails; phone setup breathes violet, and a
+join started in Settings flashes green or red; apps call `flashLed()` (the
+Stopwatch blinks on a lap); in glow mode the bedside face has a faint breathing
+violet light. `ledMode` is Off / Alerts and progress / Glow and `ledLevel` caps
+the brightness. The glow is opt-in because a light in a dark bedroom is a
+choice. The wiring (which pin is red, green and blue, active-low or not) is
+the `ledPin[3]`/`ledInverted` settings: the board's sketch gives the common
+default, and *Settings > Sound & light > Find my LED* finds the real one. An LED
+cannot be sensed, so the person is asked: the board offers the pins that are
+safe to drive (`Led::candidatePins`, never display, touch, speaker or storage
+pins), the screen drives one at a time (low, then high, with every other
+candidate left floating so nothing else can light) and asks which colour
+appeared. A probe ends by itself after 10 s and the normal LED comes back.
+
+**Ambient light** (`runtime/ambient.*`, `LightSensor`): an LDR beside a
+backlit screen, in a case of any colour, has no useful absolute value.
+*Settings > Sound & light > Light sensor* measures it in its place: with the
+room dark it reads the sensor at four exact backlight levels (the runtime's
+`holdBacklight`) and fits `reading = dark + self * duty/255`, so the screen's
+own glow becomes a known term; then in normal room light it reads once more
+and subtracts the screen's glow to get `bright`. Afterwards a reading is
+corrected for the backlight that was lit, placed between dark (0) and bright
+(1) and smoothed; the sign of (bright - dark) is the polarity, so any wiring and
+case colour work. The user's brightness is multiplied by `0.12 + 0.88 * level^0.6`
+(most of the dimming is between dark and a dim room), moved in steps of at most
+8/255 a quarter second and only when it differs by 6 or more, so it glides and
+does not hunt. A calibration whose two ends are less than 60 counts apart is
+rejected (covered sensor), and auto dim cannot be switched on without one.
+
 ## Alerts
 
 `AppContext::showAlert()` puts a modal glass card over everything (status bar
@@ -191,34 +230,6 @@ Performance work (host benchmark `stella_bench`, relative numbers):
 - Optional DMA (`Display::writePixelsAsync`): with a second chunk buffer the
   next chunk is drawn while the previous one is transferred (tested with a
   display double that reads buffers late).
-
-### Screen transitions
-
-When the top screen changes (a screen pushed or popped, an app launched, Home),
-the outgoing screen slides out while the new one slides in: one sheet, never
-overlapping (glass over glass looks muddy), 220 ms with an ease-out curve, in
-the direction you are going. The sky and the status bar stay put. There is no
-full-frame buffer to blend, so nothing is captured: each frame redraws the
-content area twice through `Canvas::shifted(dx, 0)`, a view of the same chunk
-buffer in which everything lands `dx` pixels over. Screens are not involved at
-all, which is why `draw()` having no side effects (invariant 7) matters: the
-outgoing screen is simply drawn once more, at an offset.
-
-The rules that keep it from getting in the way (`Runtime::beginTransition`):
-
-- Frames follow the clock, not a frame count: a slow frame drops the steps in
-  between instead of stretching the animation.
-- If one frame takes longer than 80 ms the display is too slow for it: the
-  transition is cut short and transitions stay off until the next boot (logged
-  once). The CYD's SPI link needs about 25 ms for a full-width content frame
-  before any drawing, so this is the safety net, not a corner case.
-- Any touch ends it at once; the touch then lands on the final layout.
-- Fullscreen screens (the bedside clock) and a screen that is already sliding
-  never start another one; a re-theme ends it.
-- `SystemSettings::animations` (Settings > Appearance > Animations, on by
-  default) turns it off; the simulator and the tests default to off so screens
-  appear instantly, and transitions are tested on their own.
-- The last frame is a normal render, so the result equals a cut (tested).
 
 ## UI model
 
@@ -372,8 +383,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,466,959 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 83,100 B; 244,580 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
+| Program (flash) | 1,480,867 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 84,180 B; 243,500 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
@@ -384,9 +395,7 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 Near-term work this foundation is designed for:
 
-1. An RGB LED service, light-sensor dimming with a calibration step, and
-   further gentle animations (the slide between screens is done).
-2. More boards (the T-Display S3 has buttons instead of touch) and an ESP-IDF
+1. More boards (the T-Display S3 has buttons instead of touch) and an ESP-IDF
    port.
 
 Done: alarms, timer and system alerts (0.3.0).

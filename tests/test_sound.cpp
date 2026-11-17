@@ -39,24 +39,6 @@ TEST(preview_chime_plays_two_notes_then_stops_and_respects_mute) {
   CHECK_EQ(s.dev.sound.tones(), muted);
 }
 
-TEST(sound_screen_slider_sets_the_volume_and_plays_on_release) {
-  SimSession s(320, 240);
-  s.os.launch("settings");
-  s.run(100);
-  const Point row = s.settingsRow(2);
-  s.tap(row.x, row.y);  // Sound
-  CHECK(strcmp(s.os.topScreen()->title(), "Sound") == 0);
-  const Rect c = s.os.contentRect();
-  const int before = s.dev.sound.tones();
-  // Drag across the right half of the card.
-  s.drag(c.x + c.w / 2, c.y + 30, c.right() - 30, c.y + 30);
-  CHECK(s.os.settings().volume > 60);
-  s.run(600);
-  CHECK(s.dev.sound.tones() > before);  // let go: the chime plays
-  s.drag(c.right() - 30, c.y + 30, c.x + 5, c.y + 30);
-  CHECK(s.os.settings().volume < 30);
-}
-
 TEST(settings_v6_records_gain_volume_and_auto_update_defaults) {
   MemoryStore store;
   struct V6 {

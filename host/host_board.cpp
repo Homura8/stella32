@@ -15,7 +15,6 @@ void SimDisplay::writePixels(const Rect &area, const Color *pixels) {
   }
   written_ += (uint64_t)area.area();
   ++writes_;
-  if (onWrite) onWrite(area);
 }
 
 bool SimDisplay::writePpm(const std::string &path) const {

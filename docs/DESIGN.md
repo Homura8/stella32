@@ -85,32 +85,12 @@ saturation gain; dark skies only gain saturation.
 | `glass` | `#fffdff` @ 70% | `#2e283f` @ 83% | cards, pills |
 | `rim` | white @ 94% | `#eddeff` @ 18% | 1 px highlight edge on glass |
 | `line` | `#5d4878` @ 13% | `#d7c5ef` @ 16% | hairlines, tracks |
-| `shadow` | `#4b346c` @ 12% | `#010005` @ 41% | the peak of a soft, blurred drop shadow (x1.25) |
+| `shadow` | `#4b346c` @ 12% | `#080414` @ 27% | soft two-layer drop shadow |
 | `surface` | `#faf7fb` | `#302a3d` | opaque chips, toggle/slider knobs |
 | `tints[0..3]` | pink, lavender, sky, peach | deep versions | icon bubbles |
 
 `paintGlass()` = shadow + translucent fill + rim. Raised surfaces cast shadow
 `glassOutset()` pixels outside their rectangle; invalidate that margin too.
-
-Shadows are one smooth falloff (`paintShadow()`, `ShadowSize::Small` for
-controls up to 56 dp tall, `Large` for cards and sheets): the source rectangle
-is shifted down (`dp(2)`/`dp(3)`) and fades over `dp(3)`/`dp(5)` either side of
-its edge, so it is strongest below, faint at the sides and barely there above.
-It is painted only *outside* the surface (never through glass), and opaque
-controls (the accent button, switch knobs, the selected segment) use
-`paintShadow()` directly. Dark mode uses a near-black, stronger shadow: a
-shadow in the sky's own hue disappears on a dark sky or a dark glass card.
-Popups keep the translucent glass look (the alert card is ~93% opaque so its
-text stays readable).
-
-## Motion
-
-Calm, short and optional. The only motion between screens is a slide of the
-whole content area (220 ms, ease-out, the direction you are going); sky and
-status bar stay still. Nothing animates while a screen is idle. Anything that
-moves must be skippable (Settings > Appearance > Animations) and must never
-delay a touch (a touch ends a slide at once). See `docs/ARCHITECTURE.md`,
-*Screen transitions*.
 
 ## Typography
 

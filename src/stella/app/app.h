@@ -180,6 +180,8 @@ struct SystemStatus {
   uint32_t framesRendered = 0;
   uint32_t lastFrameMs = 0;  // render time of the most recent frame
   uint32_t uiStackFree = 0, serviceStackFree = 0;  // lowest free stack seen, bytes
+  bool hasLed = false, hasLight = false, hasSound = false;  // what this board has
+  int8_t ambient = -1;     // ambient light 0..100 % when the sensor is calibrated, else -1
   bool panelTrim = false;  // the display supports VCOM / refresh adjustment
   int64_t nextAlarm = 0;   // epoch seconds of the earliest app alarm, 0 = none (setNextAlarm)
   Glance glance;           // the first app's glance line (setGlance)
@@ -230,6 +232,21 @@ class AppContext : public Invalidator {
   // Play a short chime at the current volume (Settings uses it so a volume
   // change can be heard). Ignored while an alert is ringing or without a speaker.
   virtual void previewChime() = 0;
+  // The status LED: a short blink an app asks for (a lap, a save). The system
+  // already lights it for alerts, updates and Wi-Fi setup; this is for the
+  // rest. Ignored when the LED is off or absent.
+  virtual void flashLed(uint8_t r, uint8_t g, uint8_t b, uint16_t ms) = 0;
+  // Settings > Sound & light > Find my LED: the pins that may be probed, and a
+  // probe that lights one of them (activeLow selects the polarity) while the
+  // normal LED is paused. kNoPin ends the probe; it also ends by itself.
+  virtual int ledCandidates(uint8_t *out, int capacity) = 0;
+  virtual void ledProbe(uint8_t pin, bool activeLow) = 0;
+  // The ambient light sensor, for its calibration: a raw reading now, the
+  // backlight duty (0..255) now lit, and a hold that fixes the backlight at an
+  // exact duty (-1 releases it; it releases itself after 30 s).
+  virtual uint16_t lightReading() = 0;
+  virtual uint8_t backlightNow() const = 0;
+  virtual void holdBacklight(int duty) = 0;
   // Withdraw the calling app's alert with this tag (shown or queued) without
   // an onAlert() callback.
   virtual void dismissAlert(uint16_t tag) = 0;

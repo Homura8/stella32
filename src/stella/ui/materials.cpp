@@ -115,103 +115,53 @@ void paintSky(Canvas &c, const Theme &t, const Rect &screen) {
   }
 }
 
+int glassOutset(const Theme &t) { return t.dp(4); }
+
 namespace {
 
-// A soft drop shadow, a smooth falloff instead of a few hard-edged layers.
-// `blur` is the half-width of the transition (it reaches `blur` beyond the
-// source rectangle's edge and is half strength on it), `dy` shifts the source
-// down so the light seems to come from above. Like CSS box-shadow it is only
-// visible outside the card: the glass shows the sky through it, not its own
-// shadow. Straight edges are one alpha per row or column; only the corners
-// need a per-pixel distance.
-struct ShadowShape {
-  int dy, blur;
-  uint8_t peak;  // alpha where the shadow is strongest
-};
-
-ShadowShape shadowShape(const Theme &t, ShadowSize size) {
-  const Palette &p = t.color;
-  const int peak = p.shadowAlpha * 5 / 4;
-  if (size == ShadowSize::Large) return {t.dp(3), t.dp(5), (uint8_t)(peak > 255 ? 255 : peak)};
-  return {t.dp(2), t.dp(3), (uint8_t)(peak > 255 ? 255 : peak)};
-}
-
-// 1 well inside the blur, 0 beyond it, smooth between (d: distance outside the source edge).
-float falloff(float d, float blur) {
-  const float x = (d + blur) / (2.f * blur);
-  if (x <= 0.f) return 1.f;
-  if (x >= 1.f) return 0.f;
-  return 1.f - x * x * (3.f - 2.f * x);
-}
-
-// Signed distance to a rounded rectangle (negative inside).
-float roundRectDistance(float px, float py, float x0, float y0, float x1, float y1, float r) {
-  const float qx = fabsf(px - (x0 + x1) * .5f) - ((x1 - x0) * .5f - r);
-  const float qy = fabsf(py - (y0 + y1) * .5f) - ((y1 - y0) * .5f - r);
-  const float ox = fmaxf(qx, 0.f), oy = fmaxf(qy, 0.f);
-  return sqrtf(ox * ox + oy * oy) + fminf(fmaxf(qx, qy), 0.f) - r;
-}
-
-uint8_t scaled(uint8_t peak, float g) { return (uint8_t)(peak * g + 0.5f); }
-
-void softShadow(Canvas &c, const Rect &card, int cardRadius, const ShadowShape &s, Color color) {
-  if (s.peak == 0 || s.blur <= 0) return;
-  const float radius = fminf((float)cardRadius, fminf(card.w, card.h) / 2.f);
-  const Rect src = card.offset(0, s.dy);
-  const float blur = (float)s.blur;
+// Paints `shadow` (rounded) only where it lies outside `card` (rounded). The
+// rectangles are integer-aligned, so straight edges are fully covered or not
+// at all: only the corner regions need per-pixel coverage.
+void shadowOutside(Canvas &c, const Rect &card, int cardRadius, const Rect &shadow, int shadowRadius, Color color,
+                   uint8_t alpha) {
+  const float cr = fminf((float)cardRadius, fminf(card.w, card.h) / 2.f);
+  const float sr = fminf((float)shadowRadius, fminf(shadow.w, shadow.h) / 2.f);
   const float cx0 = card.x, cy0 = card.y, cx1 = card.right(), cy1 = card.bottom();
-  const float sx0 = src.x, sy0 = src.y, sx1 = src.right(), sy1 = src.bottom();
-  const Rect all = card.unite(src.inset(-s.blur));
-  const int band = (int)ceilf(radius) + s.blur + s.dy + 2;
+  const float sx0 = shadow.x, sy0 = shadow.y, sx1 = shadow.right(), sy1 = shadow.bottom();
   auto coverage = [=](float px, float py) {
-    const float g = falloff(roundRectDistance(px, py, sx0, sy0, sx1, sy1, radius), blur);
-    return g <= 0.f ? 0.f : g * (1.f - roundRectCoverage(px, py, cx0, cy0, cx1, cy1, radius));
+    const float s = roundRectCoverage(px, py, sx0, sy0, sx1, sy1, sr);
+    return s <= 0.f ? 0.f : s * (1.f - roundRectCoverage(px, py, cx0, cy0, cx1, cy1, cr));
   };
-  if (all.w <= 2 * band || all.h <= 2 * band) {  // small: one pass over everything
-    c.paint(all, color, s.peak, coverage);
-    return;
-  }
+  const Rect all = shadow.unite(card);
+  const int band = (int)ceilf(fmaxf(cr, sr)) + 2;
+  // Corner regions: exact coverage.
   const int left = all.x + band, right = all.right() - band, top = all.y + band, bottom = all.bottom() - band;
-  // Corners: exact distance.
-  c.paint(Rect(all.x, all.y, band, band), color, s.peak, coverage);
-  c.paint(Rect(right, all.y, band, band), color, s.peak, coverage);
-  c.paint(Rect(all.x, bottom, band, band), color, s.peak, coverage);
-  c.paint(Rect(right, bottom, band, band), color, s.peak, coverage);
-  // Straight edges: the same alpha along each row or column.
-  for (int y = all.y; y < card.y; ++y) {
-    const uint8_t a = scaled(s.peak, falloff(sy0 - (y + 0.5f), blur));
-    if (a) c.hline(left, y, right - left, color, a);
-  }
-  for (int y = card.bottom(); y < all.bottom(); ++y) {
-    const uint8_t a = scaled(s.peak, falloff((y + 0.5f) - sy1, blur));
-    if (a) c.hline(left, y, right - left, color, a);
-  }
-  for (int x = all.x; x < card.x; ++x) {
-    const uint8_t a = scaled(s.peak, falloff(sx0 - (x + 0.5f), blur));
-    if (a) c.vline(x, top, bottom - top, color, a);
-  }
-  for (int x = card.right(); x < all.right(); ++x) {
-    const uint8_t a = scaled(s.peak, falloff((x + 0.5f) - sx1, blur));
-    if (a) c.vline(x, top, bottom - top, color, a);
-  }
+  c.paint(Rect(all.x, all.y, band, band), color, alpha, coverage);
+  c.paint(Rect(right, all.y, band, band), color, alpha, coverage);
+  c.paint(Rect(all.x, bottom, band, band), color, alpha, coverage);
+  c.paint(Rect(right, bottom, band, band), color, alpha, coverage);
+  // Straight strips where the shadow extends past the card's edges.
+  if (shadow.y < card.y) c.fillRect(Rect(left, shadow.y, right - left, card.y - shadow.y), color, alpha);
+  if (shadow.bottom() > card.bottom())
+    c.fillRect(Rect(left, card.bottom(), right - left, shadow.bottom() - card.bottom()), color, alpha);
+  if (shadow.x < card.x) c.fillRect(Rect(shadow.x, top, card.x - shadow.x, bottom - top), color, alpha);
+  if (shadow.right() > card.right())
+    c.fillRect(Rect(card.right(), top, shadow.right() - card.right(), bottom - top), color, alpha);
 }
 
 }  // namespace
-
-// The largest reach of any shadow: below the card, the offset plus the blur.
-int glassOutset(const Theme &t) { return t.dp(3) + t.dp(5) + 1; }
-
-void paintShadow(Canvas &c, const Theme &t, const Rect &r, int radius, ShadowSize size) {
-  if (!c.visible(r.inset(-glassOutset(t)))) return;
-  softShadow(c, r, radius, shadowShape(t, size), t.color.shadow);
-}
 
 void paintGlass(Canvas &c, const Theme &t, const Rect &r, int radius, Elevation e) {
   if (!c.visible(r.inset(-glassOutset(t)))) return;
   const Palette &p = t.color;
   if (e == Elevation::Raised) {
-    // Controls (buttons, rows) get the tighter shadow, cards and sheets the larger one.
-    softShadow(c, r, radius, shadowShape(t, r.h <= t.dp(56) ? ShadowSize::Small : ShadowSize::Large), p.shadow);
+    // Two offset layers approximate the site's soft 0 12px 40px shadow. Like
+    // CSS box-shadow, a shadow is only visible outside the card: the glass
+    // shows the sky through it, not its own shadow. That also skips most of
+    // the area, which is the expensive part.
+    shadowOutside(c, r, radius, r.offset(0, t.dp(3)).inset(-t.dp(1), 0), radius + t.dp(1), p.shadow,
+                  p.shadowAlpha / 2);
+    shadowOutside(c, r, radius, r.offset(0, t.dp(1)), radius, p.shadow, p.shadowAlpha / 2);
   }
   c.fillRoundRect(r, radius, p.glass, p.glassAlpha);
   c.strokeRoundRect(r, radius, 1, p.rim, p.rimAlpha);

@@ -16,16 +16,16 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.7.1: update diagnostics and gentler flash writes (on top of 0.7.0 screen transitions, 0.6.1 daily update check, volume, Stopwatch, faster phone setup) |
+| Version | 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 161 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
-| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.47 MB flash (74% of a 1.9 MB update slot), 83 KB static RAM (25%) |
+| Host tests | 179 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.48 MB flash (75% of a 1.9 MB update slot), 84 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
 Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *bedside* mode
 that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
 API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Stopwatch**
-(laps), **Settings** (Wi-Fi, display, sound, appearance, time, about) and **Touch test** (calibration aid).
+(laps), **Settings** (Wi-Fi, display, sound & light, appearance, time, about) and **Touch test** (calibration aid).
 Wi-Fi is set up on the device itself (scan, pick a network, type the password
 on the on-screen keyboard) or from a phone (*Settings > Wi-Fi > Phone*: join
 "Stella-Setup" and a web page takes the network and password). Alarms and timers ring through a system alert over
@@ -181,16 +181,21 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     Reset; it keeps counting while another app is open.
 16. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-17. *Screen transitions* (Settings > Appearance > Animations, on by default):
-    opening an app or a settings page slides the new screen in from the
-    right, and back slides it out the other way; the status bar and sky stay
-    still, and touching the glass mid-slide finishes it at once. Look for
-    smoothness: it should feel like a handful of quick steps, not a stutter.
-    If a frame takes over 80 ms the device turns transitions off for that boot
-    and logs `screen transitions off: a frame took N ms`; please send me that
-    line and the `frame=` value from the `health` line. Turn the toggle off to
-    compare.
-18. Leave it running overnight; no `restarting` line in the log and the
+17. *Status LED* (Settings > Sound & light): *Find my LED* lights each of
+    pins 4, 16 and 17 in turn (low, then high) and asks what colour you see;
+    save, and the LED should then be amber while an alarm or timer rings, blue
+    while an update downloads, green when it waits for the restart, violet
+    while phone setup is open. Try Off / Alerts / Glow (Glow adds a faint
+    breathing light on the bedside face) and the LED level slider (letting go
+    blinks it). Tell me what the tool found for each of your CYDs (pins and
+    polarity).
+18. *Light sensor*: in its case, in a dark room: Settings > Sound & light >
+    Light sensor > Start (the screen goes dark for about 6 seconds), then turn
+    the room lights on and tap Measure. Auto dim switches on; check that the
+    screen dims in a dim room and comes back in the light without flicker or
+    hunting, and with a differently coloured case. If it says the sensor barely
+    changed, the case may cover it: say what you see.
+19. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

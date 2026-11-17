@@ -10,12 +10,19 @@
 
 namespace stella {
 
+// How far apart the dark and bright readings of the light sensor must be for a
+// calibration to be trusted (sensor counts, of 4095): a covered or broken
+// sensor barely moves.
+constexpr int kMinLightRange = 60;
+
 struct SystemSettings {
   // v2 added nightDim, v3 colorTone, v4 the display and touch calibration,
   // v5 per-mode contrast, white level and warmth, v6 the bedside clock, v7 the speaker volume and
-  // the automatic update check, v8 screen animations. Older
+  // the automatic update check, v8 screen animations (removed again in v9, whose
+  // layout simply lacks the field), v9 the status LED and the ambient light
+  // sensor. Older
   // records are migrated by loadSettings().
-  static constexpr uint16_t kVersion = 8;
+  static constexpr uint16_t kVersion = 9;
 
   Appearance appearance = Appearance::Auto;
   uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
@@ -39,7 +46,19 @@ struct SystemSettings {
   int16_t touchScaleX = 1024, touchOffsetX = 0, touchScaleY = 1024, touchOffsetY = 0;
   uint8_t volume = 60;           // 0..100: alert chimes (0 = silent), see Sound::setVolume
   bool autoUpdate = true;        // look for a newer version once a day (never installs by itself)
-  bool animations = true;        // slide between screens (skipped on a display too slow for it)
+  // Status LED. Wiring is found by Settings > Sound & light > Find my LED (or
+  // set by the board's sketch); kNoPin (255) = no LED.
+  uint8_t ledMode = 1;           // 0 off, 1 alerts and progress, 2 also a faint glow on the bedside face
+  uint8_t ledLevel = 60;         // 5..100 %: the brightest it ever gets
+  uint8_t ledPin[3] = {255, 255, 255};  // red, green, blue
+  bool ledInverted = true;
+  // Ambient light: dim the screen in a dark room. Needs the calibration made in
+  // the actual case (Settings > Sound & light > Calibrate light sensor).
+  bool autoBrightness = false;
+  uint16_t lightDark = 0;        // sensor reading in the dark, backlight off
+  int16_t lightSelf = 0;         // change in the reading with the backlight at full (signed)
+  uint16_t lightBright = 0;      // reading in normal room light, backlight off; == lightDark: not calibrated
+  bool lightCalibrated() const { return lightBright != lightDark; }
 
   Look look(bool dark) const {
     Look l;

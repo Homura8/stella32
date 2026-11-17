@@ -192,10 +192,8 @@ Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look) {
     c.rimAlpha = 46;  // rgba(237,222,255,.18)
     c.line = x.ink(0xd7c5ef);
     c.lineAlpha = 41;  // rgba(215,197,239,.16)
-    // Near black, and stronger than in light mode: a shadow on a dark sky or
-    // a dark glass card is the same hue as what it falls on and vanishes.
-    c.shadow = x.tone(0x010005, false, 1.f);  // material
-    c.shadowAlpha = 104;
+    c.shadow = x.tone(0x080414, false, 1.f);  // material
+    c.shadowAlpha = 70;
     c.surface = x.tone(0x302a3d, false, 1.f);  // material
     c.good = x.ink(0xb3d6cd);
     c.warn = x.ink(0xe7d8b5);
