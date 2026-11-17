@@ -2,6 +2,8 @@
 // Do not edit by hand; change tools/fontgen.py and regenerate.
 #include "fonts.h"
 
+#ifndef STELLA_COMPACT_FONTS_ONLY
+
 namespace stella {
 namespace fonts {
 
@@ -4890,3 +4892,5 @@ const FontSet kRegular = {&kCaptionRegular, &kBodyRegular, &kTitleRegular, &kHea
 
 }  // namespace fonts
 }  // namespace stella
+
+#endif  // STELLA_COMPACT_FONTS_ONLY

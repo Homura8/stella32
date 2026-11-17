@@ -427,7 +427,7 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
-| Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |
+| Fonts (flash) | ~170 KB for both densities (the bedside numerals are ~56 KB of it); the CYD build carries only the compact set (`STELLA_COMPACT_FONTS_ONLY`, set in `examples/CYD/build_opt.h`; a board with a panel of 300 px or more on its short side leaves it unset) |
 
 ## Roadmap
 
