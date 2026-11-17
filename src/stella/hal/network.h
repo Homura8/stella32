@@ -82,6 +82,24 @@ class SetupServer {
   virtual void address(char *out, size_t capacity) = 0;  // the access point's IPv4
 };
 
+// The web page the device serves on the home network (after Wi-Fi is set up),
+// reachable by name (mDNS) and by IP. The server only moves bytes; every request
+// is handled by the portable RemoteHandler (net/remote.h), which is forward
+// declared here so the HAL stays free of it.
+class RemoteHandler;
+
+class RemoteServer {
+ public:
+  virtual ~RemoteServer() = default;
+  // Starts listening on the station network (port 80) and announcing a name.
+  virtual bool begin(RemoteHandler &handler) = 0;
+  virtual void poll() = 0;  // serve pending requests (service thread, often)
+  virtual void end() = 0;
+  virtual bool running() const = 0;
+  virtual void hostname(char *out, size_t capacity) const = 0;  // "stella-ab12" (the .local name is this + ".local")
+  virtual void address(char *out, size_t capacity) const = 0;   // the station IPv4
+};
+
 // Receives a response body as it arrives. Return false to abort the transfer
 // (for example when a size limit is exceeded or parsing has failed).
 class HttpSink {

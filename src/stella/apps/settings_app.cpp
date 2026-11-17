@@ -66,6 +66,7 @@ const AppInfo &SettingsApp::info() const {
 void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kNetwork || topicId == topics::kWifiScan) wifi_.refresh(ctx);
   if (topicId == topics::kNetwork && setup_.isVisible()) setup_.refresh(ctx);
+  if (topicId == topics::kRemote && remote_.isVisible()) remote_.refresh(ctx);
   if ((topicId == topics::kUpdate || topicId == topics::kNetwork) && softwareUpdate_.isVisible())
     softwareUpdate_.refresh(ctx);
   if (topicId == topics::kUpdate && main_.isVisible()) {
@@ -77,6 +78,7 @@ void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "wifi") == 0) ctx.push(wifi_);
   if (route && strcmp(route, "whatsnew") == 0) ctx.push(whatsNew_);
+  if (route && strcmp(route, "remote") == 0) ctx.push(remote_);
 }
 
 // ------------------------------------------------------------------ main list
@@ -109,6 +111,8 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
     snprintf(about_, sizeof(about_), "Update %.12s", update.version);
   else if (update.state == UpdateState::Ready)
     snprintf(about_, sizeof(about_), "Restart to update");
+  const RemoteInfo remote = ctx.remote().status();
+  snprintf(remoteDetail_, sizeof(remoteDetail_), "%s", remote.running ? "On" : remote.enabled ? "Waiting" : "Off");
   const NetworkStatus net = ctx.network().status();
   snprintf(wifi_, sizeof(wifi_), "%s",
            !net.present                              ? "Not available"
@@ -131,7 +135,8 @@ void SettingsApp::MainScreen::drawRow(Canvas &c, const Theme &t, int index, cons
                    {"Appearance", icons::appearance, 1, s.appearance_},
                    {"Time", icons::clock, 2, s.time_},
                    {"About", icons::info, 0, s.about_},
-                   {"Home screen", icons::home, 3, nullptr}};
+                   {"Home screen", icons::home, 3, nullptr},
+                   {"Remote page", icons::wifi, 2, s.remoteDetail_}};
   ListRow r;
   r.bounds = row;
   r.title = rows[index].title;
@@ -152,7 +157,7 @@ bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   const int index = list_.handle(e, ctx);
   if (index < 0) return false;
   Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_,
-                            nullptr};
+                            nullptr, &app_.remote_};
   if (targets[index]) ctx.push(*targets[index]);
   else ctx.launch("home", "customise");
   return true;
@@ -1329,6 +1334,106 @@ bool SettingsApp::TimeScreen::onEvent(const Event &e, AppContext &ctx) {
     return true;
   }
   return true;
+}
+
+// ------------------------------------------------------------------ remote page
+
+void SettingsApp::RemoteScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int hintH = t.font.caption->lineHeight * 2 + t.dp(4);
+  const int rowH = cardRowHeight(t, area.h - hintH - t.m.gapS, kRows);
+  card_ = Rect(area.x, area.y, area.w, kRows * rowH + 2 * t.dp(4));
+  const Rect inner = card_.inset(t.m.padding, t.dp(4));
+  for (int i = 0; i < kRows; ++i) {
+    rows_[i] = Rect(inner.x, inner.y + i * rowH, inner.w, rowH);
+    Rect parts[2];
+    row(rows_[i], {px(t.dp(84)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+  }
+  hint_ = Rect(area.x, card_.bottom() + t.m.gapS, area.w, area.bottom() - card_.bottom() - t.m.gapS);
+  enabled_.bounds = rows_[0];
+  const int bh = rowH - t.dp(4) > t.dp(28) ? rowH - t.dp(4) : t.dp(28);
+  newPin_.bounds = Rect(rows_[2].right() - t.dp(84), rows_[2].y + (rowH - bh) / 2, t.dp(84), bh);
+  newPin_.label = "Change";
+  remove_.bounds = Rect(rows_[3].right() - t.dp(84), rows_[3].y + (rowH - bh) / 2, t.dp(84), bh);
+  remove_.label = "Remove";
+  Rect parts[2];
+  row(rows_[4], {px(t.dp(84)), flex()}, t.m.gapM, parts);
+  wash_.bounds = parts[1].inset(0, (rowH - t.m.control) / 2 > 0 ? (rowH - t.m.control) / 2 : 0);
+}
+
+void SettingsApp::RemoteScreen::onShow(AppContext &ctx) {
+  wash_.minimum = 0;
+  wash_.maximum = 90;
+  refresh(ctx);
+}
+
+void SettingsApp::RemoteScreen::refresh(AppContext &ctx) {
+  info_ = ctx.remote().status();
+  if (!ctx.remote().pin(pin_)) pin_[0] = '\0';
+  enabled_.on = info_.enabled;
+  wash_.value = info_.veil;
+  if (info_.running) {
+    snprintf(host_, sizeof(host_), "%s.local", info_.host);
+    snprintf(ip_, sizeof(ip_), "or %s", info_.ip);
+  } else {
+    snprintf(host_, sizeof(host_), "%s", info_.enabled ? "Waiting for Wi-Fi\xe2\x80\xa6" : "Off");
+    ip_[0] = '\0';
+  }
+  snprintf(wallpaper_, sizeof(wallpaper_), "%s", !info_.wallpaperSupported ? "No room here" : info_.wallpaper ? "Set" : "None");
+  remove_.enabled = info_.wallpaper;
+  if (isVisible()) ctx.invalidate(ctx.contentRect());
+}
+
+void SettingsApp::RemoteScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, card_, t.m.radiusCard);
+  static const char *const kLabels[kRows] = {"Enabled", "Address", "PIN", "Wallpaper", "Wash"};
+  for (int i = 0; i < kRows; ++i) {
+    c.drawTextIn(*t.font.body, kLabels[i], labels_[i], p.text);
+    if (i < kRows - 1) paintHairline(c, t, rows_[i].x, rows_[i].bottom() - 1, rows_[i].w);
+  }
+  enabled_.draw(c, t);
+  // The address: the name, and the IP below it.
+  const Rect addr(rows_[1].x + t.dp(84) + t.m.gapM, rows_[1].y, rows_[1].w - t.dp(84) - t.m.gapM, rows_[1].h);
+  if (ip_[0]) {
+    Rect lines[2];
+    column(center(addr, addr.w, t.font.body->lineHeight + t.font.caption->lineHeight),
+           {px(t.font.body->lineHeight), px(t.font.caption->lineHeight)}, 0, lines);
+    c.drawTextIn(*t.font.body, host_, lines[0], p.accent);
+    c.drawTextIn(*t.font.caption, ip_, lines[1], p.textMuted);
+  } else {
+    c.drawTextIn(*t.font.body, host_, addr, p.textMuted);
+  }
+  const Rect pinArea(rows_[2].x + t.dp(84) + t.m.gapM, rows_[2].y, newPin_.bounds.x - rows_[2].x - t.dp(84) - 2 * t.m.gapM, rows_[2].h);
+  c.drawTextIn(*t.font.title, info_.enabled ? pin_ : "\xe2\x80\x94", pinArea, info_.lockedOut ? p.danger : p.text);
+  newPin_.draw(c, t);
+  c.drawTextIn(*t.font.body, wallpaper_, Rect(rows_[3].x + t.dp(84) + t.m.gapM, rows_[3].y, remove_.bounds.x - rows_[3].x - t.dp(84) - 2 * t.m.gapM, rows_[3].h), p.textMuted);
+  remove_.draw(c, t);
+  wash_.draw(c, t);
+  c.drawWrapped(*t.font.caption, "On a phone or PC on this Wi-Fi, open the address, enter the PIN and pick a photo.",
+                hint_.inset(t.dp(4), 0), p.textMuted, 3, Align::Center);
+}
+
+bool SettingsApp::RemoteScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (enabled_.handle(e, ctx)) {
+    ctx.remote().setEnabled(enabled_.on);
+    return true;
+  }
+  if (newPin_.handle(e, ctx)) {
+    ctx.remote().newPin();
+    ctx.toast("PIN changed");
+    return true;
+  }
+  if (remove_.handle(e, ctx)) {
+    ctx.remote().removeWallpaper();
+    return true;
+  }
+  if (wash_.handle(e, ctx, ctx.theme())) {
+    ctx.remote().setVeil((uint8_t)wash_.value);
+    return true;
+  }
+  return wash_.dragging;
 }
 
 // ------------------------------------------------------------------ what's new

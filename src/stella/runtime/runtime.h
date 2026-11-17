@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.11.1"
+#define STELLA_VERSION "0.12.0"
 #endif
 
 namespace stella {
@@ -140,6 +140,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   SystemStatus status() const override;
   NetworkControl &network() override { return wifi_; }
   UpdateControl &update() override { return updater_; }
+  RemoteControl &remote() override { return remote_; }
   void restartDevice() override {
     restartPending_ = true;
     restartAtMs_ = millis() + 900;
@@ -203,6 +204,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void updatePreview(uint32_t now);
   // Status LED and ambient light.
   void applyLed(bool force);
+  void reloadWallpaper();
+  void paintWallpaper(Canvas &c);
   void maybeShowWhatsNew(uint32_t now);
   void updateLed(uint32_t now);
   void updateLight(uint32_t now);
@@ -254,6 +257,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   WifiManager wifi_{network_, scan_};
   Topic<UpdateStatus> updateStatus_{topics::kUpdate};
   UpdateService updater_{updateStatus_};
+  Topic<RemoteInfo> remoteInfo_{topics::kRemote};
+  RemoteService remote_{remoteInfo_};
   HttpService http_;
   TopicBase *topics_[kMaxTopics] = {};
   size_t topicCount_ = 0;
@@ -298,6 +303,10 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   uint8_t appliedScale_ = 255;  // the ambient fraction of the brightness in use, slewed
   bool lightWarm_ = false;
   bool whatsNewPending_ = false;
+  bool wallpaperOn_ = false;
+  uint8_t wallpaperVeil_ = 35;
+  uint16_t wallpaperPalette_[wallpaper::kColors] = {};
+  uint8_t wallpaperRow_[wallpaper::kWidth] = {};
   int64_t sunRise_ = 0, sunSet_ = 0;  // today's, from the Weather place; 0 = unknown
   uint8_t sunPolar_ = 0;
   LightCalibration appliedCal_;

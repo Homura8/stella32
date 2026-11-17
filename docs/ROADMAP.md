@@ -104,7 +104,10 @@ hidden (calibration lives in Settings). Optional apps added later (Calendar,
 Network, Brief) are *off* until set up. The launcher already pages; keep the
 touch targets at `t.dp(32)` and the ListView scroll buttons for the list.
 
-### 3. The remote page (phone and PC on the home network)
+### 3. The remote page (phone and PC on the home network) — built in 0.12.0
+
+*Done: the server, mDNS, PIN, streaming bodies, the wallpaper upload and the Settings screen (see `docs/ARCHITECTURE.md`, Remote page and wallpaper). Still to do on top of it: Home layout, keys and URLs entry, notes, the push API.*
+
 
 The foundation for wallpaper, configuration entry, and integrations. A small
 web server on the device's normal Wi-Fi connection (the phone-setup server in
@@ -124,7 +127,10 @@ point):
 - Used for: wallpaper upload, Home layout, entering the calendar URL and API
   keys (instead of the resistive keyboard), sending the clock a note.
 
-### 4. Custom wallpaper (full resolution, from the phone)
+### 4. Custom wallpaper (full resolution, from the phone) — built in 0.12.0 (the 8-bit palette design)
+
+*Done with design 1 below; JPEG on the device was not needed. 320x240 only for now (portrait and other sizes keep the sky).*
+
 
 The owner wants **full 320x240 resolution**, "compressed with JPEG". The
 constraint: with the default `min_spiffs` layout there are only **128 KB** of

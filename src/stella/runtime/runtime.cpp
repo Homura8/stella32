@@ -39,6 +39,7 @@ Runtime::Runtime() {
   topics_[topicCount_++] = &network_;
   topics_[topicCount_++] = &scan_;
   topics_[topicCount_++] = &updateStatus_;
+  topics_[topicCount_++] = &remoteInfo_;
 }
 
 Runtime::~Runtime() {
@@ -119,6 +120,9 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   // The first daily check waits a couple of minutes, so boot, Wi-Fi and the
   // first weather fetch get the network (and its TLS lease) first.
   if (updater_.enabled()) jobs_.add(updater_, millis(), 2u * 60u * 1000u);
+  remote_.configure(board.remote, board.wallpaper, board.wifi, board.storage, &jobs_, &network_);
+  jobs_.add(remote_, millis(), 500);
+  reloadWallpaper();
   // A freshly updated image runs on probation: it is confirmed after a healthy
   // minute, and otherwise the bootloader returns to the previous one.
   updateUnconfirmed_ = board.platform->updatePending();
@@ -573,6 +577,7 @@ void Runtime::handleTopicEvent(uint16_t id) {
   }
   if (id == topics::kNetwork && !topFullscreen()) invalidate(statusBarRect());
   if (id == topics::kUpdate) noteUpdateForLed();
+  if (id == topics::kRemote) reloadWallpaper();
   if (id == topics::kNetwork) noteNetworkForLed();
   for (size_t i = 0; i < appCount_; ++i) {
     if (!apps_[i].started) continue;
@@ -781,7 +786,8 @@ void Runtime::draw(Canvas &c) {
     if (alertCount_) drawAlert(c);
     return;
   }
-  paintSky(c, theme_, screen_);
+  if (wallpaperOn_) paintWallpaper(c);
+  else paintSky(c, theme_, screen_);
   if (c.visible(statusBarRect())) drawStatusBar(c);
   if (s && c.visible(content_)) {
     const Rect previous = c.pushClip(content_);
@@ -1036,6 +1042,42 @@ void Runtime::updatePreview(uint32_t now) {
 }
 
 // ------------------------------------------------------------------ status LED and ambient light
+
+// The wallpaper, when there is a valid one and the screen is the size it was made for.
+void Runtime::reloadWallpaper() {
+  const RemoteInfo info = remoteInfo_.get();
+  wallpaperVeil_ = info.veil;
+  bool on = info.wallpaper && board_.wallpaper && screen_.w == wallpaper::kWidth && screen_.h == wallpaper::kHeight;
+  if (on) {
+    uint8_t raw[wallpaper::kPaletteBytes];
+    on = board_.wallpaper->read(wallpaper::kHeaderBytes, raw, sizeof(raw));
+    for (int i = 0; on && i < wallpaper::kColors; ++i) wallpaperPalette_[i] = (uint16_t)(raw[2 * i] | (raw[2 * i + 1] << 8));
+  }
+  if (on != wallpaperOn_ || on) {
+    wallpaperOn_ = on;
+    if (started_) invalidateAll();
+  }
+}
+
+// The picture, row by row, washed toward white (light mode) or black (dark mode)
+// so the glass and its text stay readable: the same job the sky does.
+void Runtime::paintWallpaper(Canvas &c) {
+  const Rect area = c.clip().intersect(screen_);
+  if (area.empty()) return;
+  const Color wash = theme_.color.dark ? (Color)0x0000 : (Color)0xFFFF;
+  const uint8_t alpha = (uint8_t)(wallpaperVeil_ * 255 / 100);
+  const size_t base = wallpaper::kHeaderBytes + wallpaper::kPaletteBytes;
+  for (int y = area.y; y < area.bottom(); ++y) {
+    if (!board_.wallpaper->read(base + (size_t)y * wallpaper::kWidth + area.x, wallpaperRow_, (size_t)area.w)) {
+      c.fillRect(Rect(area.x, y, area.w, 1), wash);
+      continue;
+    }
+    for (int i = 0; i < area.w; ++i) {
+      const Color color = wallpaperPalette_[wallpaperRow_[i]];
+      c.at(area.x + i, y) = alpha ? blend(color, wash, alpha) : color;
+    }
+  }
+}
 
 // The changelog, once per version, when Home is in front and quiet (not in the
 // middle of anything, not while an alert is up). It is marked seen as it opens.

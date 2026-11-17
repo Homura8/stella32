@@ -16,9 +16,9 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.11.1 (the weather request fixed), 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
+| Version | 0.12.0 (a web page on your Wi-Fi, wallpaper from your phone), 0.11.1 (the weather request fixed), 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 203 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Host tests | 219 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.48 MB flash (75% of a 1.9 MB update slot), 84 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -207,7 +207,16 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     20:00), and the night dimming and bedside clock start with it. Check
     Settings > About > Software on the day of a change; if the sky looks an
     hour out, check Settings > Time (zone) and the Weather place.
-21. Leave it running overnight; no `restarting` line in the log and the
+21. *Remote page and wallpaper*: Settings > Remote page, switch it on; the
+    screen shows an address (stella-xxxx.local, and the IP) and a PIN. On a
+    phone or PC on the same Wi-Fi open the address, enter the PIN, pick a
+    photo (it is cropped, softened, darkened and reduced to 256 colours in the
+    browser) and send it: it should replace the sky behind the glass within a
+    second or two. Try the Wash slider, Remove, a wrong PIN five times (it
+    locks for five minutes), and whether the .local name works on your phone
+    (iPhones and Macs do; some Android browsers need the IP). Report anything
+    odd in the picture's colours.
+22. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Roadmap
