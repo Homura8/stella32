@@ -320,7 +320,10 @@ reads, for example, `Crash · update: downloading 34%` (or `Watchdog`,
 after a real reset. The ESP32 slot also erases flash *as the image is written*
 (`OTA_WITH_SEQUENTIAL_WRITES`) instead of the whole slot before the first byte:
 one multi-second erase is the longest, most power-hungry operation of an
-update, and the prime suspect for a reset right at the start.
+update, and the prime suspect for a reset right at the start (the failed
+device reported *Watchdog* as its last reset, with plenty of heap and stack).
+Every fourth chunk written also yields one tick, so the idle task that feeds
+the task watchdog always gets to run, however fast the connection is.
 
 Every failure (unreachable server, bad manifest, damaged or oversize download,
 a flash write error, an invalid image) aborts the slot write and leaves the
@@ -369,7 +372,7 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,466,935 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
+| Program (flash) | 1,466,959 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
 | Static RAM (globals) | 83,100 B; 244,580 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
