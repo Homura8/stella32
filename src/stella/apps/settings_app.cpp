@@ -1167,13 +1167,10 @@ bool SettingsApp::CalibrateScreen::onEvent(const Event &e, AppContext &ctx) {
 // ------------------------------------------------------------------ appearance
 
 void SettingsApp::AppearanceScreen::layout(const Rect &content, const Theme &t) {
-  Rect r[4];
-  column(content.inset(t.m.margin, t.m.gapS),
-         {px(t.m.control), px(t.font.caption->lineHeight), flex(), px(t.m.control)}, t.m.gapS, r);
+  Rect r[3];
+  column(content.inset(t.m.margin, t.m.gapS), {px(t.m.control), px(t.font.caption->lineHeight), flex()}, t.m.gapS, r);
   mode_.bounds = r[0];
   note_ = r[1];
-  animRow_ = r[3].inset(t.m.padding, 0);
-  animations_.bounds = animRow_;
   // Swatches (as tall as fits, up to 88 dp) with their note right below.
   const int noteH = t.font.caption->lineHeight;
   const int room = r[2].h - t.m.gapL - noteH - t.m.gapS;
@@ -1186,7 +1183,6 @@ void SettingsApp::AppearanceScreen::onShow(AppContext &ctx) {
   mode_.count = 3;
   mode_.selected = (uint8_t)ctx.settings().appearance;
   skyPin_ = ctx.settings().skyPin;
-  animations_.on = ctx.settings().animations;
   pressedSky_ = -1;
 }
 
@@ -1205,7 +1201,7 @@ void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
     Rect parts[2];
     column(cell, {flex(), px(t.font.caption->lineHeight)}, t.dp(3), parts);
     const Rect sw = parts[0];
-    paintShadow(c, t, sw, t.m.radiusControl);
+    c.fillRoundRect(sw.offset(0, t.dp(2)), t.m.radiusControl, t.color.shadow, t.color.shadowAlpha);
     for (int y = 0; y < sw.h; ++y) {
       const int k = sw.h > 1 ? y * 255 / (sw.h - 1) : 0;
       // Each phase's own gradient, ending in its tint, so they read apart.
@@ -1231,8 +1227,6 @@ void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
                         phaseName((SkyPhase)(skyPin_ - 1)));
   else snprintf(note, sizeof(note), "The sky follows the time \xc2\xb7 tap one to keep it");
   c.drawTextIn(*t.font.caption, note, skyNote_, t.color.textMuted, Align::Center);
-  c.drawTextIn(*t.font.body, "Animations", animRow_, t.color.text);
-  animations_.draw(c, t);
 }
 
 bool SettingsApp::AppearanceScreen::onEvent(const Event &e, AppContext &ctx) {
@@ -1248,12 +1242,6 @@ bool SettingsApp::AppearanceScreen::onEvent(const Event &e, AppContext &ctx) {
     skyPin_ = s.skyPin;
     ctx.applySettings(s);  // re-themes when the sky changes
     ctx.invalidate(skies_.inset(-t.dp(4)).unite(skyNote_));
-    return true;
-  }
-  if (animations_.handle(e, ctx)) {
-    SystemSettings s = ctx.settings();
-    s.animations = animations_.on;
-    ctx.applySettings(s);
     return true;
   }
   if (!mode_.handle(e, ctx)) return false;

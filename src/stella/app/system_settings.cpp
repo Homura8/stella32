@@ -363,7 +363,7 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.touchOffsetY = v7.touchOffsetY;
       loaded.volume = v7.volume;
       loaded.autoUpdate = v7.autoUpdate;
-      if (migrated) *migrated = true;  // animations keeps its default
+      if (migrated) *migrated = true;  // nothing else to carry over
     }
   } else if (s == RecordStatus::OldVersion && found == 8) {
     SettingsV8 v8;
@@ -393,7 +393,6 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.touchOffsetY = v8.touchOffsetY;
       loaded.volume = v8.volume;
       loaded.autoUpdate = v8.autoUpdate;
-      loaded.animations = v8.animations;
       if (migrated) *migrated = true;
     }
   }

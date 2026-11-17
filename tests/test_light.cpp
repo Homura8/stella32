@@ -204,7 +204,7 @@ TEST(settings_v8_records_gain_the_led_and_light_defaults) {
   s.ledPin[2] = 17;  // the board's wiring, from its sketch
   bool migrated = false;
   CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok);
-  CHECK(migrated && s.volume == 35 && !s.animations && s.brightness == 130);
+  CHECK(migrated && s.volume == 35 && s.brightness == 130);
   CHECK(s.ledPin[0] == 4 && s.ledPin[2] == 17 && s.ledMode == 1 && !s.autoBrightness && !s.lightCalibrated());
   s.ledMode = 2;
   s.lightDark = 700;
@@ -215,4 +215,32 @@ TEST(settings_v8_records_gain_the_led_and_light_defaults) {
   SystemSettings again;
   CHECK(loadSettings(&store, again, &migrated) == RecordStatus::Ok && !migrated);
   CHECK(again.ledMode == 2 && again.lightSelf == -120 && again.autoBrightness && again.lightCalibrated());
+}
+
+TEST(settings_v7_records_still_migrate_through_the_chain) {
+  MemoryStore store;
+  struct V7 {
+    Appearance appearance;
+    uint8_t brightness;
+    uint16_t dimAfterSec, sleepAfterSec;
+    bool clock24h;
+    char timezone[48];
+    bool nightDim;
+    uint8_t bedside;
+    ColorTone colorTone;
+    uint8_t contrastLight, contrastDark, whiteLevel, warmth;
+    bool dither;
+    int8_t panelVcom;
+    uint8_t panelRefreshHz;
+    uint8_t skyPin;
+    int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+    uint8_t volume;
+    bool autoUpdate;
+  } v7{Appearance::Light, 140, 60, 0, true, "UTC0", true, 1, ColorTone::Soft, 0, 0, 100, 0, true, 0, 0, 0,
+       1024, 0, 1024, 0, 35, false};
+  CHECK(saveRecord(&store, "sys", "settings", 7, &v7, sizeof(v7)));
+  SystemSettings s;
+  bool migrated = false;
+  CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok);
+  CHECK(migrated && s.volume == 35 && !s.autoUpdate && s.brightness == 140 && s.ledMode == 1 && !s.autoBrightness);
 }

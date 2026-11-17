@@ -37,7 +37,6 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   config.defaults.ledPin[1] = 16;
   config.defaults.ledPin[2] = 17;
   config.defaults.ledInverted = true;
-  config.defaults.animations = false;  // screens cut instantly; transitions are tested on their own
   config.defaults.autoUpdate = false;  // the daily check is tested on its own; other tests count requests
   if (online) {
     config.wifiSsid = "Starlight";

@@ -245,41 +245,22 @@ void capture(int width, int height, const std::string &root) {
       s.tap(soundRow.x, soundRow.y);
       const Rect soundArea = sc.inset(st.m.margin, st.m.gapS);
       const int soundWant = st.m.control + st.dp(4), soundFit = (soundArea.h - 2 * st.dp(4)) / 6, soundMin = st.dp(32);
-      const int rowH = soundWant <= soundFit ? soundWant : soundFit < soundMin ? soundMin : soundFit;
-      auto soundCell = [&](int i) { return Rect(soundArea.x, soundArea.y + st.dp(4) + i * rowH, soundArea.w, rowH); };
-      const Rect bottom(soundArea.x, soundArea.bottom() - st.m.control, soundArea.w, st.m.control);
+      const int soundRowH = soundWant <= soundFit ? soundWant : soundFit < soundMin ? soundMin : soundFit;
+      auto soundCell = [&](int i) { return Rect(soundArea.x, soundArea.y + st.dp(4) + i * soundRowH, soundArea.w, soundRowH); };
+      const Rect wizardRow(soundArea.x, soundArea.bottom() - st.m.control, soundArea.w, st.m.control);
       tapRect(s, soundCell(3));  // Find my LED
-      tapRect(s, bottom);        // Start (one wide button)
+      tapRect(s, wizardRow);     // Start (one wide button)
       s.run(300);
       save(28, "find-led");
       s.os.pop();
       tapRect(s, soundCell(5));  // Light sensor
-      tapRect(s, bottom);        // Start
+      tapRect(s, wizardRow);     // Start
       s.dev.light.ambient = 0.f;
       s.run(7200);
       save(29, "light-sensor");
       s.os.pop();
       s.run(100);
       s.os.pop();
-    }
-
-    // A screen sliding in (animations on): the frame a little way into Home > Settings.
-    s.os.launch("settings");
-    while (s.os.topScreen() != &s.settings.root()) s.os.pop();  // earlier scenes left screens on its stack
-    s.os.goHome();
-    s.run(400);
-    {
-      SystemSettings animated = s.os.settings();
-      animated.animations = true;
-      s.os.applySettings(animated);
-      s.run(50);
-      s.os.launch("settings");
-      s.run(70);
-      save(27, "slide");
-      s.run(500);
-      animated.animations = false;
-      s.os.applySettings(animated);
-      s.run(50);
     }
 
     // The bedside clock, with the alarm set earlier.

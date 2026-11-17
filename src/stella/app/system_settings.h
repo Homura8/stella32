@@ -18,8 +18,9 @@ constexpr int kMinLightRange = 60;
 struct SystemSettings {
   // v2 added nightDim, v3 colorTone, v4 the display and touch calibration,
   // v5 per-mode contrast, white level and warmth, v6 the bedside clock, v7 the speaker volume and
-  // the automatic update check, v8 screen animations, v9 the status LED and the
-  // ambient light sensor. Older
+  // the automatic update check, v8 screen animations (removed again in v9, whose
+  // layout simply lacks the field), v9 the status LED and the ambient light
+  // sensor. Older
   // records are migrated by loadSettings().
   static constexpr uint16_t kVersion = 9;
 
@@ -45,7 +46,6 @@ struct SystemSettings {
   int16_t touchScaleX = 1024, touchOffsetX = 0, touchScaleY = 1024, touchOffsetY = 0;
   uint8_t volume = 60;           // 0..100: alert chimes (0 = silent), see Sound::setVolume
   bool autoUpdate = true;        // look for a newer version once a day (never installs by itself)
-  bool animations = true;        // slide between screens (skipped on a display too slow for it)
   // Status LED. Wiring is found by Settings > Sound & light > Find my LED (or
   // set by the board's sketch); kNoPin (255) = no LED.
   uint8_t ledMode = 1;           // 0 off, 1 alerts and progress, 2 also a faint glow on the bedside face

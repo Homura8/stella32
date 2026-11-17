@@ -53,7 +53,7 @@ void Button::draw(Canvas &c, const Theme &t) const {
     paintGlass(c, t, bounds, radius);
     if (pressed) c.fillRoundRect(bounds, radius, p.accent, 46);
   } else if (style == ButtonStyle::Accent) {
-    paintShadow(c, t, bounds, radius);
+    c.fillRoundRect(bounds.offset(0, t.dp(2)), radius, p.shadow, p.shadowAlpha);
     c.fillRoundRect(bounds, radius, p.accent, 255);
     if (pressed) c.fillRoundRect(bounds, radius, p.surface, 46);  // a pressed button lightens, it never turns see-through
     text = p.accentText;
@@ -97,7 +97,7 @@ void Toggle::draw(Canvas &c, const Theme &t) const {
   }
   const int r = tr.h / 2 - t.dp(3);
   const int cx = on ? tr.right() - tr.h / 2 - 1 : tr.x + tr.h / 2;
-  paintShadow(c, t, Rect(cx - r, tr.centerY() - 1 - r, 2 * r, 2 * r), r);
+  c.fillCircle(cx, tr.centerY(), r + 1, p.shadow, p.shadowAlpha);
   c.fillCircle(cx, tr.centerY() - 1, r, on ? p.accentText : p.glass);
 }
 
@@ -159,7 +159,7 @@ void Segmented::draw(Canvas &c, const Theme &t) const {
   for (int i = 0; i < count; ++i) {
     const Rect s = segment(i);
     if (i == selected) {
-      paintShadow(c, t, s, s.h / 2);
+      c.fillRoundRect(s.offset(0, 1), s.h / 2, p.shadow, p.shadowAlpha);
       c.fillRoundRect(s, s.h / 2, p.surface);
       c.strokeRoundRect(s, s.h / 2, 1, p.line, p.lineAlpha);
     }

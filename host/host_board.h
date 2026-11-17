@@ -26,7 +26,6 @@ class SimDisplay : public Display {
     ++trims;
   }
   bool trimmable = true;
-  std::function<void(const Rect &)> onWrite;  // tests: make the panel slow by advancing the clock
   PanelTrim lastTrim;
   int trims = 0;
 
