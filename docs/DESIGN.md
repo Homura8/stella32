@@ -129,6 +129,10 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   long-press anywhere on it for home). Network icon and time at the right, in `textMuted`.
 - **Glass card:** groups related rows; rows separated by hairlines.
 - **List row:** icon bubble, title, optional muted value, chevron.
+- **Scrolling list:** drag to scroll, and when it overflows a strip at the
+  right edge (32 dp wide) holds an up and a down button (each pages by a view
+  less one row; dimmed at the ends) with a thin position rail between them.
+  Rows are drawn and picked beside the strip; a list that fits has none.
 - **Segmented choice:** glass pill; the selected chip is an opaque `surface`
   chip with a hairline and accent text (the site's sky chooser).
 - **Toggle:** pill track (accent when on) with a soft knob.

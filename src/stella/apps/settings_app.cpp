@@ -150,6 +150,7 @@ void SettingsApp::WifiScreen::layout(const Rect &content, const Theme &t) {
   listCard_ = r[2];
   list_.bounds = r[2].inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(32);
+  list_.buttonWidth = t.dp(32);
 }
 
 void SettingsApp::WifiScreen::refresh(AppContext &ctx) {
@@ -698,6 +699,7 @@ void SettingsApp::TimeScreen::layout(const Rect &content, const Theme &t) {
   zoneCard_ = r[2];
   zones_.bounds = r[2].inset(t.dp(2), t.dp(4));
   zones_.rowHeight = t.dp(30);
+  zones_.buttonWidth = t.dp(32);
 }
 
 void SettingsApp::TimeScreen::onShow(AppContext &ctx) {
@@ -758,6 +760,7 @@ void SettingsApp::AboutScreen::layout(const Rect &content, const Theme &t) {
   card_ = content.inset(t.m.margin, t.m.gapS);
   list_.bounds = card_.inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(24);
+  list_.buttonWidth = t.dp(32);
   list_.count = kRows;
 }
 

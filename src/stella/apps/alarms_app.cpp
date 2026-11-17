@@ -240,6 +240,7 @@ void AlarmsApp::ListScreen::arrange() {
   card_ = Rect(body_.x, body_.y, body_.w, listH + 2 * pad);
   list_.bounds = card_.inset(t.dp(2), pad);
   list_.rowHeight = rowH;
+  list_.buttonWidth = t.dp(32);
   list_.count = count;
   if (list_.offset > list_.maxOffset()) list_.offset = list_.maxOffset();
   empty_ = Rect(body_.x, body_.y, body_.w, body_.h * 3 / 4);
@@ -346,7 +347,7 @@ bool AlarmsApp::ListScreen::onEvent(const Event &e, AppContext &ctx) {
   if (index < 0) return true;
   // The switch (and a margin around it) toggles; the rest of the row edits.
   Toggle probe;
-  probe.bounds = list_.bounds.inset(theme_.m.padding, 0);
+  probe.bounds = list_.rows().inset(theme_.m.padding, 0);
   if (e.x >= probe.track(theme_).x - theme_.dp(12)) {
     AlarmEntry &a = app_.book_.alarms[index];
     a.enabled = a.enabled ? 0 : 1;

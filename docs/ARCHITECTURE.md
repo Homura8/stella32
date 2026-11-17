@@ -236,9 +236,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,421,767 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 74,012 B; 253,668 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,440,809 B flash, 87,636 B static RAM |
+| Program (flash) | 1,423,087 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 74,052 B; 253,628 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,442,133 B flash, 87,676 B static RAM |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |

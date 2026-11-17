@@ -379,6 +379,7 @@ void WeatherApp::PlaceScreen::layout(const Rect &content, const Theme &t) {
   card_ = content.inset(t.m.margin, t.m.gapS);
   list_.bounds = card_.inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(30);
+  list_.buttonWidth = t.dp(32);
 }
 
 void WeatherApp::PlaceScreen::onShow(AppContext &) {

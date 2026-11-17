@@ -324,3 +324,41 @@ TEST(calibrate_reset_restores_the_board_defaults_for_its_tab) {
   CHECK(s.os.settings().warmth == s.os.defaultSettings().warmth);
   CHECK(s.os.settings().colorTone == ColorTone::Vivid);  // other tabs untouched
 }
+
+// Regression (CYD): lists could only be scrolled by dragging, which is hard on
+// a resistive panel. Time zones: the down button pages, up returns, and the
+// row picked afterwards is the one shown.
+TEST(time_zone_list_scrolls_with_its_buttons) {
+  SimSession s(320, 240);
+  s.os.launch("settings");
+  s.run(100);
+  const Point row = s.settingsRow(3);
+  s.tap(row.x, row.y);  // Time
+  const Theme &t = s.os.theme();
+  Rect r[3];
+  layout::column(s.os.contentRect().inset(t.m.margin, t.m.gapS),
+                 {layout::px(t.m.row), layout::px(t.font.caption->lineHeight), layout::flex()}, t.m.gapS, r);
+  const Rect list = r[2].inset(t.dp(2), t.dp(4));
+  const int bw = t.dp(32), rowH = t.dp(30);
+  const Point down{(int16_t)(list.right() - bw / 2), (int16_t)(list.bottom() - bw / 2)};
+  const Point up{(int16_t)(list.right() - bw / 2), (int16_t)(list.y + bw / 2)};
+  // The list opens scrolled to the selected zone: page up to the top first.
+  for (int i = 0; i < 3; ++i) s.tap(up.x, up.y);
+  const std::vector<Color> top = s.dev.display.framebuffer();
+  s.tap(down.x, down.y);
+  CHECK(s.dev.display.framebuffer() != top);
+  // One page is the view less one row; the first row now shown is the one a tap picks.
+  const int firstShown = list.h / rowH - 1;
+  int count = 0;
+  const TimezonePreset *zones = timezonePresets(count);
+  CHECK(firstShown > 0 && firstShown < count);
+  s.tap(list.x + list.w / 3, list.y + rowH / 2);
+  CHECK(strcmp(s.os.settings().timezone, zones[firstShown].posix) == 0);
+  s.tap(up.x, up.y);  // and back to the top
+  s.run(100);
+  CHECK(!s.os.renderPending());
+  const std::vector<Color> incremental = s.dev.display.framebuffer();
+  s.os.invalidateAll();
+  s.run(20);
+  CHECK(incremental == s.dev.display.framebuffer());
+}

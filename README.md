@@ -18,7 +18,7 @@ management and versioned settings.
 | --- | --- |
 | Version | 0.4.0, bedside clock |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 105 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 107 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -127,18 +127,21 @@ In the Arduino IDE: add this repository as a library, open
    Wi-Fi has fetched it) and "06:45 · in 8 h 15 min" when an alarm is set;
    any tap returns to the Clock. Is it dim enough for a dark room, are the
    stars visible, and does the black background still flicker?
-9. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
+9. *Lists*: on Settings > Time (time zones), Settings > About, the Wi-Fi
+   network list and the weather places, the up/down buttons at the right edge
+   scroll by a page; the rail shows where you are.
+10. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
-10. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
+11. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
-11. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
+12. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
    sleeping screen; *Again* restarts it. An alarm set for the next minute
    rings, *Snooze* brings it back nine minutes later, and a one-off alarm
    switches itself off. With a small speaker on the *SPEAK* connector the
    chime is audible but gentle (`STELLA_CYD_TONE_DUTY` adjusts it).
-12. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+13. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-13. Leave it running overnight; no `restarting` line in the log and the
+14. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

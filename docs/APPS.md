@@ -164,5 +164,8 @@ are complete examples.
   skip work entirely.
 - Long work belongs in a `Job` on the service thread, publishing a
   `Topic<T>`; the app reads it in `onTopic`.
+- A scrolling `ListView` sets `buttonWidth = t.dp(32)` in `layout()` to get
+  up/down buttons and a rail when it overflows (resistive panels make drags
+  hard); draw and pick rows in `list.rows()`, not `list.bounds`.
 - Persist small app state with `ctx.saveAppRecord(key, version, &data, size)`.
 - Check the result at both densities: `python3 tools/screenshots.py`.
