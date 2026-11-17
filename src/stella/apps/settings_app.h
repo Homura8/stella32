@@ -153,8 +153,9 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    Rect note_, skies_, skyNote_;
+    Rect note_, skies_, skyNote_, animRow_;
     Segmented mode_;
+    Toggle animations_;
     uint8_t skyPin_ = 0;
     int pressedSky_ = -1;
   };

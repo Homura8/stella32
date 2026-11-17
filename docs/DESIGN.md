@@ -103,6 +103,15 @@ shadow in the sky's own hue disappears on a dark sky or a dark glass card.
 Popups keep the translucent glass look (the alert card is ~93% opaque so its
 text stays readable).
 
+## Motion
+
+Calm, short and optional. The only motion between screens is a slide of the
+whole content area (220 ms, ease-out, the direction you are going); sky and
+status bar stay still. Nothing animates while a screen is idle. Anything that
+moves must be skippable (Settings > Appearance > Animations) and must never
+delay a touch (a touch ends a slide at once). See `docs/ARCHITECTURE.md`,
+*Screen transitions*.
+
 ## Typography
 
 | Role | Font | Compact | Regular | Use |

@@ -236,6 +236,25 @@ void capture(int width, int height, const std::string &root) {
       save(25, "update-ready");
     }
 
+    // A screen sliding in (animations on): the frame a little way into Home > Settings.
+    s.os.launch("settings");
+    while (s.os.topScreen() != &s.settings.root()) s.os.pop();  // earlier scenes left screens on its stack
+    s.os.goHome();
+    s.run(400);
+    {
+      SystemSettings animated = s.os.settings();
+      animated.animations = true;
+      s.os.applySettings(animated);
+      s.run(50);
+      s.os.launch("settings");
+      s.run(70);
+      save(27, "slide");
+      s.run(500);
+      animated.animations = false;
+      s.os.applySettings(animated);
+      s.run(50);
+    }
+
     // The bedside clock, with the alarm set earlier.
     s.os.goHome();
     s.os.launch("clock", "bedside");
