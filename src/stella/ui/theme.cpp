@@ -40,19 +40,48 @@ constexpr ToneParams kTones[3] = {
 
 inline float clamp255(float v) { return v < 0.f ? 0.f : v > 255.f ? 255.f : v; }
 
-// Turns design colours (hex) into panel colours: the tone (saturation and,
-// for light materials, depth) and then the contrast gamma, in 8-bit before
-// quantising to RGB565.
+// Turns design colours (hex) into panel colours, in 8-bit before quantising
+// to RGB565: the tone (saturation and, for light materials, depth), then the
+// contrast gamma, the white-level knee and the warmth.
 struct Toner {
   ToneParams k;
-  float contrast;  // gamma, 1.0 = none
+  float gamma = 1.f;     // backgrounds and materials
+  float inkGamma = 1.f;  // inks: the contrast in light mode, none in dark mode
+  float whites = 1.f;    // slope above the knee (1 = unchanged)
+  float greenGain = 1.f, blueGain = 1.f;
 
-  float curve(float v, float gamma) const { return gamma == 1.f ? v : 255.f * powf(v / 255.f, gamma); }
+  static Toner make(const ToneParams &k, const Look &look, bool dark) {
+    Toner x{k};
+    const int contrast = look.contrast > 100 ? 100 : look.contrast;
+    const int whites = look.whites > 100 ? 100 : look.whites;
+    const int warmth = look.warmth > 100 ? 100 : look.warmth;
+    x.gamma = 1.f + contrast * 0.012f;
+    x.inkGamma = dark ? 1.f : x.gamma;
+    x.whites = 0.35f + 0.65f * whites / 100.f;
+    x.greenGain = 1.f - 0.05f * warmth / 100.f;
+    x.blueGain = 1.f - 0.16f * warmth / 100.f;
+    return x;
+  }
 
-  // Design colour with contrast only (text and other inks).
-  Color ink(uint32_t hex) const { return tone(hex, false, 1.f); }
+  static constexpr float kKnee = 200.f;
+  static float curve(float v, float g) { return g == 1.f ? v : 255.f * powf(v / 255.f, g); }
+  float shoulder(float v) const { return v <= kKnee ? v : kKnee + (v - kKnee) * whites; }
 
-  Color tone(uint32_t hex, bool deepen, float saturation = -1.f) const {
+  Color finish(float r, float g, float b, float gam) const {
+    r = shoulder(curve(r, gam));
+    g = shoulder(curve(g, gam)) * greenGain;
+    b = shoulder(curve(b, gam)) * blueGain;
+    return rgb((uint8_t)(r + 0.5f), (uint8_t)(g + 0.5f), (uint8_t)(b + 0.5f));
+  }
+
+  // Text and other inks: design hue, the ink contrast.
+  Color ink(uint32_t hex) const {
+    return finish((float)((hex >> 16) & 0xff), (float)((hex >> 8) & 0xff), (float)(hex & 0xff), inkGamma);
+  }
+
+  // Backgrounds and materials: saturation, depth (light), contrast. With
+  // `asInk` the ink contrast is used instead (accents).
+  Color tone(uint32_t hex, bool deepen, float saturation = -1.f, bool asInk = false) const {
     float r = (float)((hex >> 16) & 0xff), g = (float)((hex >> 8) & 0xff), b = (float)(hex & 0xff);
     const float sat = saturation < 0.f ? k.saturation : saturation;
     if (sat != 1.f) {
@@ -61,11 +90,7 @@ struct Toner {
       g = clamp255(luma + (g - luma) * sat);
       b = clamp255(luma + (b - luma) * sat);
     }
-    const float gamma = (deepen ? k.depth : 1.f) * contrast;
-    r = curve(r, gamma);
-    g = curve(g, gamma);
-    b = curve(b, gamma);
-    return rgb((uint8_t)(r + 0.5f), (uint8_t)(g + 0.5f), (uint8_t)(b + 0.5f));
+    return finish(r, g, b, (deepen ? k.depth : 1.f) * (asInk ? inkGamma : gamma));
   }
 };
 
@@ -120,16 +145,12 @@ const char *toneName(ColorTone tone) {
   return kNames[(int)tone <= 2 ? (int)tone : 1];
 }
 
-Color lookColor(const Look &look, uint32_t hex) {
-  const uint8_t contrast = look.contrast > 100 ? 100 : look.contrast;
-  return Toner{kTones[0], 1.f + contrast * 0.012f}.ink(hex);
-}
+Color lookColor(const Look &look, uint32_t hex) { return Toner::make(kTones[0], look, false).tone(hex, false, 1.f); }
 
 Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look) {
   const int p = (int)phase & 3;
   const ToneParams &k = kTones[(int)look.tone <= 2 ? (int)look.tone : 0];
-  const uint8_t contrast = look.contrast > 100 ? 100 : look.contrast;
-  const Toner x{k, 1.f + contrast * 0.012f};
+  const Toner x = Toner::make(k, look, dark);
   Theme t{};
   t.density = density;
   t.phase = phase;
@@ -148,7 +169,7 @@ Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look) {
   }
   c.skyTint = x.tone(kSkyTint[p], !dark);
   // Accents keep their contrast with text-coloured fills: saturation only.
-  c.accent = x.tone(dark ? kDarkAccent[p] : kLightAccent[p], false, 1.f + (k.saturation - 1.f) * 0.5f);
+  c.accent = x.tone(dark ? kDarkAccent[p] : kLightAccent[p], false, 1.f + (k.saturation - 1.f) * 0.5f, true);
   if (dark) {
     c.orbPink = x.tone(0x6a435e, false);
     c.orbLavender = x.tone(0x534374, false);
@@ -157,15 +178,15 @@ Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look) {
     c.text = x.ink(0xeee8f5);
     c.textMuted = x.ink(0xbcb2c9);
     c.accentText = x.ink(0x211e30);
-    c.glass = x.ink(0x2e283f);
+    c.glass = x.tone(0x2e283f, false, 1.f);  // material
     c.glassAlpha = 212;  // rgba(46,40,63,.83)
     c.rim = x.ink(0xeddeff);
     c.rimAlpha = 46;  // rgba(237,222,255,.18)
     c.line = x.ink(0xd7c5ef);
     c.lineAlpha = 41;  // rgba(215,197,239,.16)
-    c.shadow = x.ink(0x080414);
+    c.shadow = x.tone(0x080414, false, 1.f);  // material
     c.shadowAlpha = 70;
-    c.surface = x.ink(0x302a3d);
+    c.surface = x.tone(0x302a3d, false, 1.f);  // material
     c.good = x.ink(0xb3d6cd);
     c.warn = x.ink(0xe7d8b5);
     c.danger = x.ink(0xf0a9b5);
@@ -181,15 +202,15 @@ Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look) {
     c.text = x.ink(0x3d354d);
     c.textMuted = x.ink(0x685e74);
     c.accentText = x.ink(0xfaf7fb);
-    c.glass = x.ink(0xfffdff);
+    c.glass = x.tone(0xfffdff, false, 1.f);  // material
     c.glassAlpha = 179;  // rgba(255,253,255,.7)
     c.rim = x.ink(0xffffff);
     c.rimAlpha = 240;
     c.line = x.ink(0x5d4878);
     c.lineAlpha = gain(33, k.edge);  // rgba(93,72,120,.13)
-    c.shadow = x.ink(0x4b346c);
+    c.shadow = x.tone(0x4b346c, false, 1.f);  // material
     c.shadowAlpha = gain(30, k.edge);
-    c.surface = x.ink(0xfaf7fb);
+    c.surface = x.tone(0xfaf7fb, false, 1.f);  // material
     c.good = x.ink(0x5f9e8c);
     c.warn = x.ink(0xa8823a);
     c.danger = x.ink(0xb35d74);

@@ -290,14 +290,15 @@ void Runtime::updateTheme(bool force) {
   const SkyPhase phase = settings_.skyPin ? (SkyPhase)(settings_.skyPin - 1) : timePhase_;
   const bool dark = resolveDark(settings_.appearance, phase);
   const Density density = densityFor(screen_.w, screen_.h);
-  const Look look = settings_.look();
+  const Look look = settings_.look(dark);
   const bool sameLook = look.tone == theme_.look.tone && look.contrast == theme_.look.contrast &&
+                        look.whites == theme_.look.whites && look.warmth == theme_.look.warmth &&
                         look.dither == theme_.look.dither;
   if (!force && phase == theme_.phase && dark == theme_.color.dark && density == theme_.density && sameLook) {
     if (board_.display) applyBrightness();  // night dimming follows the clock, not the pinned sky
     return;
   }
-  theme_ = makeTheme(density, dark, phase, settings_.look());
+  theme_ = makeTheme(density, dark, phase, look);
   content_ = Rect(screen_.x, screen_.y + theme_.m.statusBar, screen_.w, screen_.h - theme_.m.statusBar);
   if (board_.display) applyBrightness();
   GestureConfig g;

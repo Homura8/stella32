@@ -137,16 +137,20 @@ void capture(int width, int height, const std::string &root) {
     const int rowH = want <= fit ? want : fit < st.dp(32) ? st.dp(32) : fit;
     s.tap(area.centerX(), area.y + st.dp(4) + 4 * rowH + rowH / 2);
     s.run(2500);
-    save(17, "calibrate-colour");
-    s.tap(area.right() - area.w / 4, area.y + st.m.control / 2);
+    save(17, "calibrate-tone");
+    const int tabsW = area.w - st.dp(72) - st.m.gapM;
+    s.tap(area.x + tabsW * 3 / 6, area.y + st.m.control / 2);
     s.run(100);
-    save(18, "calibrate-flicker");
+    save(18, "calibrate-colour");
+    s.tap(area.x + tabsW * 5 / 6, area.y + st.m.control / 2);
+    s.run(100);
+    save(19, "calibrate-panel");
     s.os.goHome();
     s.os.launch("touch");
     s.run(100);
     s.tap(area.right() - st.dp(52), area.bottom() - st.m.control / 2);
     s.run(100);
-    save(19, "touch-calibrate");
+    save(20, "touch-calibrate");
   }
 }
 

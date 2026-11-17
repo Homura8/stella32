@@ -274,7 +274,7 @@ namespace {
 
 const char *const kRefreshLabels[] = {"Default", "90 Hz", "100 Hz", "119 Hz"};
 const uint8_t kRefreshHz[] = {0, 90, 100, 119};
-const char *const kTabLabels[] = {"Colour", "Flicker"};
+const char *const kTabLabels[] = {"Tone", "Colour", "Panel"};
 
 // Rows of a settings card: as tall as a control when they fit, never below
 // the 32 dp touch minimum (the card then takes what it needs).
@@ -324,7 +324,7 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   const LocalTime now = ctx.localTime();
   night_ = !now.valid || phaseForHour(now.hour) == SkyPhase::Night;
   snprintf(calibrateDetail_, sizeof(calibrateDetail_), "%s \xc2\xb7 %u%%", toneName(s.colorTone),
-           (unsigned)s.contrast);
+           (unsigned)(ctx.theme().color.dark ? s.contrastDark : s.contrastLight));
   calibrate_.detail = calibrateDetail_;
 }
 
@@ -384,84 +384,98 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
 void SettingsApp::CalibrateScreen::layout(const Rect &content, const Theme &t) {
   theme_ = t;
   content_ = content;
+  dark_ = t.color.dark;
   arrange();
 }
 
 void SettingsApp::CalibrateScreen::arrange() {
   const Theme &t = theme_;
   const Rect area = content_.inset(t.m.margin, t.m.gapS);
-  Rect r[3];
-  column(area, {px(t.m.control), flex(), px(0)}, t.m.gapM, r);
-  tabs_.bounds = r[0];
+  Rect r[2];
+  column(area, {px(t.m.control), flex()}, t.m.gapM, r);
+  Rect top[2];
+  row(r[0], {flex(), px(t.dp(72))}, t.m.gapM, top);
+  tabs_.bounds = top[0];
+  reset_.bounds = top[1];
+  reset_.label = "Reset";
   const Rect body = r[1];
   const int rowH = cardRowHeight(t, body.h * 3 / 5, 3);
-  if (tabs_.selected == 0) {
-    // Colour: test strip on top, three rows of controls under it.
-    strip_ = Rect(body.x, body.y, body.w, body.h - 3 * rowH - t.m.gapM);
-    patch_ = note_ = Rect();
-  } else {
-    patch_ = Rect(body.x, body.y, body.w, body.h - 2 * rowH - t.m.gapM - t.font.caption->lineHeight);
-    note_ = Rect(body.x, patch_.bottom(), body.w, t.font.caption->lineHeight + t.m.gapS);
+  const int rows = rowCount();
+  const Rect upper(body.x, body.y, body.w, body.h - rows * rowH - t.m.gapS);
+  if (tabs_.selected == 2) {
+    note_ = upper;
     strip_ = Rect();
+  } else {
+    strip_ = upper;
+    note_ = Rect();
   }
-  const int rows = tabs_.selected == 0 ? 3 : 2;
-  const int top = body.bottom() - rows * rowH;
+  const int top0 = body.bottom() - rows * rowH;
   for (int i = 0; i < 3; ++i) {
     if (i >= rows) {
       rows_[i] = labels_[i] = Rect();
       continue;
     }
-    rows_[i] = Rect(body.x, top + i * rowH, body.w, rowH);
+    rows_[i] = Rect(body.x, top0 + i * rowH, body.w, rowH);
     Rect parts[2];
-    row(rows_[i].inset(t.dp(4), 0), {px(t.dp(84)), flex()}, t.m.gapM, parts);
+    row(rows_[i].inset(t.dp(4), 0), {px(t.dp(104)), flex()}, t.m.gapM, parts);
     labels_[i] = parts[0];
     const Rect control = parts[1].inset(0, (rowH - t.m.control) / 2 > 0 ? (rowH - t.m.control) / 2 : 0);
-    if (tabs_.selected == 0) {
-      if (i == 0) contrast_.bounds = control;
-      if (i == 1) tone_.bounds = control.inset(0, t.dp(2));
-      if (i == 2) dither_.bounds = rows_[i].inset(t.dp(4), 0);
-    } else {
-      if (i == 0) vcom_.bounds = control;
-      if (i == 1) refresh_.bounds = control.inset(0, t.dp(2));
+    switch (tabs_.selected * 3 + i) {
+      case 0: contrast_.bounds = control; break;
+      case 1: whites_.bounds = control; break;
+      case 2: warmth_.bounds = control; break;
+      case 3: tone_.bounds = control.inset(0, t.dp(2)); break;
+      case 4: dither_.bounds = rows_[i].inset(t.dp(4), 0); break;
+      case 6: vcom_.bounds = control; break;
+      case 7: refresh_.bounds = control.inset(0, t.dp(2)); break;
+      default: break;
     }
   }
 }
 
-void SettingsApp::CalibrateScreen::onShow(AppContext &ctx) {
-  const SystemSettings &s = ctx.settings();
-  tabs_.labels = kTabLabels;
-  tabs_.count = 2;
-  tone_.labels = kToneLabels;
-  tone_.count = 3;
+void SettingsApp::CalibrateScreen::load(const SystemSettings &s) {
+  contrast_.value = dark_ ? s.contrastDark : s.contrastLight;
+  whites_.value = s.whiteLevel;
+  warmth_.value = s.warmth;
   tone_.selected = (uint8_t)s.colorTone;
-  refresh_.labels = kRefreshLabels;
-  refresh_.count = 4;
+  dither_.on = s.dither;
+  vcom_.value = s.panelVcom;
   refresh_.selected = 0;
   for (uint8_t i = 0; i < 4; ++i)
     if (kRefreshHz[i] == s.panelRefreshHz) refresh_.selected = i;
-  contrast_.minimum = 0;
-  contrast_.maximum = 100;
-  contrast_.value = s.contrast;
+}
+
+void SettingsApp::CalibrateScreen::onShow(AppContext &ctx) {
+  tabs_.labels = kTabLabels;
+  tabs_.count = 3;
+  tone_.labels = kToneLabels;
+  tone_.count = 3;
+  refresh_.labels = kRefreshLabels;
+  refresh_.count = 4;
+  Slider *const percent[3] = {&contrast_, &whites_, &warmth_};
+  for (Slider *sl : percent) {
+    sl->minimum = 0;
+    sl->maximum = 100;
+  }
   vcom_.minimum = -30;
   vcom_.maximum = 30;
-  vcom_.value = s.panelVcom;
-  dither_.on = s.dither;
   panelTrim_ = ctx.status().panelTrim;
+  load(ctx.settings());
   arrange();
 }
 
 void SettingsApp::CalibrateScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
   tabs_.draw(c, t);
+  reset_.draw(c, t);
   if (!strip_.empty() && c.visible(strip_)) {
     // Compare with the same screen on a good monitor (docs/screenshots):
-    // a grey ramp, the text inks, the accent and the sky tints.
+    // a grey ramp, the text inks, the accent and the tints.
     Rect parts[2];
     column(strip_, {flex(), flex()}, t.dp(4), parts);
     for (int i = 0; i < 8; ++i) {
       const uint8_t v = (uint8_t)(i * 255 / 7);
-      const Rect cell = grid(parts[0], 8, 1, i, 0);
-      c.fillRect(cell, lookColor(t.look, (uint32_t)v << 16 | (uint32_t)v << 8 | v));
+      c.fillRect(grid(parts[0], 8, 1, i, 0), lookColor(t.look, (uint32_t)v << 16 | (uint32_t)v << 8 | v));
     }
     Rect swatches[6];
     row(parts[1], {flex(), flex(), flex(), flex(), flex(), flex()}, t.dp(3), swatches);
@@ -469,33 +483,35 @@ void SettingsApp::CalibrateScreen::draw(Canvas &c, const Theme &t) {
     for (int i = 0; i < 6; ++i) c.fillRoundRect(swatches[i], t.dp(4), inks[i]);
     c.drawTextIn(*t.font.body, "Aa", swatches[0], p.accentText, Align::Center);
   }
-  if (!patch_.empty() && c.visible(patch_)) {
-    // One-pixel checkerboard: the pattern that shows VCOM flicker most.
-    const Rect area = c.clip().intersect(patch_.inset(t.dp(2)));
-    const Color on = lookColor(t.look, 0xb0b0b0), off = lookColor(t.look, 0x303030);
-    for (int y = area.y; y < area.bottom(); ++y)
-      for (int x = area.x; x < area.right(); ++x) c.at(x, y) = ((x ^ y) & 1) ? on : off;
-    c.strokeRoundRect(patch_, t.dp(4), 1, p.line, p.lineAlpha);
-  }
   if (!note_.empty()) {
-    c.drawTextIn(*t.font.caption,
-                 panelTrim_ ? "Move Flicker until the patch stops shimmering" : "This display has no flicker adjustment",
-                 note_, p.textMuted, Align::Center);
+    c.drawWrapped(*t.font.caption,
+                  panelTrim_ ? "These start at the panel driver's values, which most CYD projects use. Change them "
+                               "only if the screen shimmers; Reset restores them."
+                             : "This display has no panel adjustments.",
+                  note_.inset(t.dp(4), t.dp(2)), p.textMuted, 4);
   }
-  static const char *const kColour[3] = {"Contrast", "Colour", "Smooth sky"};
-  static const char *const kFlicker[2] = {"Flicker", "Refresh"};
-  for (int i = 0; i < 3; ++i) {
-    if (rows_[i].empty()) continue;
-    c.drawTextIn(*t.font.body, tabs_.selected == 0 ? kColour[i] : kFlicker[i], labels_[i],
-                 tabs_.selected == 1 && !panelTrim_ ? p.textMuted : p.text);
+  static const char *const kLabels[3][3] = {
+      {nullptr, "White level", "Warmth"}, {"Colour", "Smooth sky", nullptr}, {"Flicker", "Refresh", nullptr}};
+  for (int i = 0; i < rowCount(); ++i) {
+    const char *label = kLabels[tabs_.selected][i];
+    if (!label) label = dark_ ? "Dark contrast" : "Light contrast";
+    c.drawTextIn(*t.font.body, label, labels_[i], tabs_.selected == 2 && !panelTrim_ ? p.textMuted : p.text);
   }
-  if (tabs_.selected == 0) {
-    contrast_.draw(c, t);
-    tone_.draw(c, t);
-    dither_.draw(c, t);
-  } else if (panelTrim_) {
-    vcom_.draw(c, t);
-    refresh_.draw(c, t);
+  switch (tabs_.selected) {
+    case 0:
+      contrast_.draw(c, t);
+      whites_.draw(c, t);
+      warmth_.draw(c, t);
+      break;
+    case 1:
+      tone_.draw(c, t);
+      dither_.draw(c, t);
+      break;
+    default:
+      if (panelTrim_) {
+        vcom_.draw(c, t);
+        refresh_.draw(c, t);
+      }
   }
 }
 
@@ -506,13 +522,44 @@ bool SettingsApp::CalibrateScreen::onEvent(const Event &e, AppContext &ctx) {
     return true;
   }
   SystemSettings s = ctx.settings();
+  if (reset_.handle(e, ctx)) {
+    const SystemSettings &d = ctx.defaultSettings();
+    if (tabs_.selected == 0) {
+      (dark_ ? s.contrastDark : s.contrastLight) = dark_ ? d.contrastDark : d.contrastLight;
+      s.whiteLevel = d.whiteLevel;
+      s.warmth = d.warmth;
+    } else if (tabs_.selected == 1) {
+      s.colorTone = d.colorTone;
+      s.dither = d.dither;
+    } else {
+      s.panelVcom = d.panelVcom;
+      s.panelRefreshHz = d.panelRefreshHz;
+    }
+    ctx.applySettings(s);
+    load(s);
+    ctx.invalidate(ctx.contentRect());
+    ctx.toast("Reset to this display's defaults");
+    return true;
+  }
   if (tabs_.selected == 0) {
     if (contrast_.handle(e, ctx, ctx.theme())) {
-      s.contrast = (uint8_t)contrast_.value;
-      ctx.applySettings(s);  // re-themes: every colour changes
+      (dark_ ? s.contrastDark : s.contrastLight) = (uint8_t)contrast_.value;
+      ctx.applySettings(s);  // re-themes: the colours change
       return true;
     }
-    if (contrast_.dragging) return true;
+    if (whites_.handle(e, ctx, ctx.theme())) {
+      s.whiteLevel = (uint8_t)whites_.value;
+      ctx.applySettings(s);
+      return true;
+    }
+    if (warmth_.handle(e, ctx, ctx.theme())) {
+      s.warmth = (uint8_t)warmth_.value;
+      ctx.applySettings(s);
+      return true;
+    }
+    return contrast_.dragging || whites_.dragging || warmth_.dragging;
+  }
+  if (tabs_.selected == 1) {
     if (tone_.handle(e, ctx)) {
       s.colorTone = (ColorTone)tone_.selected;
       ctx.applySettings(s);
