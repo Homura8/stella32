@@ -150,6 +150,18 @@ class LightSensor {
   virtual uint16_t read() = 0;  // 0..4095, a few samples averaged
 };
 
+// Flash set aside for one picture (the wallpaper): a few tens of KB that need
+// not be mapped, only written once in order and read back in pieces.
+class WallpaperStore {
+ public:
+  virtual ~WallpaperStore() = default;
+  virtual size_t capacity() = 0;  // bytes it can hold; 0 = this board cannot
+  // Sequential from offset 0: the store erases as the offset advances.
+  virtual bool write(size_t offset, const uint8_t *data, size_t size) = 0;
+  virtual bool read(size_t offset, uint8_t *out, size_t size) = 0;
+  virtual bool erase() = 0;  // forget the picture (at least its first sector)
+};
+
 // Everything a board port provides, gathered for Runtime::begin().
 struct Board {
   Display *display = nullptr;
@@ -163,6 +175,8 @@ struct Board {
   FirmwareSlot *firmware = nullptr;  // optional; over-the-air updates
   Led *led = nullptr;                // optional; an RGB status LED
   LightSensor *light = nullptr;      // optional; ambient light
+  RemoteServer *remote = nullptr;    // optional; the web page on the home network
+  WallpaperStore *wallpaper = nullptr;  // optional; a picture behind the glass
 };
 
 }  // namespace stella

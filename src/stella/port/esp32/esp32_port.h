@@ -4,6 +4,7 @@
 // Requires Arduino-ESP32 3.x.
 #include <Arduino.h>
 #include <DNSServer.h>
+#include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
@@ -23,6 +24,7 @@
 #include "../../core/deadline.h"
 #include "../../net/firmware_update.h"
 #include "../../net/http_request.h"
+#include "../../net/remote.h"
 #include "../../net/setup_portal.h"
 #include "../../runtime/runtime.h"
 
@@ -401,6 +403,156 @@ class Esp32SetupServer : public SetupServer {
   bool running_ = false;
   Slot slots_[kSlots];
   char page_[SetupPortal::kPageBytes];
+};
+
+// The wallpaper lives in the data partition the default layout calls "spiffs"
+// (nothing else uses it): written once in order, a sector at a time, and read in
+// rows. The first sector holds the header, so erasing it forgets the picture.
+class Esp32WallpaperStore : public WallpaperStore {
+ public:
+  size_t capacity() override {
+    const esp_partition_t *p = part();
+    return p ? p->size : 0;
+  }
+  bool write(size_t offset, const uint8_t *data, size_t size) override {
+    const esp_partition_t *p = part();
+    if (!p || offset + size > p->size) return false;
+    if (offset == 0) erased_ = 0;  // a fresh picture
+    const size_t end = (offset + size + 4095) & ~(size_t)4095;
+    if (end > erased_) {
+      if (esp_partition_erase_range(p, erased_, end - erased_) != ESP_OK) return false;
+      erased_ = end;
+      vTaskDelay(1);  // erasing takes a while: let the idle task run
+    }
+    return esp_partition_write(p, offset, data, size) == ESP_OK;
+  }
+  bool read(size_t offset, uint8_t *out, size_t size) override {
+    const esp_partition_t *p = part();
+    return p && offset + size <= p->size && esp_partition_read(p, offset, out, size) == ESP_OK;
+  }
+  bool erase() override {
+    const esp_partition_t *p = part();
+    erased_ = 0;
+    return p && esp_partition_erase_range(p, 0, 4096) == ESP_OK;
+  }
+
+ private:
+  static const esp_partition_t *part() {
+    static const esp_partition_t *found =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+    return found;
+  }
+  size_t erased_ = 0;
+};
+
+// The remote page on the home network: a non-blocking server on the station
+// interface (the same shape as the setup server, see its notes), announced as
+// stella-xxxx.local by mDNS. All meaning lives in the portable RemoteService.
+class Esp32RemoteServer : public RemoteServer {
+ public:
+  static constexpr int kSlots = 3;
+  static constexpr uint32_t kIdleMs = 3000, kUploadIdleMs = 15000, kReadBudgetMs = 15;
+
+  bool begin(RemoteHandler &handler) override {
+    if (WiFi.status() != WL_CONNECTED) return false;
+    const String mac = WiFi.macAddress();  // "AA:BB:CC:DD:EE:FF"
+    snprintf(host_, sizeof(host_), "stella-%c%c%c%c", tolower(mac[12]), tolower(mac[13]), tolower(mac[15]), tolower(mac[16]));
+    if (MDNS.begin(host_)) MDNS.addService("http", "tcp", 80);
+    server_.begin();
+    server_.setNoDelay(true);
+    for (Slot &slot : slots_) slot.conn.bind(handler);
+    running_ = true;
+    return true;
+  }
+  void poll() override {
+    if (!running_) return;
+    if (WiFi.status() != WL_CONNECTED) {
+      end();
+      return;
+    }
+    for (;;) {
+      NetworkClient client = server_.accept();
+      if (!client) break;
+      Slot *free = nullptr;
+      for (Slot &slot : slots_)
+        if (!slot.client) {
+          free = &slot;
+          break;
+        }
+      if (!free) {  // all busy: the longest-silent one makes room
+        free = &slots_[0];
+        for (Slot &slot : slots_)
+          if (elapsedMs(millis(), slot.lastMs) > elapsedMs(millis(), free->lastMs)) free = &slot;
+        close(*free);
+      }
+      free->client = client;
+      free->conn.reset();
+      free->lastMs = millis();
+    }
+    const uint32_t start = millis();
+    for (Slot &slot : slots_) {
+      if (!slot.client) continue;
+      // A phone sending a picture is read as fast as it sends, within a small budget per poll.
+      while (slot.client.connected() && slot.client.available() > 0 && !slot.conn.done() && elapsedMs(millis(), start) < kReadBudgetMs) {
+        const int n = slot.client.read(rx_, sizeof(rx_));
+        if (n <= 0) break;
+        slot.lastMs = millis();
+        slot.conn.feed(rx_, (size_t)n);
+      }
+      if (slot.conn.done()) {
+        respond(slot);
+        close(slot);
+      } else if (!slot.client.connected() && slot.client.available() <= 0) {
+        close(slot);
+      } else if (elapsedMs(millis(), slot.lastMs) >= (slot.conn.parser().state() == HttpRequestParser::State::Streaming ? kUploadIdleMs : kIdleMs)) {
+        close(slot);
+      }
+    }
+  }
+  void end() override {
+    if (!running_) return;
+    for (Slot &slot : slots_) close(slot);
+    server_.end();
+    MDNS.end();
+    running_ = false;
+  }
+  bool running() const override { return running_; }
+  void hostname(char *out, size_t capacity) const override { copyText(out, capacity, host_); }
+  void address(char *out, size_t capacity) const override { copyText(out, capacity, WiFi.localIP().toString().c_str()); }
+
+ private:
+  struct Slot {
+    NetworkClient client;
+    RemoteConnection conn;
+    uint32_t lastMs = 0;
+  };
+  void close(Slot &slot) {
+    slot.conn.reset();  // also ends an upload that was cut off
+    if (slot.client) slot.client.stop();
+    slot.client = NetworkClient();
+  }
+  void respond(Slot &slot) {
+    char head[256];
+    const uint8_t *body = nullptr;
+    size_t bodyLength = 0;
+    const size_t headLength = slot.conn.respond(head, sizeof(head), page_, sizeof(page_), &body, &bodyLength);
+    if (!headLength) return;
+    slot.client.write((const uint8_t *)head, headLength);
+    while (bodyLength > 0 && slot.client.connected()) {
+      const size_t n = slot.client.write(body, bodyLength < 1024 ? bodyLength : 1024);
+      if (n == 0) break;
+      body += n;
+      bodyLength -= n;
+    }
+    slot.client.flush();
+  }
+
+  NetworkServer server_{80};
+  Slot slots_[kSlots];
+  uint8_t rx_[1460];
+  char page_[640];  // JSON answers (the page itself is sent straight from flash)
+  char host_[24] = {0};
+  bool running_ = false;
 };
 
 // HTTPS GET with certificate verification against the core's built-in CA

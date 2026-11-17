@@ -14,6 +14,7 @@
 #include "sim_session.h"
 #include "stella/app/text_entry.h"
 #include "stella/core/sha256.h"
+#include "stella/net/wallpaper.h"
 #include "stella/ui/layout.h"
 
 using namespace stella;
@@ -269,6 +270,47 @@ void capture(int width, int height, const std::string &root) {
       s.run(100);
       s.os.pop();
     }
+
+    // The remote page's Settings screen, and Home over a wallpaper (a sunset
+    // gradient made here, sent the way the phone page sends one).
+    s.os.goHome();
+    s.os.launch("settings", "remote");
+    s.run(200);
+    s.os.remote().setEnabled(true);
+    s.run(800);
+    save(33, "remote-page");
+    {
+      std::string body(wallpaper::kPaletteBytes + wallpaper::kPixelBytes, '\0');
+      for (int i = 0; i < wallpaper::kColors; ++i) {  // deep violet -> rose -> amber, top to bottom
+        const int r = i < 128 ? 70 + i : 198 + (i - 128) * 57 / 127, g = i < 128 ? 40 + i * 70 / 127 : 110 + (i - 128) * 80 / 127,
+                  b = i < 128 ? 120 + i * 20 / 127 : 140 - (i - 128) * 80 / 127;
+        const uint16_t rgb = (uint16_t)(((r & 248) << 8) | ((g & 252) << 3) | (b >> 3));
+        body[2 * i] = (char)(rgb & 255);
+        body[2 * i + 1] = (char)(rgb >> 8);
+      }
+      for (int y = 0; y < wallpaper::kHeight; ++y)
+        for (int x = 0; x < wallpaper::kWidth; ++x) {
+          const int dx = x - 230, dy = y - 170;  // a soft glow low on the right
+          int v = y * 255 / (wallpaper::kHeight - 1) + (dx * dx + dy * dy < 4000 ? 40 : 0);
+          body[wallpaper::kPaletteBytes + (size_t)y * wallpaper::kWidth + x] = (char)(v > 255 ? 255 : v);
+        }
+      wallpaper::Header h{wallpaper::kMagic, wallpaper::kWidth, wallpaper::kHeight, wallpaper::kColors, 0,
+                          wallpaper::crc32(body.data(), body.size())};
+      std::string file(reinterpret_cast<const char *>(&h), sizeof(h));
+      file += body;
+      char pin[8];
+      s.os.remote().pin(pin);
+      const std::string req = std::string("POST /api/wallpaper HTTP/1.1\r\nX-Stella-Pin: ") + pin +
+                              "\r\nContent-Length: " + std::to_string(file.size()) + "\r\n\r\n" + file;
+      RemoteConnection conn(*s.dev.remote.handler);
+      conn.feed(reinterpret_cast<const uint8_t *>(req.data()), req.size());
+    }
+    s.os.goHome();
+    s.run(800);
+    save(34, "home-wallpaper");
+    s.os.remote().removeWallpaper();
+    s.os.remote().setEnabled(false);
+    s.run(600);
 
     // What's new, and the Home screen editor.
     s.os.goHome();

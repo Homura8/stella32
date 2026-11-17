@@ -188,6 +188,44 @@ case colour work. The user's brightness is multiplied by `0.12 + 0.88 * level^0.
 does not hunt. A calibration whose two ends are less than 60 counts apart is
 rejected (covered sensor), and auto dim cannot be switched on without one.
 
+## Remote page and wallpaper
+
+*Settings > Remote page* turns on a small web server on the **home network**
+(not the setup access point), so a phone or PC reaches the device by name
+(`stella-xxxx.local`, from mDNS; the last four hex digits of the MAC keep
+several devices apart) or by IP, without joining anything. It is **off until the
+person turns it on**, runs only while Wi-Fi is up and phone setup is not open
+(both want port 80), and is plain HTTP, for a home LAN. Every request that changes
+anything needs the **PIN** shown on the device's own screen (six digits, sent as
+`X-Stella-Pin`, compared without early exit, five wrong tries lock it for five
+minutes, never in a topic, log or URL). The page itself and `/api/status` are
+public and contain nothing private.
+
+Layers: `net/remote.*` is the portable service (a Job on the service thread: routes,
+PIN, lock-out, the upload sink, start/stop of the server) plus `RemoteConnection`
+(bytes in, a complete response out, shared by the board's server and the tests);
+`net/http_request.*` gained **streaming bodies** (a body over 512 bytes goes to an
+`HttpBodySink` as it arrives instead of being refused) and the PIN header;
+`Esp32RemoteServer` only moves sockets (three slots, never waits, a read budget per
+poll so an upload flows) and announces the name; `net/remote_page.h` is the page,
+generated from `tools/remote_page.html` by `tools/make_remote_page.py`.
+
+**The wallpaper** is one 320x240 picture as a 256-colour palette image
+(`net/wallpaper.h`: 16-byte header with a CRC-32, 512 bytes of RGB565 palette,
+76,800 indices: 77,328 bytes). It is made **in the browser** (the page crops to the
+screen, softens, darkens, builds a median-cut palette and dithers) and sent in one
+POST; the device streams it into the `spiffs` data partition (nothing else uses
+it; 128 KB with the default layout), erasing a sector at a time, and checks
+size, header and CRC before calling it valid. Eight bits a pixel needs no decoder and
+any row can be read in any order, which the chunked renderer needs. While an
+upload runs the old picture is not used; a dropped or damaged upload leaves none.
+`Runtime::paintWallpaper()` replaces `paintSky()` when a valid picture exists and
+the screen is 320x240 (other sizes keep the sky for now), reading one row at a time
+and washing it toward white (light mode) or black (dark mode) by the person's
+*Wash* setting so the glass and its text stay readable. The page's converter is
+checked in a real browser: `node tools/check_remote_page.js out.stwp`, then
+`tools/check_remote_page.cpp` verifies the file with the device's own loader.
+
 ## Alerts
 
 `AppContext::showAlert()` puts a modal glass card over everything (status bar
@@ -383,8 +421,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,512,483 B of a 1,966,080 B app slot (76%); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 85,972 B; 241,708 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
+| Program (flash) | 1,579,103 B of a 1,966,080 B app slot (80%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 94,556 B; 233,124 B left for stacks and heap (the setup server's and the remote server's request slots are ~7 KB of it; watch *Lowest free* in About) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |

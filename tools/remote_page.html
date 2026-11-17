@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>StellaOS</title><style>
+body{font-family:system-ui,sans-serif;background:#1c1330;color:#eee8f5;margin:0;padding:22px;max-width:460px;margin:auto}
+h1{font-size:24px;margin:6px 0}h2{font-size:17px;margin:22px 0 6px}p,label{color:#bcb2c9;line-height:1.4}
+input,button{font:inherit;border-radius:14px;border:0;padding:12px 14px;margin:5px 0}
+input[type=password],input[type=text]{background:#2e283f;color:#eee8f5;width:130px}
+button{background:#bdbde7;color:#211e30;font-weight:600}button.q{background:#2e283f;color:#eee8f5;font-weight:400}
+canvas{width:100%;border-radius:14px;background:#2e283f;display:block}input[type=range]{width:100%;padding:0}
+.ok{color:#b3d6cd}.bad{color:#f0a9b5}#app{display:none}</style></head><body>
+<h1>StellaOS</h1><p id=top>Enter the PIN shown on the device (Settings, Remote page).</p>
+<div id=lock><input id=pin type=password inputmode=numeric maxlength=6 placeholder="PIN"> <button id=go>Unlock</button></div>
+<div id=app><h2>Wallpaper</h2>
+<p>Any photo. It is cropped to the screen, softened, darkened and reduced to 256 colours here, then sent.</p>
+<input type=file id=file accept="image/*">
+<canvas id=cv width=320 height=240></canvas>
+<label>Darken <span id=dv>25</span>%<input type=range id=dark min=0 max=60 value=25></label>
+<label>Soften <span id=sv>2</span><input type=range id=soft min=0 max=4 value=2></label>
+<button id=send disabled>Send to Stella</button> <button class=q id=rm>Remove wallpaper</button>
+<h2>How much to wash it back</h2>
+<p>The device lightens the picture in light mode and darkens it in dark mode, so text stays readable.</p>
+<label>Wash <span id=vv>35</span>%<input type=range id=veil min=0 max=90 value=35></label>
+</div><p id=msg></p>
+<script>
+const $=i=>document.getElementById(i),mk=(C,...a)=>Reflect.construct(C,a);let PIN='',img=null,out=null;
+const say=(t,bad)=>{$('msg').textContent=t;$('msg').className=bad?'bad':'ok'};
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'X-Stella-Pin':PIN},body:body});
+ let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw Error(j.error||('error '+r.status));return j}
+$('go').onclick=async()=>{PIN=$('pin').value;try{await api('/api/check','');$('lock').style.display='none';$('app').style.display='block';
+ $('top').textContent='Unlocked.';const s=await(await fetch('/api/status')).json();$('veil').value=s.veil;$('vv').textContent=s.veil;
+ if(!s.supported)say('This device has no room for a wallpaper.',1)}catch(e){say(e.message,1)}};
+function crc32(u){let c,t=crc32.t;if(!t){t=crc32.t=mk(Uint32Array,256);for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}}
+ c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=t[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function draw(){if(!img)return;const cv=$('cv'),x=cv.getContext('2d'),k=+$('soft').value,sw=320>>k,sh=240>>k;
+ const s=Math.max(320/img.width,240/img.height),w=img.width*s,h=img.height*s,t=document.createElement('canvas');t.width=sw;t.height=sh;
+ const tx=t.getContext('2d');tx.imageSmoothingQuality='high';tx.drawImage(img,(320-w)/2*sw/320,(240-h)/2*sh/240,w*sw/320,h*sh/240);
+ x.imageSmoothingEnabled=true;x.drawImage(t,0,0,320,240);x.fillStyle='rgba(0,0,0,'+($('dark').value/100)+')';x.fillRect(0,0,320,240)}
+function build(){const d=$('cv').getContext('2d').getImageData(0,0,320,240).data,n=76800,h=mk(Uint32Array,32768);
+ for(let i=0;i<n;i++)h[(d[i*4]>>3)<<10|(d[i*4+1]>>3)<<5|d[i*4+2]>>3]++;
+ let boxes=[{c:[...Array(32768).keys()].filter(i=>h[i])}];
+ const rng=b=>{let lo=[31,31,31],hi=[0,0,0];for(const i of b.c){const v=[i>>10,i>>5&31,i&31];for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],v[j]);hi[j]=Math.max(hi[j],v[j])}}
+  let a=0;for(let j=1;j<3;j++)if(hi[j]-lo[j]>hi[a]-lo[a])a=j;b.a=a;b.r=hi[a]-lo[a];return b};
+ boxes.forEach(rng);
+ while(boxes.length<256){let bi=-1,br=0;boxes.forEach((b,i)=>{if(b.c.length>1&&b.r*Math.log2(b.c.length+1)>br){br=b.r*Math.log2(b.c.length+1);bi=i}});if(bi<0)break;
+  const b=boxes[bi],a=b.a,key=i=>a==0?i>>10:a==1?i>>5&31:i&31;b.c.sort((p,q)=>key(p)-key(q));let tot=0;for(const i of b.c)tot+=h[i];
+  let acc=0,m=0;for(;m<b.c.length-1;m++){acc+=h[b.c[m]];if(acc*2>=tot)break}
+  boxes.splice(bi,1,rng({c:b.c.slice(0,m+1)}),rng({c:b.c.slice(m+1)}))}
+ const pal=boxes.map(b=>{let r=0,g=0,bl=0,t=0;for(const i of b.c){const w=h[i];r+=(i>>10)*w;g+=(i>>5&31)*w;bl+=(i&31)*w;t+=w}
+  return[Math.round(r/t*8.2),Math.round(g/t*8.2),Math.round(bl/t*8.2)]});
+ while(pal.length<256)pal.push([0,0,0]);
+ const lut=mk(Uint8Array,32768);for(let i=0;i<32768;i++){const r=(i>>10)*8+4,g=(i>>5&31)*8+4,b=(i&31)*8+4;let bd=1e9,bj=0;
+  for(let j=0;j<256;j++){const e=(r-pal[j][0])**2+(g-pal[j][1])**2+(b-pal[j][2])**2;if(e<bd){bd=e;bj=j}}lut[i]=bj}
+ const f=mk(Float32Array,n*3),px=mk(Uint8Array,n);for(let i=0;i<n;i++){f[i*3]=d[i*4];f[i*3+1]=d[i*4+1];f[i*3+2]=d[i*4+2]}
+ for(let y=0;y<240;y++)for(let x=0;x<320;x++){const i=y*320+x;const c=[0,1,2].map(j=>Math.max(0,Math.min(255,f[i*3+j])));
+  const q=lut[(c[0]>>3)<<10|(c[1]>>3)<<5|c[2]>>3];px[i]=q;const e=[0,1,2].map(j=>c[j]-pal[q][j]);
+  for(let j=0;j<3;j++){if(x<319)f[(i+1)*3+j]+=e[j]*7/16;if(y<239){if(x>0)f[(i+319)*3+j]+=e[j]*3/16;f[(i+320)*3+j]+=e[j]*5/16;if(x<319)f[(i+321)*3+j]+=e[j]/16}}}
+ const body=mk(Uint8Array,512+n);pal.forEach((p,i)=>{const v=(p[0]&248)<<8|(p[1]&252)<<3|p[2]>>3;body[i*2]=v&255;body[i*2+1]=v>>8});body.set(px,512);
+ const file=mk(Uint8Array,16+body.length),dv=mk(DataView,file.buffer);dv.setUint32(0,0x50575453,true);dv.setUint16(4,320,true);dv.setUint16(6,240,true);
+ dv.setUint16(8,256,true);dv.setUint32(12,crc32(body),true);file.set(body,16);return file}
+$('file').onchange=async e=>{if(!e.target.files[0])return;img=await createImageBitmap(e.target.files[0]);draw();$('send').disabled=false;say('')};
+$('dark').oninput=()=>{$('dv').textContent=$('dark').value;draw()};$('soft').oninput=()=>{$('sv').textContent=$('soft').value;draw()};
+$('send').onclick=async()=>{$('send').disabled=true;say('Preparing...');await mk(Promise,r=>setTimeout(r,30));try{out=build();say('Sending '+out.length+' bytes...');
+ await api('/api/wallpaper',out);say('Done. The wallpaper is on the device.')}catch(e){say(e.message,1)}$('send').disabled=false};
+$('rm').onclick=async()=>{try{await api('/api/wallpaper/remove','');say('Removed.')}catch(e){say(e.message,1)}};
+$('veil').oninput=()=>{$('vv').textContent=$('veil').value};$('veil').onchange=async()=>{try{await api('/api/veil','v='+$('veil').value);say('Saved.')}catch(e){say(e.message,1)}};
+</script></body></html>

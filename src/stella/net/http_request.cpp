@@ -24,8 +24,12 @@ bool startsWith(const char *line, size_t len, const char *name) {
 }  // namespace
 
 void HttpRequestParser::reset() {
+  if (streaming_ && sink_) sink_->end(false);
+  streaming_ = false;
+  streamed_ = 0;
   wipe(line_, sizeof(line_));
   wipe(body_, sizeof(body_));
+  wipe(pin_, sizeof(pin_));
   path_[0] = '\0';
   state_ = State::Request;
   post_ = lineLong_ = false;
@@ -35,6 +39,8 @@ void HttpRequestParser::reset() {
 }
 
 void HttpRequestParser::fail(int status) {
+  if (streaming_ && sink_) sink_->end(false);
+  streaming_ = false;
   state_ = State::Failed;
   errorStatus_ = status;
   wipe(body_, sizeof(body_));
@@ -44,6 +50,23 @@ void HttpRequestParser::fail(int status) {
 HttpRequestParser::State HttpRequestParser::feed(const uint8_t *data, size_t size) {
   for (size_t i = 0; i < size && !done(); ++i) {
     const char c = (char)data[i];
+    if (state_ == State::Streaming) {
+      // Hand over everything that is left of this call's bytes in one go.
+      const size_t left = (size_t)contentLength_ - streamed_;
+      const size_t n = size - i < left ? size - i : left;
+      if (!sink_->write(data + i, n)) {
+        fail(500);
+        break;
+      }
+      streamed_ += n;
+      i += n - 1;
+      if (streamed_ == (size_t)contentLength_) {
+        streaming_ = false;
+        state_ = State::Complete;
+        sink_->end(true);
+      }
+      continue;
+    }
     if (state_ == State::Body) {
       body_[bodyLen_++] = c;
       body_[bodyLen_] = '\0';
@@ -108,9 +131,15 @@ void HttpRequestParser::line() {
     long v = 0;
     for (; *p >= '0' && *p <= '9'; ++p) {
       v = v * 10 + (*p - '0');
-      if (v > (long)kMaxBody) return fail(413);
+        if (v > (long)(streamMax_ > kMaxBody ? streamMax_ : kMaxBody)) return fail(413);
     }
     contentLength_ = v;
+  } else if (startsWith(line_, lineLen_, "x-stella-pin:")) {
+    const char *p = line_ + 13;
+    while (*p == ' ' || *p == '\t') ++p;
+    size_t n = 0;
+    while (*p && n + 1 < sizeof(pin_)) pin_[n++] = *p++;
+    pin_[n] = '\0';
   } else if (startsWith(line_, lineLen_, "transfer-encoding:")) {
     return fail(501);  // chunked bodies are not supported
   }
@@ -122,8 +151,18 @@ void HttpRequestParser::headersDone() {
     return;
   }
   if (contentLength_ < 0) return fail(400);
-  state_ = contentLength_ == 0 ? State::Complete : State::Body;
   body_[0] = '\0';
+  if ((size_t)contentLength_ > kMaxBody) {
+    // Too big to keep: only a streaming sink can take it.
+    if (!sink_) return fail(413);
+    const int status = sink_->begin(*this, (size_t)contentLength_);
+    if (status != 0) return fail(status);
+    streaming_ = true;
+    streamed_ = 0;
+    state_ = State::Streaming;
+    return;
+  }
+  state_ = contentLength_ == 0 ? State::Complete : State::Body;
 }
 
 }  // namespace stella

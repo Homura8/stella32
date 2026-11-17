@@ -24,12 +24,12 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 7;
+    static constexpr int kRows = 8;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     SettingsApp &app_;
     Rect card_;
     ListView list_;
-    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0};
+    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0}, remoteDetail_[16] = {0};
   };
 
   class WifiScreen : public Screen {
@@ -267,6 +267,27 @@ class SettingsApp : public App {
     char installed_[32] = {0}, offered_[40] = {0}, statusText_[128] = {0};
   };
 
+  // Settings > Remote page: the web page on the home network (phone or PC, by
+  // name or IP), its PIN, and the wallpaper it uploads. The PIN is shown only here.
+  class RemoteScreen : public Screen {
+   public:
+    const char *title() const override { return "Remote page"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void refresh(AppContext &ctx);
+
+   private:
+    static constexpr int kRows = 5;
+    Rect card_, rows_[kRows], labels_[kRows], hint_;
+    Toggle enabled_;
+    Button newPin_, remove_;
+    Slider wash_;
+    RemoteInfo info_;
+    char pin_[8] = {0}, host_[48] = {0}, ip_[40] = {0}, wallpaper_[24] = {0};
+  };
+
   // Settings > About > What's new (and once by itself after an update): the
   // changelog as a scrolling list, newest version first.
   class WhatsNewScreen : public Screen {
@@ -316,6 +337,7 @@ class SettingsApp : public App {
   LedFindScreen ledFind_;
   LightCalibrateScreen light_;
   UpdateScreen softwareUpdate_;
+  RemoteScreen remote_;
   WhatsNewScreen whatsNew_;
   AboutScreen about_;
 };

@@ -285,7 +285,7 @@ class CydBoard {
     sound_.begin();
   }
   Board board() {
-    return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_, &led_, &light_};
+    return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_, &led_, &light_, &remote_, &wallpaper_};
   }
   // The ECDSA P-256 public key (PEM) that update manifests must be signed with.
   void setUpdateKey(const char *pem) { firmware_.setPublicKey(pem); }
@@ -307,6 +307,8 @@ class CydBoard {
   CydSound sound_;
   CydLed led_;
   CydLight light_;
+  esp32::Esp32RemoteServer remote_;
+  esp32::Esp32WallpaperStore wallpaper_;
   esp32::Esp32SetupServer setup_;
   esp32::Esp32Firmware firmware_;
   Color buffer_[Profile::kWidth * Profile::kRenderRows];

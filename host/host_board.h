@@ -3,11 +3,13 @@
 // the unit tests and the screenshot simulator. Time only moves when told to.
 #include <atomic>
 #include <functional>
+#include <string.h>
 #include <map>
 #include <string>
 #include <vector>
 
 #include "stella/hal/hal.h"
+#include "stella/net/remote.h"
 
 namespace stella {
 namespace host {
@@ -348,6 +350,57 @@ class SimLight : public LightSensor {
   }
 };
 
+// The wallpaper flash: a plain buffer that counts what is done to it.
+class SimWallpaperStore : public WallpaperStore {
+ public:
+  size_t size = 128 * 1024;
+  std::vector<uint8_t> bytes = std::vector<uint8_t>(128 * 1024, 0xFF);
+  int writes = 0, erases = 0;
+  bool failWrites = false;
+  size_t capacity() override { return size; }
+  bool write(size_t offset, const uint8_t *data, size_t n) override {
+    if (failWrites || offset + n > bytes.size()) return false;
+    memcpy(bytes.data() + offset, data, n);
+    ++writes;
+    return true;
+  }
+  bool read(size_t offset, uint8_t *out, size_t n) override {
+    if (offset + n > bytes.size()) return false;
+    memcpy(out, bytes.data() + offset, n);
+    return true;
+  }
+  bool erase() override {
+    memset(bytes.data(), 0xFF, 4096);
+    ++erases;
+    return true;
+  }
+};
+
+// The server that is not there: it remembers the handler so tests can speak to
+// it through RemoteConnection, exactly as a board's server would.
+class SimRemoteServer : public RemoteServer {
+ public:
+  RemoteHandler *handler = nullptr;
+  bool up = false;
+  int begins = 0, ends = 0, polls = 0;
+  bool refuse = false;
+  bool begin(RemoteHandler &h) override {
+    if (refuse) return false;
+    handler = &h;
+    up = true;
+    ++begins;
+    return true;
+  }
+  void poll() override { ++polls; }
+  void end() override {
+    up = false;
+    ++ends;
+  }
+  bool running() const override { return up; }
+  void hostname(char *out, size_t capacity) const override { snprintf(out, capacity, "stella-sim1"); }
+  void address(char *out, size_t capacity) const override { snprintf(out, capacity, "192.168.1.50"); }
+};
+
 // A complete simulated device.
 struct SimDevice {
   SimDevice(int width, int height) : display(width, height), buffer((size_t)width * 20) { light.display = &display; }
@@ -362,8 +415,10 @@ struct SimDevice {
   SimFirmware firmware;
   SimLed led;
   SimLight light;
+  SimRemoteServer remote;
+  SimWallpaperStore wallpaper;
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware, &led, &light}; }
+  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware, &led, &light, &remote, &wallpaper}; }
 };
 
 }  // namespace host
