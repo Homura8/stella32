@@ -192,6 +192,34 @@ Performance work (host benchmark `stella_bench`, relative numbers):
   next chunk is drawn while the previous one is transferred (tested with a
   display double that reads buffers late).
 
+### Screen transitions
+
+When the top screen changes (a screen pushed or popped, an app launched, Home),
+the outgoing screen slides out while the new one slides in: one sheet, never
+overlapping (glass over glass looks muddy), 220 ms with an ease-out curve, in
+the direction you are going. The sky and the status bar stay put. There is no
+full-frame buffer to blend, so nothing is captured: each frame redraws the
+content area twice through `Canvas::shifted(dx, 0)`, a view of the same chunk
+buffer in which everything lands `dx` pixels over. Screens are not involved at
+all, which is why `draw()` having no side effects (invariant 7) matters: the
+outgoing screen is simply drawn once more, at an offset.
+
+The rules that keep it from getting in the way (`Runtime::beginTransition`):
+
+- Frames follow the clock, not a frame count: a slow frame drops the steps in
+  between instead of stretching the animation.
+- If one frame takes longer than 80 ms the display is too slow for it: the
+  transition is cut short and transitions stay off until the next boot (logged
+  once). The CYD's SPI link needs about 25 ms for a full-width content frame
+  before any drawing, so this is the safety net, not a corner case.
+- Any touch ends it at once; the touch then lands on the final layout.
+- Fullscreen screens (the bedside clock) and a screen that is already sliding
+  never start another one; a re-theme ends it.
+- `SystemSettings::animations` (Settings > Appearance > Animations, on by
+  default) turns it off; the simulator and the tests default to off so screens
+  appear instantly, and transitions are tested on their own.
+- The last frame is a normal render, so the result equals a cut (tested).
+
 ## UI model
 
 - **Theme** (`ui/theme.*`): palette, metrics and fonts for a density class
@@ -329,8 +357,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,463,891 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 83,020 B; 244,660 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
+| Program (flash) | 1,466,187 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 83,060 B; 244,620 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
@@ -341,9 +369,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 Near-term work this foundation is designed for:
 
-1. Screen transitions and gentle animations, opt-in and frame-budgeted.
-2. A setup access point + web page as an alternative Wi-Fi onboarding path.
-3. More boards (e.g. 3.5" 480x320 panels, capacitive touch) and an ESP-IDF port.
-4. OTA updates with rollback.
+1. An RGB LED service, light-sensor dimming with a calibration step, and
+   further gentle animations (the slide between screens is done).
+2. More boards (the T-Display S3 has buttons instead of touch) and an ESP-IDF
+   port.
 
 Done: alarms, timer and system alerts (0.3.0).

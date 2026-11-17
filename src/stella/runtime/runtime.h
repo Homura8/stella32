@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.6.1"
+#define STELLA_VERSION "0.7.0"
 #endif
 
 namespace stella {
@@ -61,6 +61,8 @@ enum class PowerState : uint8_t { Active, Dimmed, Off };
 class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
  public:
   static constexpr size_t kMaxApps = 16;
+  static constexpr uint32_t kTransitionMs = 220;
+  static constexpr uint32_t kTransitionMaxFrameMs = 80;  // slower frames would only stutter
   static constexpr size_t kMaxDepth = 6;
   static constexpr size_t kMaxTopics = 16;
   static constexpr size_t kMaxAlerts = 4;
@@ -100,6 +102,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Screen *topScreen() const;
   const Renderer::Stats &lastFrame() const { return lastStats_; }
   bool renderPending() const { return !dirty_.empty(); }
+  bool transitioning() const { return transition_.active; }  // a screen is sliding in
   // The alert on screen (tests and diagnostics).
   bool alertShowing() const { return alertCount_ > 0; }
   const char *alertTitle() const { return alertCount_ ? alerts_[0].title : ""; }
@@ -192,6 +195,11 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void closeAlert(int action);
   void updateAlert(uint32_t now);
   void updatePreview(uint32_t now);
+  // Screen transitions: the outgoing screen slides out while the new one slides in.
+  void beginTransition(Screen *from, int direction);
+  void updateTransition(uint32_t now);
+  void endTransition();
+  void drawTransition(Canvas &c);
   void applyVolume();
   void runWakes(uint32_t now);
   int callerIndex() const;
@@ -269,6 +277,13 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   size_t alertCount_ = 0;
   uint32_t alertShownAt_ = 0, chimeAt_ = 0;
   uint8_t chimeStep_ = 0;
+  struct Transition {
+    Screen *from = nullptr;
+    int8_t direction = 1;  // +1: the new screen comes from the right, -1: from the left
+    uint32_t startMs = 0;
+    bool active = false;
+  } transition_;
+  bool transitionsSlow_ = false;  // a frame took too long: slide no more this boot
   uint8_t previewStep_ = 0;  // 0 = no preview playing; else 1 + the note being played
   uint32_t previewAt_ = 0;
   Rect alertCard_, alertHeader_, alertMessage_;

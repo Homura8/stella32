@@ -242,11 +242,18 @@ uint32_t Runtime::step() {
     if (board_.storage && !saveSettings(board_.storage, settings_)) LOGW(kTag, "settings could not be saved");
   }
 
+  updateTransition(millis());
   if (!dirty_.empty() && power_ != PowerState::Off) {
     const uint32_t t0 = millis();
     lastStats_ = renderer_.render(*board_.display, dirty_, drawFrame, this);
     lastFrameMs_ = elapsedMs(millis(), t0);
     ++frames_;
+    // A display too slow to slide smoothly gets plain cuts instead of a stutter.
+    if (transition_.active && lastFrameMs_ > kTransitionMaxFrameMs) {
+      transitionsSlow_ = true;
+      LOGI(kTag, "screen transitions off: a frame took %lu ms", (unsigned long)lastFrameMs_);
+      endTransition();
+    }
   }
 
   now = millis();
@@ -262,6 +269,7 @@ uint32_t Runtime::step() {
     if (alerts_[0].timeoutMs) wait = minWait(wait, remainingMs(now, alertShownAt_ + alerts_[0].timeoutMs));
   }
   if (previewStep_) wait = minWait(wait, remainingMs(now, previewAt_));
+  if (transition_.active) wait = minWait(wait, 4);  // frames follow each other as fast as they render
   return wait;
 }
 
@@ -336,6 +344,7 @@ void Runtime::updateTheme(bool force) {
   GestureConfig g;
   g.slop = theme_.m.touchSlop;
   gestures_.configure(g);
+  endTransition();
   layoutTop();
   if (alertCount_) layoutAlert();
   invalidateAll();
@@ -390,9 +399,11 @@ bool Runtime::push(Screen &screen) {
     LOGE(kTag, "screen stack full in '%s'", s->app->info().id);
     return false;
   }
+  Screen *previous = topScreen();
   hideTop();
   s->stack[s->depth++] = &screen;
   showTop();
+  beginTransition(previous, +1);
   return true;
 }
 
@@ -400,9 +411,11 @@ void Runtime::pop() {
   AppSlot *s = slot(foreground_);
   if (!s) return;
   if (s->depth > 1) {
+    Screen *previous = topScreen();
     hideTop();
     --s->depth;
     showTop();
+    beginTransition(previous, -1);
   } else if (foreground_ != home_) {
     goHome();
   }
@@ -413,9 +426,11 @@ void Runtime::goHome() {
   if (foreground_ == home_) {
     AppSlot *s = slot(home_);
     if (s->depth > 1) {
+      Screen *previous = topScreen();
       hideTop();
       s->depth = 1;
       showTop();
+      beginTransition(previous, -1);
     }
     return;
   }
@@ -436,6 +451,7 @@ bool Runtime::launch(const char *appId, const char *route) {
     }
     return true;
   }
+  Screen *previous = topScreen();
   hideTop();
   foreground_ = index;
   AppSlot &s = apps_[index];
@@ -447,6 +463,7 @@ bool Runtime::launch(const char *appId, const char *route) {
   }
   if (s.depth == 0) s.stack[s.depth++] = &s.app->root();
   showTop();
+  beginTransition(previous, index == home_ ? -1 : +1);
   if (route) {
     callbackApp_ = s.app;
     s.app->onRoute(route, *this);
@@ -474,6 +491,7 @@ void Runtime::pollTouch(uint32_t now) {
     sample.x = (int16_t)(x < 0 ? 0 : x >= screen_.w ? screen_.w - 1 : x);
     sample.y = (int16_t)(y < 0 ? 0 : y >= screen_.h ? screen_.h - 1 : y);
     lastInteraction_ = now;
+    if (transition_.active) endTransition();  // a touch lands on the final layout, not on a sliding one
     if (power_ != PowerState::Active) {
       // A dark screen: the waking touch only wakes and never reaches an app.
       // A dimmed screen is still readable, so the touch brightens it and acts.
@@ -723,11 +741,64 @@ void Runtime::draw(Canvas &c) {
   if (c.visible(statusBarRect())) drawStatusBar(c);
   if (s && c.visible(content_)) {
     const Rect previous = c.pushClip(content_);
-    s->draw(c, theme_);
+    if (transition_.active && transition_.from && !transition_.from->fullscreen()) drawTransition(c);
+    else s->draw(c, theme_);
     c.restoreClip(previous);
   }
   if (toastVisible_) drawToast(c);
   if (alertCount_) drawAlert(c);
+}
+
+// ------------------------------------------------------------------ transitions
+
+// The sky and the status bar stay put; the screens slide as one sheet, so they
+// never overlap (glass over glass would look muddy). Both are drawn through a
+// shifted view of the chunk, so no screen needs to know it is moving.
+void Runtime::beginTransition(Screen *from, int direction) {
+  Screen *to = topScreen();
+  if (!from || !to || from == to) return;
+  if (transition_.active) {  // already sliding: carry on from the original screen to the new top
+    if (transition_.from == to) endTransition();
+    return;
+  }
+  if (!settings_.animations || transitionsSlow_ || !started_ || !board_.display || power_ != PowerState::Active) return;
+  if (from->fullscreen() || to->fullscreen()) return;
+  transition_.from = from;
+  transition_.direction = (int8_t)direction;
+  // Start a little in: the first frame takes a while to render, and showing the
+  // old screen unchanged for it would only feel like lag.
+  transition_.startMs = millis() - kTransitionMs / 8;
+  transition_.active = true;
+  invalidate(content_);
+}
+
+void Runtime::updateTransition(uint32_t now) {
+  if (!transition_.active) return;
+  if (elapsedMs(now, transition_.startMs) >= kTransitionMs) endTransition();
+  else invalidate(content_);
+}
+
+void Runtime::endTransition() {
+  if (!transition_.active) return;
+  transition_.active = false;
+  transition_.from = nullptr;
+  invalidate(content_);  // one last frame: the screen at rest
+}
+
+void Runtime::drawTransition(Canvas &c) {
+  Screen *to = topScreen();
+  const uint32_t elapsed = elapsedMs(millis(), transition_.startMs);
+  const int t = elapsed >= kTransitionMs ? 1000 : (int)(elapsed * 1000 / kTransitionMs);
+  const int rest = 1000 - t;
+  const int eased = 1000 - rest * rest / 1000 * rest / 1000;  // ease-out cubic
+  const int width = content_.w;
+  const int dir = transition_.direction;
+  const int fromDx = -dir * (width * eased / 1000);
+  const int toDx = dir * (width * (1000 - eased) / 1000);
+  Canvas outgoing = c.shifted(fromDx, 0);
+  transition_.from->draw(outgoing, theme_);
+  Canvas incoming = c.shifted(toDx, 0);
+  to->draw(incoming, theme_);
 }
 
 void Runtime::drawStatusBar(Canvas &c) {

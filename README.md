@@ -16,10 +16,10 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.6.1: daily update check, volume, Stopwatch, faster phone setup |
+| Version | 0.7.0: screen transitions (on top of 0.6.1: daily update check, volume, Stopwatch, faster phone setup) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 148 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
-| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.46 MB flash (74% of a 1.9 MB update slot), 83 KB static RAM (25%) |
+| Host tests | 157 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.47 MB flash (74% of a 1.9 MB update slot), 83 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
 Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *bedside* mode
@@ -179,7 +179,16 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     Reset; it keeps counting while another app is open.
 16. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-17. Leave it running overnight; no `restarting` line in the log and the
+17. *Screen transitions* (Settings > Appearance > Animations, on by default):
+    opening an app or a settings page slides the new screen in from the
+    right, and back slides it out the other way; the status bar and sky stay
+    still, and touching the glass mid-slide finishes it at once. Look for
+    smoothness: it should feel like a handful of quick steps, not a stutter.
+    If a frame takes over 80 ms the device turns transitions off for that boot
+    and logs `screen transitions off: a frame took N ms`; please send me that
+    line and the `frame=` value from the `health` line. Turn the toggle off to
+    compare.
+18. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

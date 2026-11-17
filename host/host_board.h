@@ -2,6 +2,7 @@
 // Host (Linux) board: deterministic stand-ins for every HAL interface, used by
 // the unit tests and the screenshot simulator. Time only moves when told to.
 #include <atomic>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -25,6 +26,7 @@ class SimDisplay : public Display {
     ++trims;
   }
   bool trimmable = true;
+  std::function<void(const Rect &)> onWrite;  // tests: make the panel slow by advancing the clock
   PanelTrim lastTrim;
   int trims = 0;
 

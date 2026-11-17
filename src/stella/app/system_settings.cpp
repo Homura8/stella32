@@ -125,6 +125,27 @@ struct SettingsV5 {
   int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
 };
 
+// Frozen layout of version 7 (0.6.1). Never edit.
+struct SettingsV7 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  uint8_t bedside;
+  ColorTone colorTone;
+  uint8_t contrastLight, contrastDark, whiteLevel, warmth;
+  bool dither;
+  int8_t panelVcom;
+  uint8_t panelRefreshHz;
+  uint8_t skyPin;
+  int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+  uint8_t volume;
+  bool autoUpdate;
+};
+
 // Frozen layout of version 6 (0.4.0 - 0.6.0). Never edit.
 struct SettingsV6 {
   Appearance appearance;
@@ -283,6 +304,36 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.touchScaleY = v6.touchScaleY;
       loaded.touchOffsetY = v6.touchOffsetY;
       if (migrated) *migrated = true;  // volume and autoUpdate keep their defaults
+    }
+  } else if (s == RecordStatus::OldVersion && found == 7) {
+    SettingsV7 v7;
+    s = loadRecord(store, kNamespace, kKey, 7, &v7, sizeof(v7));
+    if (s == RecordStatus::Ok) {
+      loaded = out;
+      loaded.appearance = v7.appearance;
+      loaded.brightness = v7.brightness;
+      loaded.dimAfterSec = v7.dimAfterSec;
+      loaded.sleepAfterSec = v7.sleepAfterSec;
+      loaded.clock24h = v7.clock24h;
+      memcpy(loaded.timezone, v7.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v7.nightDim;
+      loaded.bedside = v7.bedside;
+      loaded.colorTone = v7.colorTone;
+      loaded.contrastLight = v7.contrastLight;
+      loaded.contrastDark = v7.contrastDark;
+      loaded.whiteLevel = v7.whiteLevel;
+      loaded.warmth = v7.warmth;
+      loaded.dither = v7.dither;
+      loaded.panelVcom = v7.panelVcom;
+      loaded.panelRefreshHz = v7.panelRefreshHz;
+      loaded.skyPin = v7.skyPin;
+      loaded.touchScaleX = v7.touchScaleX;
+      loaded.touchOffsetX = v7.touchOffsetX;
+      loaded.touchScaleY = v7.touchScaleY;
+      loaded.touchOffsetY = v7.touchOffsetY;
+      loaded.volume = v7.volume;
+      loaded.autoUpdate = v7.autoUpdate;
+      if (migrated) *migrated = true;  // animations keeps its default
     }
   }
   if (s == RecordStatus::Ok) {

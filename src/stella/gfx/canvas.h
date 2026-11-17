@@ -43,6 +43,17 @@ class Canvas {
   void begin(Color *buffer, Rect target);
   const Rect &target() const { return target_; }
   const Rect &clip() const { return clip_; }
+  // A view of the same pixels in which everything drawn lands (dx, dy) further
+  // right and down. Screens draw in their own coordinates, so a screen can be
+  // slid across the display (screen transitions) without knowing about it.
+  // Same buffer, same clip as seen from outside.
+  Canvas shifted(int dx, int dy) const {
+    Canvas v;
+    v.buffer_ = buffer_;
+    v.target_ = target_.offset(-dx, -dy);
+    v.clip_ = clip_.offset(-dx, -dy);
+    return v;
+  }
   // Narrow the clip; returns the previous clip for restoreClip().
   Rect pushClip(const Rect &r);
   void restoreClip(const Rect &previous) { clip_ = previous; }
