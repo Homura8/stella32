@@ -33,6 +33,7 @@ At minimum, read the files you will touch plus:
 | Threads, jobs, data from the network | `docs/ARCHITECTURE.md` (threads, networking), `src/stella/service/`, `src/stella/net/`, the Weather app as an example |
 | Time-based work, alerts, sound | `docs/APPS.md` (time-based work and alerts), the Timer and Alarms apps |
 | Persistent data | `src/stella/storage/record.h` |
+| Deciding what to build next | `docs/ROADMAP.md` (owner decisions, order, constraints) |
 
 ## 3. Authority order
 
