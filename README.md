@@ -101,8 +101,10 @@ In the Arduino IDE: add this repository as a library, open
 5. The clock shows local time within a minute of connecting; *Weather* shows
    the forecast and "Updated ... ago"; with the router off it keeps the last
    report and says so.
-6. Brightness, dim, screen-off and *Dim at night* work; the waking touch does
-   not activate anything. Settings survive a reset.
+6. Brightness, dim, screen-off and *Dim at night* work; the touch that wakes a
+   dark screen does not activate anything, while a tap on a dimmed screen
+   brightens it and acts. Single quick taps open apps reliably. Settings
+   survive a reset.
 7. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
 8. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
