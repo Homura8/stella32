@@ -1,5 +1,7 @@
 #include "weather_app.h"
 
+#include "../core/solar.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -284,8 +286,33 @@ void WeatherApp::MainScreen::refresh(AppContext &ctx) {
   }
   describeFreshness(ctx, status, sizeof(status));
   if (strcmp(status, statusText_) != 0) copyText(statusText_, sizeof(statusText_), status);
+  updateSun(ctx);
   // A new report changes most of the screen; repaint the content area.
   if (isVisible()) ctx.invalidate(ctx.contentRect());
+}
+
+// Today's sunrise and sunset at the chosen place, from the date alone.
+void WeatherApp::MainScreen::updateSun(AppContext &ctx) {
+  sunRise_[0] = sunSet_[0] = '\0';
+  sunKind_ = 0;
+  const WeatherReport &w = snap_.report;
+  int count = 0;
+  const WeatherPlace *places = weatherPlaces(count);
+  if (!w.valid || w.dayCount == 0 || w.days[0].date <= 0 || snap_.place >= count) return;
+  const WeatherPlace &place = places[snap_.place];
+  const SunTimes sun = sunTimes(w.days[0].date + 12 * 3600, place.latitude, place.longitude);
+  if (!sun.valid) {
+    sunKind_ = sun.polarDay ? 1 : 2;
+    return;
+  }
+  const bool h24 = ctx.settings().clock24h;
+  const int64_t moments[2] = {sun.sunrise, sun.sunset};
+  char *out[2] = {sunRise_, sunSet_};
+  for (int i = 0; i < 2; ++i) {
+    const LocalTime lt = ctx.localTimeAt(moments[i]);
+    const int hour = h24 ? lt.hour : (lt.hour % 12 == 0 ? 12 : lt.hour % 12);
+    snprintf(out[i], 8, h24 ? "%02d:%02d" : "%d:%02d", hour, lt.minute);
+  }
 }
 
 void WeatherApp::MainScreen::onShow(AppContext &ctx) { refresh(ctx); }
@@ -324,6 +351,30 @@ void WeatherApp::MainScreen::draw(Canvas &c, const Theme &t) {
   const int nameW = Canvas::textWidth(*t.font.caption, places[snap_.place < count ? snap_.place : 0].name);
   icons::chevronRight(c, leading(Rect(placeRow.x + nameW + t.dp(2), placeRow.y, iconSize, placeRow.h), iconSize),
                       p.textMuted);
+  // Sunrise and sunset at the right end of the same line, when they fit: the
+  // sun for the day starting and the moon for it ending.
+  if (sunRise_[0] || sunKind_) {
+    const int small = t.dp(10), gapSmall = t.dp(3), between = t.dp(8);
+    const char *polar = sunKind_ == 1 ? "Sun stays up" : "Sun stays down";
+    const int riseW = sunKind_ ? Canvas::textWidth(*t.font.caption, polar) : Canvas::textWidth(*t.font.caption, sunRise_);
+    const int setW = sunKind_ ? 0 : Canvas::textWidth(*t.font.caption, sunSet_);
+    const int total = sunKind_ ? riseW : small + gapSmall + riseW + between + small + gapSmall + setW;
+    const int room = placeRow.w - nameW - iconSize - t.dp(12);
+    if (total <= room) {
+      int x = placeRow.right() - total;
+      if (sunKind_) {
+        c.drawTextIn(*t.font.caption, polar, Rect(x, placeRow.y, riseW, placeRow.h), p.textMuted);
+      } else {
+        icons::sun(c, leading(Rect(x, placeRow.y, small, placeRow.h), small), p.accent);
+        x += small + gapSmall;
+        c.drawTextIn(*t.font.caption, sunRise_, Rect(x, placeRow.y, riseW, placeRow.h), p.textMuted);
+        x += riseW + between;
+        icons::moon(c, leading(Rect(x, placeRow.y, small, placeRow.h), small), p.accent);
+        x += small + gapSmall;
+        c.drawTextIn(*t.font.caption, sunSet_, Rect(x, placeRow.y, setW, placeRow.h), p.textMuted);
+      }
+    }
+  }
 
   // Detail chips.
   char chip[3][24];

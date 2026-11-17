@@ -383,8 +383,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,481,291 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 84,212 B; 243,468 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
+| Program (flash) | 1,502,779 B of a 1,966,080 B app slot (76%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 84,260 B; 243,420 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |

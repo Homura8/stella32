@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../core/text.h"
 #include "../ui/layout.h"
 #include "../ui/materials.h"
 #include "common.h"
@@ -47,9 +48,10 @@ void LauncherApp::HomeScreen::arrange() {
   const int tileW = (area_.w - gap_ * (columns_ - 1)) / columns_;
   const int tileH = tileW;
   const bool paged = count > columns_ * rows_;
-  const int headerH = t.font.headline->lineHeight > t.font.body->lineHeight + t.font.caption->lineHeight
-                          ? t.font.headline->lineHeight
-                          : t.font.body->lineHeight + t.font.caption->lineHeight;
+  const Font &big = *t.font.hometime;
+  const int timeH = big.ascent + big.descent;
+  const int wordsH = t.font.title->lineHeight + t.font.body->lineHeight;
+  const int headerH = timeH > wordsH ? timeH : wordsH;
   const int gridH = rows_ * tileH + (rows_ - 1) * gap_;
   const int dotsH = paged ? t.dp(10) : 0;
   const int noteH = rows_ == 1 ? t.m.row + t.dp(8) : 0;
@@ -83,16 +85,15 @@ void LauncherApp::HomeScreen::arrange() {
   } else {
     pager_ = prev_ = next_ = Rect();
   }
-  // The time (the widest it can be) on the left, the words right-aligned beside it.
-  const int timeW = Canvas::textWidth(*t.font.headline, "88:88 AM") < textArea.w / 2
-                        ? Canvas::textWidth(*t.font.headline, "88:88 AM")
-                        : textArea.w / 2;
+  // The time (as wide as "88:88", plus a small AM/PM in the 12-hour style) on
+  // the left, the words right-aligned beside it.
+  const int timeW = Canvas::textWidth(big, "88:88") +
+                    (twelveHour_ ? t.dp(4) + Canvas::textWidth(*t.font.title, "AM") : 0);
   Rect parts[2];
   row(textArea, {px(timeW), flex()}, t.m.gapM, parts);
   time_ = Rect(parts[0].x, header_.y, parts[0].w, headerH);
   Rect lines[2];
-  column(center(parts[1], parts[1].w, t.font.body->lineHeight + t.font.caption->lineHeight),
-         {px(t.font.body->lineHeight), px(t.font.caption->lineHeight)}, 0, lines);
+  column(center(parts[1], parts[1].w, wordsH), {px(t.font.title->lineHeight), px(t.font.body->lineHeight)}, 0, lines);
   greeting_ = lines[0];
   date_ = lines[1];
 }
@@ -131,6 +132,12 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   if (strcmp(clock, timeText_) != 0) {
     memcpy(timeText_, clock, sizeof(clock));
     ctx.invalidate(time_);
+    const bool twelve = strchr(clock, ' ') != nullptr;  // "10:15 PM"
+    if (twelve != twelveHour_) {
+      twelveHour_ = twelve;
+      arrange();
+      ctx.invalidate(header_);
+    }
   }
   if (strcmp(greeting, greetingText_) != 0) {
     memcpy(greetingText_, greeting, sizeof(greeting));
@@ -187,9 +194,23 @@ uint32_t LauncherApp::HomeScreen::onTick(AppContext &ctx) {
 
 void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
-  c.drawTextIn(*t.font.headline, timeText_, time_, p.text);
-  c.drawTextIn(*t.font.body, greetingText_, greeting_, p.text, Align::Right);
-  c.drawTextIn(*t.font.caption, dateText_, date_, p.textMuted, Align::Right);
+  // The time: big digits, and a smaller AM/PM after them in the 12-hour style.
+  const Font &big = *t.font.hometime;
+  char digits[sizeof(timeText_)];
+  copyText(digits, sizeof(digits), timeText_);
+  const char *suffix = "";
+  if (char *space = strchr(digits, ' ')) {
+    *space = '\0';
+    suffix = space + 1;
+  }
+  const int baseline = time_.y + (time_.h - (big.ascent + big.descent)) / 2 + big.ascent;
+  c.drawText(big, digits, time_.x, baseline, p.text);
+  if (suffix[0]) c.drawText(*t.font.title, suffix, time_.x + Canvas::textWidth(big, digits) + t.dp(4), baseline, p.textMuted);
+  // The words: the larger size when it fits beside the time, else the smaller.
+  const Font &words = Canvas::textWidth(*t.font.title, greetingText_) <= greeting_.w ? *t.font.title : *t.font.body;
+  const Font &small = Canvas::textWidth(*t.font.body, dateText_) <= date_.w ? *t.font.body : *t.font.caption;
+  c.drawTextIn(words, greetingText_, greeting_, p.text, Align::Right);
+  c.drawTextIn(small, dateText_, date_, p.textMuted, Align::Right);
 
   for (int slot = 0; slot < perPage(); ++slot) {
     const int index = page_ * perPage() + slot;
