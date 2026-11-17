@@ -77,6 +77,10 @@ constexpr uint16_t kWeather = stella::topics::kFirstUser + 0;
 class WeatherService : public Job, public JsonHandler {
  public:
   static constexpr uint32_t kFreshForMs = 45u * 60u * 1000u;
+  static constexpr size_t kUrlBytes = 512;  // the longest request (with room to spare) must fit whole
+  // The Open-Meteo request for a place. Returns its length, or -1 if it does not
+  // fit in `capacity` (it is then never sent: a cut-off request is a 400 error).
+  static int buildUrl(char *out, size_t capacity, uint8_t place);
 
   explicit WeatherService(Topic<WeatherSnapshot> &topic) : topic_(topic) {}
   void attach(HttpService &http) { http_ = &http; }
