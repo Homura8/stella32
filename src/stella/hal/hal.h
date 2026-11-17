@@ -7,6 +7,7 @@
 
 #include "../core/color.h"
 #include "../core/geometry.h"
+#include "network.h"
 
 namespace stella {
 
@@ -20,6 +21,14 @@ class Display {
   virtual int16_t height() const = 0;
   virtual void writePixels(const Rect &area, const Color *pixels) = 0;
   virtual void setBacklight(uint8_t level) = 0;  // 0 = off, 255 = full
+
+  // Optional asynchronous (DMA) transfer. writePixelsAsync() may return while
+  // the transfer is still running, but must first wait for any earlier
+  // transfer to finish (one in flight at a time) and may modify the buffer
+  // (e.g. byte-swap in place). waitIdle() blocks until nothing is in flight.
+  virtual bool supportsAsync() const { return false; }
+  virtual void writePixelsAsync(const Rect &area, Color *pixels) { writePixels(area, pixels); }
+  virtual void waitIdle() {}
 };
 
 // One touch-controller reading, already mapped to screen pixels by the board
@@ -56,6 +65,8 @@ class Platform {
   // A small block that survives a software restart (RTC memory on ESP32).
   // Contents are random after power-on; callers must validate them.
   virtual void *retainedMemory(size_t &size) = 0;
+  // Lowest free stack ever seen on the calling thread, in bytes (0 if unknown).
+  virtual uint32_t stackHeadroom() const { return 0; }
 };
 
 // Persistent key/value storage (NVS on ESP32). Namespaces and keys are limited
@@ -76,6 +87,8 @@ struct Board {
   TouchInput *touch = nullptr;     // optional
   Platform *platform = nullptr;
   KeyValueStore *storage = nullptr;  // optional; settings are then not persisted
+  WifiDriver *wifi = nullptr;        // optional
+  HttpClient *http = nullptr;        // optional (requires wifi)
 };
 
 }  // namespace stella

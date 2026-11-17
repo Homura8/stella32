@@ -30,7 +30,7 @@ At minimum, read the files you will touch plus:
 | Screens, widgets, colours, spacing | `docs/DESIGN.md`, `src/stella/ui/theme.*`, `src/stella/ui/layout.h` |
 | A new or changed app | `docs/APPS.md`, `src/stella/app/app.h`, an existing app in `src/stella/apps/` |
 | A new board or display | `docs/PORTING.md`, `src/stella/hal/hal.h`, `src/stella/boards/cyd/` |
-| Threads, jobs, data from the network | `docs/ARCHITECTURE.md` §Concurrency, `src/stella/service/` |
+| Threads, jobs, data from the network | `docs/ARCHITECTURE.md` (threads, networking), `src/stella/service/`, `src/stella/net/`, the Weather app as an example |
 | Persistent data | `src/stella/storage/record.h` |
 
 ## 3. Authority order
@@ -89,7 +89,12 @@ change needs to break one, stop and ask the owner; then update this file.
 13. **Supervision.** Long-running threads beat their `Supervisor` watch after
     each unit of work. A new thread needs a watch with a limit several times its
     worst-case gap.
-14. **Generated files.** `src/stella/fonts/fonts_*.cpp` come from
+14. **Foreground-only painting.** Only the foreground app repaints; the
+    runtime drops background invalidations. Do not work around it.
+15. **Secrets.** Wi-Fi passwords and API keys live only in versioned records
+    or `secrets.h`; wipe transient copies (see `WifiManager`, `TextEntryScreen`)
+    and never put them in logs, URLs that are logged, or topics.
+16. **Generated files.** `src/stella/fonts/fonts_*.cpp` come from
     `tools/fontgen.py`; `docs/screenshots/` from `tools/screenshots.py`. Edit
     the generator, never the output.
 
@@ -104,9 +109,11 @@ change needs to break one, stop and ask the owner; then update this file.
   (`host/sim_session.*`, `host/sim_main.cpp`) and the tests.
 - **Add a widget:** put it in `src/stella/ui/widgets.*` as a small value type
   with `draw()` and `handle()`; add tests in `tests/test_input_ui.cpp`.
-- **Add a background service:** implement a `Job`, publish results through a
-  `Topic<T>` attached with `Runtime::attachTopic`, track freshness with
-  `DataStatus`, and treat lease contention as `Deferred`.
+- **Add a background service:** implement a `Job`, register it and its
+  `Topic<T>` in `App::onInstall(ServiceHost&)` (topic ids from
+  `topics::kFirstUser`), fetch with `HttpService::getJson`, track freshness
+  with `DataStatus`, and return `FetchResult::jobResult()` (lease contention
+  is `Deferred`). Copy the Weather app's structure.
 - **Add a board or display:** follow `docs/PORTING.md`. Do not touch apps.
 - **Change fonts or sizes:** edit `ROLES` in `tools/fontgen.py`, run it, commit
   the regenerated `fonts_*.cpp`, and check flash size.

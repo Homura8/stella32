@@ -16,12 +16,20 @@ constexpr uint8_t red8(Color c) { return (uint8_t)(((c >> 11) & 31) * 255 / 31);
 constexpr uint8_t green8(Color c) { return (uint8_t)(((c >> 5) & 63) * 255 / 63); }
 constexpr uint8_t blue8(Color c) { return (uint8_t)((c & 31) * 255 / 31); }
 
-// Blend `fg` over `bg` with coverage 0..255 (per-channel, rounded).
-constexpr Color blend(Color bg, Color fg, uint8_t alpha) {
-  return alpha == 0 ? bg : alpha == 255 ? fg
-      : (Color)(((((fg >> 11) & 31) * alpha + ((bg >> 11) & 31) * (255 - alpha) + 127) / 255) << 11
-              | ((((fg >> 5) & 63) * alpha + ((bg >> 5) & 63) * (255 - alpha) + 127) / 255) << 5
-              | (((fg & 31) * alpha + (bg & 31) * (255 - alpha) + 127) / 255));
+// Blend `fg` over `bg` by `a32` in 0..32, on packed RGB565 with guard bits:
+// one multiply per pixel. Per channel: bg + floor((fg - bg) * a32 / 32).
+inline Color blend32(Color bg, Color fg, uint32_t a32) {
+  const uint32_t b = (bg | ((uint32_t)bg << 16)) & 0x07E0F81Fu;
+  const uint32_t f = (fg | ((uint32_t)fg << 16)) & 0x07E0F81Fu;
+  const uint32_t r = ((((f - b) * a32) >> 5) + b) & 0x07E0F81Fu;
+  return (Color)(r | (r >> 16));
+}
+
+// Blend `fg` over `bg` with coverage 0..255 (quantised to 33 levels).
+inline Color blend(Color bg, Color fg, uint8_t alpha) {
+  if (alpha < 4) return bg;
+  if (alpha > 251) return fg;
+  return blend32(bg, fg, ((uint32_t)alpha + 4) >> 3);
 }
 
 // Halve brightness (used for modal scrims). Exact for every RGB565 value.

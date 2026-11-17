@@ -5,3 +5,4 @@
 #include "launcher.h"
 #include "settings_app.h"
 #include "touch_test.h"
+#include "weather_app.h"

@@ -16,6 +16,8 @@
 #include "../app/app.h"
 #include "../gfx/renderer.h"
 #include "../input/gesture.h"
+#include "../net/http_service.h"
+#include "../net/wifi_manager.h"
 #include "../service/job_scheduler.h"
 #include "../service/resource_lease.h"
 #include "../service/supervisor.h"
@@ -23,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.1.0"
+#define STELLA_VERSION "0.2.0"
 #endif
 
 namespace stella {
@@ -38,18 +40,22 @@ struct RuntimeConfig {
   uint32_t uiStallLimitMs = 3u * 60u * 1000u;
   uint32_t serviceStallLimitMs = 10u * 60u * 1000u;
   bool supervise = true;           // restart on a stalled thread
-  uint32_t serviceStackBytes = 8192;
+  // TLS handshakes (mbedTLS) run on this stack; 16 KiB is what Celestia
+  // Nightstand's network task used successfully on the CYD.
+  uint32_t serviceStackBytes = 16384;
   int8_t serviceCore = 0;
+  // false: no service thread; the host calls Runtime::serviceStep() itself
+  // (deterministic simulation). Firmware always uses the thread.
+  bool serviceThread = true;
+  // Used once when no Wi-Fi network has been saved yet (e.g. from secrets.h).
+  const char *wifiSsid = nullptr;
+  const char *wifiPassword = nullptr;
+  Color *renderBuffer2 = nullptr;  // optional second chunk buffer for async displays
 };
 
 enum class PowerState : uint8_t { Active, Dimmed, Off };
 
-namespace topics {
-constexpr uint16_t kNetwork = 1;  // Topic<NetworkStatus>
-constexpr uint16_t kFirstUser = 16;
-}  // namespace topics
-
-class Runtime : public AppContext, public TopicNotifier {
+class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
  public:
   static constexpr size_t kMaxApps = 16;
   static constexpr size_t kMaxDepth = 6;
@@ -61,14 +67,22 @@ class Runtime : public AppContext, public TopicNotifier {
 
   bool begin(const Board &board, const RuntimeConfig &config);
   bool install(App &app);                          // before start()
-  bool addJob(Job &job, uint32_t firstDelayMs = 0);  // before start()
-  bool attachTopic(TopicBase &topic);              // before start()
+  bool addJob(Job &job, uint32_t firstDelayMs = 0) override;  // before start()
+  bool attachTopic(TopicBase &topic) override;                // before start()
+  HttpService &http() override { return http_; }
+  const SystemSettings &systemSettings() const override { return settings_; }
+  RecordStatus loadRecordFor(const char *appId, const char *key, uint16_t version, void *data,
+                             size_t size) override {
+    return loadRecord(board_.storage, appId, key, version, data, size);
+  }
   bool start();
 
   // One UI iteration; returns how long the caller may sleep (ms).
   uint32_t step();
   // step() then sleep until woken or the returned delay elapses.
   void run();
+  // One pass of the background scheduler (only with serviceThread = false).
+  uint32_t serviceStep();
 
   // Thread-safe, for ports.
   Topic<NetworkStatus> &networkTopic() { return network_; }
@@ -87,7 +101,12 @@ class Runtime : public AppContext, public TopicNotifier {
   const Theme &theme() const override { return theme_; }
   Rect screenRect() const override { return screen_; }
   Rect contentRect() const override { return content_; }
-  void invalidate(const Rect &area) override { dirty_.add(area); }
+  // Invalidations from a background app's callbacks are ignored: only the
+  // foreground app may repaint the screen.
+  void invalidate(const Rect &area) override {
+    if (callbackApp_ && callbackApp_ != foreground()) return;
+    dirty_.add(area);
+  }
   void invalidateAll() override { dirty_.addAll(); }
   uint32_t millis() const override;
   LocalTime localTime() const override;
@@ -95,13 +114,15 @@ class Runtime : public AppContext, public TopicNotifier {
   bool push(Screen &screen) override;
   void pop() override;
   void goHome() override;
-  bool launch(const char *appId) override;
+  bool launch(const char *appId, const char *route = nullptr) override;
   size_t appCount() const override { return appCount_; }
   const AppInfo *appAt(size_t index) const override;
   void toast(const char *text) override;
   const SystemSettings &settings() const override { return settings_; }
   void applySettings(const SystemSettings &settings) override;
   SystemStatus status() const override;
+  NetworkControl &network() override { return wifi_; }
+  void requestJob(const Job &job) override { jobs_.requestRun(job); }
   RecordStatus loadAppRecord(const char *key, uint16_t version, void *data, size_t size) override;
   bool saveAppRecord(const char *key, uint16_t version, const void *data, size_t size) override;
 
@@ -153,6 +174,9 @@ class Runtime : public AppContext, public TopicNotifier {
   SharedResource networkResource_;
   Supervisor supervisor_;
   Topic<NetworkStatus> network_{topics::kNetwork};
+  Topic<WifiScan> scan_{topics::kWifiScan};
+  WifiManager wifi_{network_, scan_};
+  HttpService http_;
   TopicBase *topics_[kMaxTopics] = {};
   size_t topicCount_ = 0;
 
@@ -182,8 +206,10 @@ class Runtime : public AppContext, public TopicNotifier {
   int uiWatch_ = -1, serviceWatch_ = -1;
   std::atomic<bool> restartRequested_{false};
   std::atomic<bool> stopping_{false}, serviceExited_{false};
+  std::atomic<uint32_t> uiStackFree_{0}, serviceStackFree_{0};
   osal::Signal serviceWake_;
   uint32_t frames_ = 0, lastFrameMs_ = 0, supervisorRestarts_ = 0;
+  uint32_t nextHealthLog_ = 0;
   Renderer::Stats lastStats_;
 };
 

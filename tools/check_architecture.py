@@ -29,11 +29,12 @@ ALLOWED = {
     "input": {"core", "hal"},
     "storage": {"core", "hal"},
     "service": {"core", "osal"},
+    "net": {"core", "osal", "hal", "storage", "service"},
     "ui": {"core", "gfx", "fonts", "input"},
-    "app": {"core", "hal", "gfx", "fonts", "input", "ui", "storage"},
-    "runtime": {"core", "osal", "hal", "gfx", "fonts", "input", "ui", "storage", "service", "app"},
-    "apps": {"core", "gfx", "fonts", "input", "ui", "app", "service"},
-    "port": {"core", "osal", "hal", "storage", "service", "app", "runtime", "input"},
+    "app": {"core", "hal", "gfx", "fonts", "input", "ui", "storage", "service", "net"},
+    "runtime": {"core", "osal", "hal", "gfx", "fonts", "input", "ui", "storage", "service", "net", "app"},
+    "apps": {"core", "gfx", "fonts", "input", "ui", "app", "service", "net"},
+    "port": {"core", "osal", "hal", "storage", "service", "net", "app", "runtime", "input"},
     "boards": {"core", "hal", "input", "port", "gfx"},
 }
 PLATFORM_ALLOWED = {"port", "boards"}

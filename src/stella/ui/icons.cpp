@@ -156,5 +156,90 @@ void check(Canvas &c, const Rect &box, Color color) {
   seg(c, f, -0.07f, 0.20f, 0.28f, -0.20f, color, 1.2f);
 }
 
+void lock(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  const int w = (int)(0.56f * f.s), h = (int)(0.40f * f.s);
+  c.fillRoundRect(Rect((int)(f.cx - w / 2.f), (int)f.Y(0.02f), w, h), (int)(0.08f * f.s) + 1, color);
+  const int r = (int)(0.17f * f.s);
+  c.strokeArc((int)f.cx, (int)f.Y(0.02f), r + (int)(f.stroke / 2), (int)(f.stroke + 0.5f), -90.f, 180.f, color);
+}
+
+namespace {
+
+// Soft cloud: three overlapping discs on a rounded base (union by max).
+float cloudCoverage(const Frame &f, float px, float py, float ox, float oy, float scale) {
+  const struct {
+    float u, v, r;
+  } puffs[] = {{-0.18f, 0.06f, 0.17f}, {0.02f, -0.06f, 0.22f}, {0.20f, 0.06f, 0.16f}};
+  float cov = 0.f;
+  for (const auto &p : puffs) {
+    const float x = f.cx + (ox + p.u * scale) * f.s, y = f.cy + (oy + p.v * scale) * f.s, r = p.r * scale * f.s;
+    cov = fmaxf(cov, clamp01(r + 0.5f - sqrtf((px - x) * (px - x) + (py - y) * (py - y))));
+  }
+  // Flat bottom between the outer puffs.
+  const float left = f.cx + (ox - 0.18f * scale) * f.s, right = f.cx + (ox + 0.20f * scale) * f.s;
+  const float top = f.cy + (oy + 0.04f * scale) * f.s, bottom = f.cy + (oy + 0.22f * scale) * f.s;
+  if (px >= left && px <= right) cov = fmaxf(cov, clamp01(fminf(py - top, bottom - py) + 0.5f));
+  return cov;
+}
+
+void cloudAt(Canvas &c, const Rect &box, Color color, float ox, float oy, float scale) {
+  const Frame f = frame(box);
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) { return cloudCoverage(f, px, py, ox, oy, scale); });
+}
+
+}  // namespace
+
+void cloud(Canvas &c, const Rect &box, Color color) { cloudAt(c, box, color, 0.f, 0.f, 1.15f); }
+
+void partlyCloudy(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  disc(c, f.X(-0.12f), f.Y(-0.14f), 0.17f * f.s, color);
+  for (int i = 0; i < 6; ++i) {
+    const float a = -1.9f + i * 0.62f;
+    seg(c, f, -0.12f + 0.27f * sinf(a), -0.14f - 0.27f * cosf(a), -0.12f + 0.36f * sinf(a), -0.14f - 0.36f * cosf(a),
+        color, 0.8f);
+  }
+  cloudAt(c, box, color, 0.08f, 0.10f, 0.95f);
+}
+
+void rain(Canvas &c, const Rect &box, Color color) {
+  cloudAt(c, box, color, 0.f, -0.12f, 1.0f);
+  const Frame f = frame(box);
+  for (int i = 0; i < 3; ++i) seg(c, f, -0.14f + i * 0.14f, 0.20f, -0.19f + i * 0.14f, 0.38f, color);
+}
+
+void snow(Canvas &c, const Rect &box, Color color) {
+  cloudAt(c, box, color, 0.f, -0.12f, 1.0f);
+  const Frame f = frame(box);
+  for (int i = 0; i < 3; ++i) disc(c, f.X(-0.15f + i * 0.15f), f.Y(i == 1 ? 0.36f : 0.27f), f.stroke * 0.9f, color);
+}
+
+void storm(Canvas &c, const Rect &box, Color color) {
+  cloudAt(c, box, color, 0.f, -0.14f, 1.0f);
+  const Frame f = frame(box);
+  seg(c, f, 0.04f, 0.14f, -0.06f, 0.30f, color, 1.1f);
+  seg(c, f, -0.06f, 0.30f, 0.06f, 0.30f, color, 1.1f);
+  seg(c, f, 0.06f, 0.30f, -0.04f, 0.46f, color, 1.1f);
+}
+
+void fog(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  seg(c, f, -0.34f, -0.16f, 0.30f, -0.16f, color);
+  seg(c, f, -0.26f, 0.f, 0.36f, 0.f, color);
+  seg(c, f, -0.34f, 0.16f, 0.22f, 0.16f, color);
+}
+
+void wifiBars(Canvas &c, const Rect &box, Color color, int bars) {
+  const Frame f = frame(box);
+  const int cx = (int)f.cx, cy = (int)(f.cy + 0.30f * f.s);
+  const int t = (int)(f.stroke + 0.5f);
+  for (int i = 1; i <= 3; ++i) {
+    const int r = (int)(f.s * (0.14f + 0.16f * i));
+    c.strokeArc(cx, cy, r, t, -45.f, 90.f, color, bars > i ? 255 : 70);
+  }
+  disc(c, cx + 0.5f, cy + 0.5f - f.stroke * 0.4f, f.stroke * 0.9f, color);
+}
+
 }  // namespace icons
 }  // namespace stella

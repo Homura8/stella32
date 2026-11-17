@@ -37,14 +37,42 @@ const TimezonePreset *timezonePresets(int &count) {
   return kPresets;
 }
 
-RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out) {
+// Frozen layout of version 1 (Stella 0.1.0). Never edit: it describes data
+// already stored on devices.
+struct SettingsV1 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+};
+
+uint8_t nightBrightness(uint8_t level) { return level < 40 ? level : 40; }
+
+RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migrated) {
+  if (migrated) *migrated = false;
   SystemSettings loaded;
-  const RecordStatus s = loadRecord(store, kNamespace, kKey, SystemSettings::kVersion, &loaded, sizeof(loaded));
+  uint16_t found = 0;
+  RecordStatus s = loadRecord(store, kNamespace, kKey, SystemSettings::kVersion, &loaded, sizeof(loaded), &found);
+  if (s == RecordStatus::OldVersion && found == 1) {
+    SettingsV1 v1;
+    s = loadRecord(store, kNamespace, kKey, 1, &v1, sizeof(v1));
+    if (s == RecordStatus::Ok) {
+      loaded = SystemSettings{};
+      loaded.appearance = v1.appearance;
+      loaded.brightness = v1.brightness;
+      loaded.dimAfterSec = v1.dimAfterSec;
+      loaded.sleepAfterSec = v1.sleepAfterSec;
+      loaded.clock24h = v1.clock24h;
+      memcpy(loaded.timezone, v1.timezone, sizeof(loaded.timezone));
+      if (migrated) *migrated = true;
+    }
+  }
   if (s == RecordStatus::Ok) {
     out = loaded;
     out.sanitize();
   }
-  // Older versions: no migration exists yet (v1 is the first layout).
   return s;
 }
 

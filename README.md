@@ -16,14 +16,16 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.1.0, foundation |
+| Version | 0.2.0, connectivity |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 45 tests under ASan + UBSan; screenshots at 320x240 and 480x320 |
-| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.09 MB flash, 65 KB static RAM |
+| Host tests | 60 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding; screenshots at 320x240 and 480x320 |
+| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.33 MB flash (42%), 70 KB static RAM (21%) |
 | On hardware | **Not yet verified on a physical CYD.** See the checklist below. |
 
-Built-in apps: **Home** (launcher), **Clock**, **Settings** (display,
-appearance, time, about) and **Touch test** (calibration aid).
+Built-in apps: **Home** (launcher), **Clock**, **Weather** (Open-Meteo, no
+API key), **Settings** (Wi-Fi, display, appearance, time, about) and **Touch
+test** (calibration aid). Wi-Fi is set up on the device itself: scan, pick a
+network, type the password on the on-screen keyboard.
 
 ## Quick start
 
@@ -52,9 +54,15 @@ arduino-cli compile --profile cyd examples/CYD
 arduino-cli upload --profile cyd -p /dev/ttyUSB0 examples/CYD
 ```
 
-For network time, copy `examples/CYD/secrets.example.h` to
-`examples/CYD/secrets.h` (ignored by git) and fill in your Wi-Fi network.
-Without it Stella runs offline and shows "--:--" until the time is known.
+Join Wi-Fi on the device: the home screen offers *Set up Wi-Fi* on first
+boot (or open *Settings > Wi-Fi*). The network is remembered across restarts;
+time comes from SNTP and the weather from Open-Meteo. Optionally, copy
+`examples/CYD/secrets.example.h` to `examples/CYD/secrets.h` (ignored by git)
+to pre-load a network on first boot.
+
+Faster rendering: uncomment `#define STELLA_CYD_DMA 1` in `examples/CYD/CYD.ino`
+to draw the next chunk while the previous one is sent by DMA (uses 12.5 KiB
+more RAM). It is off by default until verified on hardware.
 
 In the Arduino IDE: add this repository as a library, open
 *File > Examples > Stella32 > CYD*, choose *ESP32 Dev Module* with the
@@ -83,17 +91,26 @@ In the Arduino IDE: add this repository as a library, open
 
 ## Hardware checklist (first CYD flash)
 
-1. Boot log shows `Stella 0.1.0 on ESP32-2432S028R (CYD), 320x240 compact`;
+1. Boot log shows `Stella 0.2.0 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
-4. Brightness slider, dim and screen-off timeouts work; the touch that wakes a
+4. *Set up Wi-Fi*: the scan lists nearby networks; joining with the
+   on-screen keyboard connects, survives a restart, and *Forget* clears it.
+   A wrong password shows "Couldn't join" and retries with growing gaps.
+5. The clock shows local time within a minute of connecting; *Weather* shows
+   the forecast and "Updated ... ago"; with the router off it keeps the last
+   report and says so.
+6. Brightness, dim, screen-off and *Dim at night* work; the touch that wakes a
    dark screen does not activate anything, while a tap on a dimmed screen
-   brightens it and acts. Single quick taps open apps reliably.
-5. Settings survive a reset (written about 1.5 s after the last change).
-6. With `secrets.h`: the Wi-Fi icon turns from pink to muted, and the clock
-   shows local time within a minute.
-7. Leave it running overnight; no `[runtime] ... restarting` in the log.
+   brightens it and acts. Single quick taps open apps reliably. Settings
+   survive a reset.
+7. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
+   should stay above ~1 KB, also right after a weather refresh (TLS).
+8. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+   corruption means DMA must stay off for this board.
+9. Leave it running overnight; no `restarting` line in the log and the
+   minimum heap in the `health` line stays stable.
 
 ## Licence
 

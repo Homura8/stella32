@@ -12,6 +12,7 @@
 #include <string>
 
 #include "sim_session.h"
+#include "stella/app/text_entry.h"
 
 using namespace stella;
 using namespace stella::host;
@@ -47,14 +48,18 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("clock");
     s.run(200);
     save(2, "clock");
+    s.os.launch("weather");
+    s.run(200);
+    save(3, "weather");
     s.os.launch("settings");
     s.run(200);
-    save(3, "settings");
-    const char *pages[] = {"display", "appearance", "time", "about"};
-    for (int i = 0; i < 4; ++i) {
+    save(4, "settings");
+    const char *pages[] = {"wifi", "display", "appearance", "time", "about"};
+    for (int i = 0; i < 5; ++i) {
       const Point row = s.settingsRow(i);
       s.tap(row.x, row.y);
-      save(4 + i, pages[i]);
+      s.run(600);  // Wi-Fi: let the scan finish
+      save(5 + i, pages[i]);
       const Point back = s.backButton();
       s.tap(back.x, back.y);
     }
@@ -64,7 +69,27 @@ void capture(int width, int height, const std::string &root) {
     s.drag(c.x + c.w / 4, c.y + c.h / 3, c.x + c.w * 3 / 4, c.y + c.h / 2);
     s.os.toast("Settings saved");
     s.run(100);
-    save(8, "touch-toast");
+    save(10, "touch-toast");
+
+    // First run: no network saved yet; then the password keyboard.
+    SimSession fresh(width, height, evening ? kEveningEpoch : kMorningEpoch, Appearance::Auto, false, false);
+    auto saveFresh = [&](int index, const char *screen) {
+      snprintf(name, sizeof(name), "%02d-%s-%s", index, screen, suffix);
+      shot(fresh, dir, name);
+    };
+    saveFresh(11, "first-run");
+    fresh.os.launch("settings", "wifi");
+    fresh.run(600);
+    const Theme &t = fresh.os.theme();
+    const Rect fc = fresh.os.contentRect();
+    const int listTop = fc.y + t.m.gapS + (t.m.row + t.dp(4)) + t.m.gapS + (t.m.control - t.dp(8)) + t.m.gapS + t.dp(4);
+    fresh.tap(fc.centerX(), listTop + t.dp(16));
+    for (const char *p = "moon"; *p; ++p) {
+      const Keyboard &kb = static_cast<TextEntryScreen *>(fresh.os.topScreen())->keyboard();
+      const Rect key = kb.keyFor(*p);
+      fresh.tap(key.centerX(), key.centerY());
+    }
+    saveFresh(12, "password");
   }
 }
 

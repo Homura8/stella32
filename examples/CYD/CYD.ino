@@ -5,7 +5,11 @@
 // Arduino IDE: install this repository as a library, open File > Examples >
 // Stella32 > CYD, select "ESP32 Dev Module" with the "Huge APP" partition.
 //
-// Optional: copy secrets.example.h to secrets.h for Wi-Fi and network time.
+// Wi-Fi: join from Settings > Wi-Fi on the device. Optionally, copy
+// secrets.example.h to secrets.h to pre-load a network on first boot.
+//
+// Faster rendering: uncomment to use DMA transfers (verify on your board).
+// #define STELLA_CYD_DMA 1
 #include <Stella.h>
 #include <stella/boards/cyd/cyd_board.h>
 
@@ -28,7 +32,7 @@ stella::apps::LauncherApp launcher;
 stella::apps::ClockApp clockApp;
 stella::apps::SettingsApp settingsApp;
 stella::apps::TouchTestApp touchTest;
-stella::esp32::WifiJob wifi(os, STELLA_WIFI_SSID, STELLA_WIFI_PASSWORD);
+stella::apps::WeatherApp weather;
 
 }  // namespace
 
@@ -39,6 +43,9 @@ void setup() {
   stella::RuntimeConfig config;
   config.renderBuffer = board.renderBuffer();
   config.renderBufferPixels = board.renderBufferPixels();
+  config.renderBuffer2 = board.secondRenderBuffer();
+  config.wifiSsid = STELLA_WIFI_SSID;  // first boot only; Settings > Wi-Fi replaces it
+  config.wifiPassword = STELLA_WIFI_PASSWORD;
   strncpy(config.defaults.timezone, STELLA_DEFAULT_TIMEZONE, sizeof(config.defaults.timezone) - 1);
   if (!os.begin(board.board(), config)) {
     Serial.println("Stella failed to start");
@@ -46,9 +53,9 @@ void setup() {
   }
   os.install(launcher);
   os.install(clockApp);
+  os.install(weather);
   os.install(settingsApp);
   os.install(touchTest);
-  if (wifi.configured()) os.addJob(wifi);
   os.start();
 }
 

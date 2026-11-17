@@ -64,6 +64,27 @@ static stella::apps::HelloApp hello;
 os.install(hello);
 ```
 
+## Background data (services)
+
+Long work runs as a `Job` on the service thread and publishes a `Topic<T>`.
+Register both while installing; the Weather app is a complete example
+(`src/stella/apps/weather_app.*`).
+
+```cpp
+void onInstall(ServiceHost &host) override {
+  service_.attach(host.http());   // HttpService: TLS lease, limits, JSON
+  host.attachTopic(topic_);       // id from topics::kFirstUser upwards
+  host.addJob(service_, 3000);    // first run after 3 s
+}
+void onTopic(uint16_t id, AppContext &ctx) override {
+  if (id == kMyTopic) screen_.refresh(ctx);  // read topic_.get(), invalidate
+}
+```
+
+In the job, `http.getJson(url, handler)` returns a `FetchResult`; return its
+`jobResult()` (a busy lease becomes `Deferred`, not a failure) and record the
+outcome in a `DataStatus` so the screen can explain stale data.
+
 ## Lifecycle
 
 | Callback | When |
@@ -74,9 +95,15 @@ os.install(hello);
 | `Screen::onTick` | while visible; return ms until the next tick or `kNoTick` |
 | `Screen::onEvent` | Press, Drag, Release, Tap, LongPress (and system events) |
 | `App::onTopic` | a topic changed (any running app, foreground or not) |
+| `App::onInstall` | at boot, to register jobs and topics |
+| `App::onRoute` | launched with a route: `ctx.launch("settings", "wifi")` |
 
 Navigation: `ctx.push(screen)` for detail views, `ctx.pop()` to go back (the
 status bar does this for the user), `ctx.launch(id)`, `ctx.goHome()`.
+
+System pieces apps can use: `ctx.network()` (Wi-Fi status, scan, join,
+forget), `TextEntryScreen` (text or password entry with the on-screen
+keyboard), `ctx.requestJob(job)` (refresh now).
 
 ## Rules of thumb
 
@@ -85,6 +112,8 @@ status bar does this for the user), `ctx.launch(id)`, `ctx.goHome()`.
 - Precompute strings in `onShow`/`onTick`/`onEvent`, not in `draw()`.
 - Invalidate the smallest rectangle that changed (plus `glassOutset()` for
   raised glass). An idle screen should cause no rendering at all.
+  Invalidations from a background app are ignored; check `isVisible()` to
+  skip work entirely.
 - Long work belongs in a `Job` on the service thread, publishing a
   `Topic<T>`; the app reads it in `onTopic`.
 - Persist small app state with `ctx.saveAppRecord(key, version, &data, size)`.

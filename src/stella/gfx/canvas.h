@@ -9,6 +9,7 @@
 //
 // Every fill takes an optional alpha (0..255). Translucent fills blend with the
 // pixels already drawn, which is how "glass" surfaces sit on the sky gradient.
+#include <math.h>
 #include <stdint.h>
 
 #include "../core/color.h"
@@ -18,6 +19,21 @@
 namespace stella {
 
 enum class Align : uint8_t { Left, Center, Right };
+
+// Coverage (0..1) of the pixel centred at (px, py) by a rounded rectangle in
+// continuous coordinates [x0, x1) x [y0, y1) with corner radius r.
+inline float roundRectCoverage(float px, float py, float x0, float y0, float x1, float y1, float r) {
+  if (px < x0 - 1.f || px > x1 + 1.f || py < y0 - 1.f || py > y1 + 1.f) return 0.f;
+  auto clampf = [](float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; };
+  if (r <= 0.f) {
+    const float covX = clampf(fminf(px + 0.5f - x0, x1 - (px - 0.5f)), 0.f, 1.f);
+    const float covY = clampf(fminf(py + 0.5f - y0, y1 - (py - 0.5f)), 0.f, 1.f);
+    return covX * covY;
+  }
+  const float cx = clampf(px, x0 + r, x1 - r), cy = clampf(py, y0 + r, y1 - r);
+  const float dx = px - cx, dy = py - cy;
+  return clampf(r + 0.5f - sqrtf(dx * dx + dy * dy), 0.f, 1.f);
+}
 
 class Canvas {
  public:

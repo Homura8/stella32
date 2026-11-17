@@ -10,6 +10,7 @@ class LauncherApp : public App {
  public:
   const AppInfo &info() const override;
   Screen &root() override { return home_; }
+  void onTopic(uint16_t topicId, AppContext &ctx) override;
 
  private:
   class HomeScreen : public Screen {
@@ -19,13 +20,13 @@ class LauncherApp : public App {
     bool onEvent(const Event &e, AppContext &ctx) override;
     void onShow(AppContext &ctx) override;
     uint32_t onTick(AppContext &ctx) override;
+    void refreshText(AppContext &ctx);
 
    private:
     int perPage() const { return columns_ * rows_; }
     int pageCount() const;
     Rect tile(int slot) const;
     int tileAt(int x, int y) const;  // app index under a point on the current page, or -1
-    void refreshText(AppContext &ctx);
     void arrange();  // place tiles and the note for the current app count
 
     FixedVector<const AppInfo *, 16> apps_;
@@ -33,6 +34,7 @@ class LauncherApp : public App {
     Rect area_, greeting_, date_, grid_, dots_, note_;
     int columns_ = 3, rows_ = 2, gap_ = 8, page_ = 0, pressed_ = -1;
     char greetingText_[32] = {0}, dateText_[48] = {0}, noteTitle_[32] = {0}, noteText_[48] = {0};
+    bool setupNote_ = false, notePressed_ = false;  // note invites Wi-Fi setup
   };
 
   HomeScreen home_;

@@ -17,8 +17,8 @@ FONTS = ROOT / "tools" / "fonts"
 OUT = ROOT / "src" / "stella" / "fonts"
 
 ASCII = "".join(chr(c) for c in range(32, 127))
-EXTRAS = "°·–…"  # ° · – …
-CLOCK = " 0123456789:-APM"
+EXTRAS = "\u00b0\u00b7\u2013\u2022\u2026"  # degree, middle dot, en dash, bullet, ellipsis
+CLOCK = " 0123456789:-APM\u00b0"  # clock digits and big temperatures
 
 # role -> (font file, pixel size per density class, character set)
 ROLES = {

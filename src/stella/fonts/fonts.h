@@ -12,7 +12,7 @@ struct FontSet {
   const Font *body;      // default text
   const Font *title;     // screen and card titles
   const Font *headline;  // large greetings / values
-  const Font *display;   // clock digits only: " 0123456789:-APM"
+  const Font *display;   // big numerals only: " 0123456789:-APM°"
 };
 
 extern const FontSet kCompact;  // ~320x240 panels

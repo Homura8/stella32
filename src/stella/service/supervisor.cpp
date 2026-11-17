@@ -22,16 +22,21 @@ void Supervisor::beat(int id, uint32_t nowMs) {
   if (valid(id)) slots_[id].lastBeat.store(nowMs);
 }
 
-uint32_t Supervisor::age(int id, uint32_t nowMs) const {
-  if (!valid(id)) return 0;
-  const int32_t d = (int32_t)(nowMs - slots_[id].lastBeat.load());
+namespace {
+uint32_t ageOf(uint32_t lastBeat, uint32_t nowMs) {
+  const int32_t d = (int32_t)(nowMs - lastBeat);
   return d > 0 ? (uint32_t)d : 0;
+}
+}  // namespace
+
+uint32_t Supervisor::age(int id, uint32_t nowMs) const {
+  return valid(id) ? ageOf(slots_[id].lastBeat.load(), nowMs) : 0;
 }
 
 int Supervisor::firstStalled(uint32_t nowMs, uint32_t &stalledForMs) const {
   for (unsigned i = 0; i < count_; ++i) {
     if (!slots_[i].active.load()) continue;
-    const uint32_t a = age((int)i, nowMs);
+    const uint32_t a = ageOf(slots_[i].lastBeat.load(), nowMs);
     if (a > slots_[i].limitMs) {
       stalledForMs = a;
       return (int)i;
