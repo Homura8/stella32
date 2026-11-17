@@ -49,7 +49,7 @@ struct SystemSettings {
   // Status LED. Wiring is found by Settings > Sound & light > Find my LED (or
   // set by the board's sketch); kNoPin (255) = no LED.
   uint8_t ledMode = 1;           // 0 off, 1 alerts and progress, 2 also a faint glow on the bedside face
-  uint8_t ledLevel = 60;         // 5..100 %: the brightest it ever gets
+  uint8_t ledLevel = 100;        // 5..100 %: the brightest it ever gets
   uint8_t ledPin[3] = {255, 255, 255};  // red, green, blue
   bool ledInverted = true;
   // Ambient light: dim the screen in a dark room. Needs the calibration made in

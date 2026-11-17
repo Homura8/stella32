@@ -30,7 +30,9 @@ LedColor LedEngine::frame(uint32_t nowMs, bool &animating) const {
       case LedPattern::Breathe: {
         const uint32_t period = r.periodMs ? r.periodMs : 2000;
         const float phase = (float)(nowMs % period) / (float)period;
-        const float wave = 0.5f - 0.5f * cosf(phase * 6.2831853f);  // 0 -> 1 -> 0, smooth
+        // 0 -> 1 -> 0, smooth, but dwelling near the top: a plain cosine spends
+        // most of each breath dim, and an LED on a bedside table should be seen.
+        const float wave = powf(0.5f - 0.5f * cosf(phase * 6.2831853f), 0.6f);
         const float floor = r.floor / 255.f;
         k = floor + (1.f - floor) * wave;
         animating = true;

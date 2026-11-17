@@ -1025,14 +1025,14 @@ void Runtime::updateLed(uint32_t now) {
   if (alertCount_) {
     alert.pattern = LedPattern::Breathe;
     alert.color = LedColor{255, 150, 40};  // warm amber
-    alert.periodMs = 1800;
-    alert.floor = 40;
+    alert.periodMs = 1600;
+    alert.floor = 110;  // an alarm stays visible between breaths
   }
   led_.set(LedSource::Alert, alert);
   LedRequest glow;
   if (topFullscreen() && settings_.ledMode == 2) {
     glow.pattern = LedPattern::Breathe;
-    glow.color = LedColor{36, 26, 64};  // a faint violet: this is a night light
+    glow.color = LedColor{24, 18, 44};  // a faint violet: this is a night light
     glow.periodMs = 7000;
     glow.floor = 90;
   }
