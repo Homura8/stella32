@@ -23,7 +23,7 @@ struct JsonValue {
 class JsonPath {
  public:
   static constexpr int kMaxDepth = 10;
-  static constexpr int kMaxKey = 24;
+  static constexpr int kMaxKey = 40;  // Open-Meteo has keys like precipitation_probability_max (29)
 
   int depth() const { return depth_; }
   // Pattern match: dot-separated keys, "[]" matches any array index, e.g.

@@ -81,6 +81,40 @@ IconFn weatherIcon(int code, bool day) {
   return icons::sparkle;
 }
 
+RainOutlook rainOutlook(const WeatherReport &w, int64_t nowEpoch) {
+  RainOutlook out;
+  if (!w.valid || w.hourCount == 0) return out;
+  out.kind = RainOutlook::Dry;
+  int possible = -1;
+  for (int i = 0; i < w.hourCount; ++i) {
+    const WeatherHour &h = w.hours[i];
+    if (h.time + 3600 <= nowEpoch) continue;  // an hour that is over
+    if (h.rainChance > out.chance && out.kind == RainOutlook::Dry) out.chance = h.rainChance;
+    if (h.rainChance >= 50) {
+      out.kind = RainOutlook::Likely;
+      out.at = h.time;
+      out.now = h.time <= nowEpoch;
+      out.chance = h.rainChance;
+      return out;
+    }
+    if (h.rainChance >= 30 && possible < 0) possible = i;
+  }
+  if (possible >= 0) {
+    out.kind = RainOutlook::Possible;
+    out.at = w.hours[possible].time;
+    out.now = w.hours[possible].time <= nowEpoch;
+    out.chance = w.hours[possible].rainChance;
+  }
+  return out;
+}
+
+// "3 pm" or "15:00" for the hour starting at `epoch`, in the clock's style.
+static void hourWords(AppContext &ctx, int64_t epoch, char *out, size_t capacity) {
+  const LocalTime lt = ctx.localTimeAt(epoch);
+  if (ctx.settings().clock24h) snprintf(out, capacity, "%02d:00", lt.hour);
+  else snprintf(out, capacity, "%d %s", lt.hour % 12 == 0 ? 12 : lt.hour % 12, lt.hour < 12 ? "am" : "pm");
+}
+
 // ------------------------------------------------------------------ service
 
 JobPolicy WeatherService::policy() const {
@@ -103,13 +137,14 @@ JobResult WeatherService::run(uint32_t nowMs) {
            "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"
            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m"
            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+           "&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=%d"
            "&timezone=auto&forecast_days=%d&timeformat=unixtime",
-           kPlaces[place].latitude, kPlaces[place].longitude, WeatherReport::kDays);
+           kPlaces[place].latitude, kPlaces[place].longitude, WeatherReport::kHours, WeatherReport::kDays);
   parsing_ = WeatherReport{};
   parsing_.place = place;
   seenTemperature_ = seenCode_ = false;
   FetchLimits limits;
-  limits.maxBytes = 8 * 1024;  // a forecast is ~1.5 KB
+  limits.maxBytes = 8 * 1024;  // a forecast with its hours is ~2.5 KB
   FetchResult r = http_->getJson(url, *this, limits);
   if (r.ok() && !(seenTemperature_ && seenCode_ && parsing_.dayCount >= 3)) {
     r.kind = FetchResult::Invalid;
@@ -146,6 +181,16 @@ void WeatherService::onValue(const JsonPath &path, const JsonValue &v) {
     parsing_.windKmh = (uint16_t)(v.number < 0 ? 0 : lround(v.number));
   } else if (path.is("current.time")) {
     parsing_.observed = (int64_t)v.number;
+  } else if (i >= 0 && i < WeatherReport::kHours && path.is("hourly.time[]")) {
+    parsing_.hours[i].time = (int64_t)v.number;
+  } else if (i >= 0 && i < WeatherReport::kHours && path.is("hourly.temperature_2m[]")) {
+    const long t = rounded(v.number);
+    parsing_.hours[i].tempC = (int8_t)(t < -100 ? -100 : t > 100 ? 100 : t);
+    if (i + 1 > parsing_.hourCount) parsing_.hourCount = (uint8_t)(i + 1);
+  } else if (i >= 0 && i < WeatherReport::kHours && path.is("hourly.precipitation_probability[]")) {
+    parsing_.hours[i].rainChance = (uint8_t)(v.number < 0 ? 0 : v.number > 100 ? 100 : v.number);
+  } else if (i >= 0 && i < WeatherReport::kHours && path.is("hourly.weather_code[]")) {
+    parsing_.hours[i].code = rounded(v.number);
   } else if (i >= 0 && i < WeatherReport::kDays) {
     WeatherDay &d = parsing_.days[i];
     if (path.is("daily.time[]")) {
@@ -165,7 +210,7 @@ void WeatherService::onValue(const JsonPath &path, const JsonValue &v) {
 
 // ------------------------------------------------------------------ app
 
-WeatherApp::WeatherApp() : main_(*this), places_(*this) {}
+WeatherApp::WeatherApp() : main_(*this), hourly_(*this), places_(*this) {}
 
 const AppInfo &WeatherApp::info() const {
   static const AppInfo kInfo{"weather", "Weather", icons::partlyCloudy, 2, 0};
@@ -188,6 +233,7 @@ void WeatherApp::onStart(AppContext &) {}
 
 void WeatherApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kWeather || topicId == stella::topics::kNetwork) main_.refresh(ctx);
+  if (topicId == topics::kWeather && hourly_.isVisible()) hourly_.refresh(ctx);
   if (topicId == topics::kWeather) publishGlance(ctx);
 }
 
@@ -287,6 +333,14 @@ void WeatherApp::MainScreen::refresh(AppContext &ctx) {
   describeFreshness(ctx, status, sizeof(status));
   if (strcmp(status, statusText_) != 0) copyText(statusText_, sizeof(statusText_), status);
   updateSun(ctx);
+  // The middle chip: will it rain soon? (Tapping it opens the next hours.)
+  const RainOutlook rain = rainOutlook(snap_.report, ctx.localTime().valid ? ctx.localTime().epoch : 0);
+  char hour[12];
+  if (rain.kind != RainOutlook::Unknown && rain.kind != RainOutlook::Dry) hourWords(ctx, rain.at, hour, sizeof(hour));
+  if (rain.kind == RainOutlook::Unknown) snprintf(rainChip_, sizeof(rainChip_), "Next hours");
+  else if (rain.kind == RainOutlook::Dry) snprintf(rainChip_, sizeof(rainChip_), "Dry for %d h", (int)snap_.report.hourCount);
+  else if (rain.now) snprintf(rainChip_, sizeof(rainChip_), rain.kind == RainOutlook::Likely ? "Rain now" : "Showers now");
+  else snprintf(rainChip_, sizeof(rainChip_), rain.kind == RainOutlook::Likely ? "Rain ~%s" : "Showers ~%s", hour);
   // A new report changes most of the screen; repaint the content area.
   if (isVisible()) ctx.invalidate(ctx.contentRect());
 }
@@ -380,13 +434,20 @@ void WeatherApp::MainScreen::draw(Canvas &c, const Theme &t) {
   char chip[3][24];
   if (w.valid) {
     snprintf(chip[0], 24, "Feels %d\xc2\xb0", w.feelsLikeC);
-    snprintf(chip[1], 24, "Humidity %u%%", (unsigned)w.humidity);
+    snprintf(chip[1], 24, "%s", rainChip_);
     snprintf(chip[2], 24, "Wind %u km/h", (unsigned)w.windKmh);
   } else {
     for (auto &s : chip) snprintf(s, 24, "\xe2\x80\x93");
   }
   for (int i = 0; i < 3; ++i) {
     paintGlass(c, t, chips_[i], chips_[i].h / 2, Elevation::Flat);
+    if (i == 1) {  // the tappable one: it leads to the next hours
+      if (rainPressed_) c.fillRoundRect(chips_[i], chips_[i].h / 2, p.accent, 46);
+      const int arrow = t.dp(8);
+      c.drawTextIn(*t.font.caption, chip[i], chips_[i].inset(t.dp(6), 0).inset(0, 0), p.accent, Align::Center);
+      icons::chevronRight(c, trailing(Rect(chips_[i].x, chips_[i].y, chips_[i].w - t.dp(6), chips_[i].h), arrow), p.textMuted);
+      continue;
+    }
     c.drawTextIn(*t.font.caption, chip[i], chips_[i].inset(t.dp(6), 0), p.textMuted, Align::Center);
   }
 
@@ -416,6 +477,10 @@ bool WeatherApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
     ctx.push(app_.places_);
     return true;
   }
+  if (snap_.report.valid && trackPress(chips_[1], e, rainPressed_, ctx, chips_[1].inset(-ctx.theme().dp(6)))) {
+    ctx.push(app_.hourly_);
+    return true;
+  }
   if (e.type == EventType::LongPress && hero_.contains(e.x, e.y)) {
     ctx.requestJob(app_.service_);
     ctx.toast("Refreshing weather");
@@ -423,6 +488,82 @@ bool WeatherApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   }
   return false;
 }
+
+// ------------------------------------------------------------------ next hours
+
+void WeatherApp::HourlyScreen::layout(const Rect &content, const Theme &t) {
+  Rect r[3];
+  column(content.inset(t.m.margin, t.m.gapS),
+         {px(t.font.body->lineHeight * 2 + t.dp(12)), flex(), px(t.font.caption->lineHeight)}, t.m.gapS, r);
+  summary_ = r[0];
+  chart_ = r[1];
+  details_ = r[2];
+}
+
+void WeatherApp::HourlyScreen::onShow(AppContext &ctx) { refresh(ctx); }
+
+void WeatherApp::HourlyScreen::refresh(AppContext &ctx) {
+  report_ = app_.topic_.get().report;
+  const LocalTime now = ctx.localTime();
+  const RainOutlook rain = rainOutlook(report_, now.valid ? now.epoch : 0);
+  char hour[12];
+  if (rain.kind == RainOutlook::Likely || rain.kind == RainOutlook::Possible) hourWords(ctx, rain.at, hour, sizeof(hour));
+  switch (rain.kind) {
+    case RainOutlook::Unknown: snprintf(summaryText_, sizeof(summaryText_), "No hourly forecast yet"); break;
+    case RainOutlook::Dry:
+      snprintf(summaryText_, sizeof(summaryText_), "No rain expected in the next %d hours", (int)report_.hourCount);
+      break;
+    case RainOutlook::Possible:
+      if (rain.now) snprintf(summaryText_, sizeof(summaryText_), "A chance of showers now (%u%%)", (unsigned)rain.chance);
+      else snprintf(summaryText_, sizeof(summaryText_), "Showers possible from about %s (%u%%)", hour, (unsigned)rain.chance);
+      break;
+    case RainOutlook::Likely:
+      if (rain.now) snprintf(summaryText_, sizeof(summaryText_), "Rain is likely now (%u%%)", (unsigned)rain.chance);
+      else snprintf(summaryText_, sizeof(summaryText_), "Rain likely from about %s (%u%%)", hour, (unsigned)rain.chance);
+      break;
+  }
+  if (report_.valid) snprintf(detailText_, sizeof(detailText_), "Humidity %u%% \xc2\xb7 Wind %u km/h", (unsigned)report_.humidity, (unsigned)report_.windKmh);
+  else detailText_[0] = '\0';
+  const bool h24 = ctx.settings().clock24h;
+  for (int i = 0; i < report_.hourCount && i < WeatherReport::kHours; ++i) {
+    const LocalTime lt = ctx.localTimeAt(report_.hours[i].time);
+    if (h24) snprintf(labels_[i], sizeof(labels_[i]), "%02d", lt.hour);
+    else snprintf(labels_[i], sizeof(labels_[i]), "%d%c", lt.hour % 12 == 0 ? 12 : lt.hour % 12, lt.hour < 12 ? 'a' : 'p');
+  }
+  if (isVisible()) ctx.invalidate(ctx.contentRect());
+}
+
+void WeatherApp::HourlyScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, summary_, t.m.radiusCard);
+  c.drawWrapped(*t.font.body, summaryText_, summary_.inset(t.m.padding, t.dp(6)), p.text, 2, Align::Center);
+  paintGlass(c, t, chart_, t.m.radiusCard);
+  const int n = report_.hourCount;
+  if (n > 0) {
+    const Rect inner = chart_.inset(t.dp(6), t.dp(8));
+    const int colW = inner.w / WeatherReport::kHours;
+    const int x0 = inner.x + (inner.w - colW * n) / 2;
+    const int lineH = t.font.caption->lineHeight;
+    const int barTop = inner.y + lineH + t.dp(4), barBottom = inner.bottom() - lineH - t.dp(4);
+    const int barH = barBottom > barTop ? barBottom - barTop : 0;
+    const int barW = colW > t.dp(8) ? t.dp(8) : colW - 2;
+    for (int i = 0; i < n; ++i) {
+      const WeatherHour &h = report_.hours[i];
+      const Rect col(x0 + i * colW, inner.y, colW, inner.h);
+      char temp[8];
+      snprintf(temp, sizeof(temp), "%d\xc2\xb0", (int)h.tempC);
+      c.drawTextIn(*t.font.caption, temp, Rect(col.x - 2, inner.y, col.w + 4, lineH), p.text, Align::Center);
+      const Rect track(col.centerX() - barW / 2, barTop, barW, barH);
+      c.fillRoundRect(track, barW / 2, p.line, (uint8_t)(p.lineAlpha * 2));
+      const int fill = barH * h.rainChance / 100;
+      if (fill > 0) c.fillRoundRect(Rect(track.x, track.bottom() - (fill < barW ? barW : fill), barW, fill < barW ? barW : fill), barW / 2, p.accent);
+      c.drawTextIn(*t.font.caption, labels_[i], Rect(col.x - 2, inner.bottom() - lineH, col.w + 4, lineH), p.textMuted, Align::Center);
+    }
+  }
+  c.drawTextIn(*t.font.caption, detailText_, details_, p.textMuted, Align::Center);
+}
+
+bool WeatherApp::HourlyScreen::onEvent(const Event &, AppContext &) { return false; }
 
 // ------------------------------------------------------------------ place picker
 

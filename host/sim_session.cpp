@@ -12,7 +12,7 @@ namespace {
 
 // An Open-Meteo response captured in shape (values chosen for the fixture).
 std::string weatherFixture(bool day) {
-  char json[1024];
+  char json[2048];
   snprintf(json, sizeof(json),
            "{\"latitude\":-37.8,\"longitude\":144.96,\"timezone\":\"Australia/Sydney\","
            "\"current_units\":{\"temperature_2m\":\"\u00b0C\"},"
@@ -21,7 +21,13 @@ std::string weatherFixture(bool day) {
            "\"wind_speed_10m\":13.7},"
            "\"daily\":{\"time\":[1794747600,1794834000,1794920400,1795006800],\"weather_code\":[3,61,1,95],"
            "\"temperature_2m_max\":[21.3,18.9,24.6,26.1],\"temperature_2m_min\":[12.4,13.1,11.8,15.2],"
-           "\"precipitation_probability_max\":[20,80,5,null]}}",
+           "\"precipitation_probability_max\":[20,80,5,null]},"
+           // Twelve hours from 22:00: dry, then rain building towards the small hours.
+           "\"hourly\":{\"time\":[1794826800,1794830400,1794834000,1794837600,1794841200,1794844800,"
+           "1794848400,1794852000,1794855600,1794859200,1794862800,1794866400],"
+           "\"temperature_2m\":[17.4,16.9,16.2,15.8,15.1,14.9,14.6,14.2,14.0,14.5,16.0,17.9],"
+           "\"precipitation_probability\":[10,10,20,35,60,80,70,40,20,10,null,5],"
+           "\"weather_code\":[2,2,3,3,61,63,61,3,3,2,1,1]}}",
            day ? 1 : 0);
   return json;
 }
