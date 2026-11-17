@@ -62,8 +62,32 @@ TEST(gesture_drag_suppresses_tap) {
   Recorder r;
   r.feed(true, 50, 50, 0);
   r.feed(true, 80, 52, 20);
+  r.feed(true, 90, 53, 35);
   r.feed(false, 0, 0, 200);
   CHECK(r.has(EventType::Drag) && r.has(EventType::Release) && !r.has(EventType::Tap));
+}
+
+// Regression (CYD): the pressed highlight makes the next frame slow, so the
+// finger may be seen only once before it lifts. That is still a tap.
+TEST(gesture_tap_seen_in_a_single_sample_after_a_slow_frame) {
+  Recorder r;
+  r.feed(true, 50, 50, 1000);
+  r.feed(false, 0, 0, 1140);  // first poll after a 140 ms frame: finger gone
+  r.feed(false, 0, 0, 1210);
+  CHECK(r.has(EventType::Press) && r.has(EventType::Tap));
+}
+
+// Regression (CYD): one stray reading (landing or lift-off jitter) beyond
+// the slop must not turn a tap into a drag.
+TEST(gesture_single_stray_sample_does_not_cancel_a_tap) {
+  Recorder r;
+  r.feed(true, 50, 50, 0);
+  r.feed(true, 51, 50, 15);
+  r.feed(true, 75, 41, 30);  // one jump of 25 px
+  r.feed(true, 52, 51, 45);
+  r.feed(false, 0, 0, 60);
+  r.feed(false, 0, 0, 130);
+  CHECK(!r.has(EventType::Drag) && r.has(EventType::Tap));
 }
 
 TEST(gesture_long_press_fires_once_without_tap) {

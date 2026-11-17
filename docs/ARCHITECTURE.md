@@ -164,8 +164,9 @@ loading on a PSRAM-less ESP32.
 
 ## Power
 
-`Active → Dimmed → Off` after configurable idle times; the touch that wakes the
-display is consumed so it never activates what is under the finger. Rendering
+`Active → Dimmed → Off` after configurable idle times. The touch that wakes a
+dark (Off) display is consumed so it never activates what is under the finger;
+a dimmed display is still readable, so a touch there brightens it and acts. Rendering
 pauses while the backlight is off; the dirty region is kept for wake.
 
 ## Persistence

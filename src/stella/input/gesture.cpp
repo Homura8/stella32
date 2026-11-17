@@ -30,9 +30,10 @@ int GestureRecognizer::update(const TouchSample &s, uint32_t now, Event (&out)[2
   int n = 0;
   if (s.pressed) {
     lastSeenMs_ = now;
+    absent_ = false;
     if (!down_) {
       down_ = true;
-      dragging_ = longFired_ = false;
+      dragging_ = longFired_ = beyondSlop_ = false;
       startX_ = lastX_ = s.x;
       startY_ = lastY_ = s.y;
       pressedMs_ = now;
@@ -42,7 +43,11 @@ int GestureRecognizer::update(const TouchSample &s, uint32_t now, Event (&out)[2
     lastX_ = s.x;
     lastY_ = s.y;
     if (consumed_) return 0;
-    if (!dragging_ && (absi(s.x - startX_) > cfg_.slop || absi(s.y - startY_) > cfg_.slop)) dragging_ = true;
+    if (!dragging_) {
+      const bool beyond = absi(s.x - startX_) > cfg_.slop || absi(s.y - startY_) > cfg_.slop;
+      if (beyond && beyondSlop_) dragging_ = true;  // two in a row: a real movement
+      beyondSlop_ = beyond;
+    }
     if (dragging_) {
       out[n++] = make(EventType::Drag, s.x, s.y, startX_, startY_, true);
     } else if (!longFired_ && elapsedMs(now, pressedMs_) >= cfg_.longPressMs) {
@@ -56,6 +61,10 @@ int GestureRecognizer::update(const TouchSample &s, uint32_t now, Event (&out)[2
     return 0;
   }
   // No contact: wait for a stable release before ending the gesture.
+  if (!absent_) {
+    absent_ = true;
+    firstAbsentMs_ = now;
+  }
   if (elapsedMs(now, lastSeenMs_) < cfg_.releaseMs) {
     if (!consumed_ && !dragging_ && !longFired_ && elapsedMs(now, pressedMs_) >= cfg_.longPressMs) {
       longFired_ = true;
@@ -69,7 +78,10 @@ int GestureRecognizer::update(const TouchSample &s, uint32_t now, Event (&out)[2
     return 0;
   }
   out[n++] = make(EventType::Release, lastX_, lastY_, startX_, startY_, dragging_);
-  const uint32_t held = elapsedMs(lastSeenMs_, pressedMs_);
+  // The finger was down at least until the last sample with contact and at
+  // most until the first one without; only a short span between dense
+  // samples proves a contact was too brief to be a tap.
+  const uint32_t held = elapsedMs(firstAbsentMs_, pressedMs_);
   if (!dragging_ && !longFired_ && held >= cfg_.minTapMs) {
     out[n++] = make(EventType::Tap, startX_, startY_, startX_, startY_);
   }

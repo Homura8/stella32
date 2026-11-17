@@ -426,10 +426,11 @@ void Runtime::pollTouch(uint32_t now) {
   if (sample.pressed) {
     lastInteraction_ = now;
     if (power_ != PowerState::Active) {
-      // The waking touch only wakes; it never reaches an app.
+      // A dark screen: the waking touch only wakes and never reaches an app.
+      // A dimmed screen is still readable, so the touch brightens it and acts.
+      if (power_ == PowerState::Off && !gestures_.active()) gestures_.consumeCurrent();
       power_ = PowerState::Active;
       applyBrightness();
-      if (!gestures_.active()) gestures_.consumeCurrent();
     }
   }
   Event out[2];

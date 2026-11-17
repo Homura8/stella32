@@ -25,9 +25,9 @@ constexpr uint8_t kDarkOrb[4] = {115, 115, 128, 128};
 
 Metrics metricsFor(Density d) {
   if (d == Density::Regular) {
-    return Metrics{22, 14, 6, 11, 17, 14, 22, 16, 999, 34, 50, 56, 32, 14};
+    return Metrics{22, 14, 6, 11, 17, 14, 22, 16, 999, 34, 50, 56, 32, 22};
   }
-  return Metrics{16, 10, 4, 8, 12, 10, 16, 12, 999, 26, 36, 40, 24, 10};
+  return Metrics{16, 10, 4, 8, 12, 10, 16, 12, 999, 26, 36, 40, 24, 16};
 }
 
 }  // namespace
