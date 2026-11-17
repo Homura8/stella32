@@ -31,10 +31,15 @@ enum class ColorTone : uint8_t { Soft = 0, Rich = 1, Vivid = 2 };
 // in Settings > Display > Calibrate). The defaults render the design exactly.
 struct Look {
   ColorTone tone = ColorTone::Soft;
-  // 0..100: a gamma on every colour, text included (1.0 at 0, 2.2 at 100).
-  // Panels that lift their dark tones (light-lilac text, grey "dark" mode)
-  // need some; good IPS screens need none.
+  // 0..100: a gamma (1.0 at 0, 2.2 at 100) that deepens backgrounds and, in
+  // light mode, dark text. Panels that lift their dark tones (light-lilac
+  // text, grey "dark" mode) need some; good IPS screens need none. In dark
+  // mode light inks (text, accents, toggles) keep their brightness.
   uint8_t contrast = 0;
+  // 0..100: brightness of the lightest tones. Below 100 the tones above a
+  // knee are compressed, so pure white does not glare next to near-whites.
+  uint8_t whites = 100;
+  uint8_t warmth = 0;  // 0..100: trims blue (and a little green) on cold panels
   bool dither = true;  // ordered dithering of the sky gradient
 };
 

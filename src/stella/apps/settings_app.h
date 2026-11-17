@@ -78,8 +78,9 @@ class SettingsApp : public App {
   };
 
   // Settings > Display > Calibrate: tune the panel until it matches a good
-  // reference screen. Colour: contrast, tone, dithering, with a test strip.
-  // Flicker: panel VCOM and frame rate, with a checkerboard test patch.
+  // reference screen. Tone: contrast (per mode), white level, warmth.
+  // Colour: palette tone, sky dithering. Panel: LCD VCOM and frame rate.
+  // Each tab's Reset returns its values to the board's defaults.
   class CalibrateScreen : public Screen {
    public:
     const char *title() const override { return "Calibrate"; }
@@ -90,12 +91,15 @@ class SettingsApp : public App {
 
    private:
     void arrange();
+    void load(const SystemSettings &s);
+    int rowCount() const { return tabs_.selected == 0 ? 3 : 2; }
     Theme theme_{};
-    Rect content_, strip_, rows_[3], labels_[3], patch_, note_;
+    Rect content_, strip_, note_, rows_[3], labels_[3];
     Segmented tabs_, tone_, refresh_;
-    Slider contrast_, vcom_;
+    Slider contrast_, whites_, warmth_, vcom_;
     Toggle dither_;
-    bool panelTrim_ = false;
+    Button reset_;
+    bool panelTrim_ = false, dark_ = false;
   };
 
   class AppearanceScreen : public Screen {

@@ -107,19 +107,41 @@ TEST(leaving_the_touch_test_clears_its_trail) {
   CHECK(clean == s.dev.display.framebuffer());
 }
 
-TEST(contrast_deepens_every_colour_including_text) {
+TEST(contrast_deepens_backgrounds_and_light_mode_text) {
   Look plain, deep;
-  deep.contrast = 60;
-  for (bool dark : {false, true}) {
-    const Theme a = makeTheme(Density::Compact, dark, SkyPhase::Day, plain);
-    const Theme b = makeTheme(Density::Compact, dark, SkyPhase::Day, deep);
-    CHECK(luma(b.color.text) < luma(a.color.text) || luma(a.color.text) > 230);
-    CHECK(luma(b.color.textMuted) < luma(a.color.textMuted));
-    CHECK(luma(b.color.sky[0]) < luma(a.color.sky[0]));
-  }
-  // White stays white: contrast never dims the brightest surfaces.
+  deep.contrast = 80;
+  const Theme lightA = makeTheme(Density::Compact, false, SkyPhase::Day, plain);
+  const Theme lightB = makeTheme(Density::Compact, false, SkyPhase::Day, deep);
+  CHECK(luma(lightB.color.text) < luma(lightA.color.text));  // light-lilac text gets darker
+  CHECK(luma(lightB.color.textMuted) < luma(lightA.color.textMuted));
+  CHECK(luma(lightB.color.sky[0]) < luma(lightA.color.sky[0]));
+  // Regression (CYD): in dark mode, contrast made toggles and accents vanish
+  // into the background. Backgrounds deepen; light inks keep their level.
+  const Theme darkA = makeTheme(Density::Compact, true, SkyPhase::Night, plain);
+  const Theme darkB = makeTheme(Density::Compact, true, SkyPhase::Night, deep);
+  CHECK(luma(darkB.color.sky[0]) < luma(darkA.color.sky[0]));
+  CHECK(luma(darkB.color.glass) < luma(darkA.color.glass));
+  CHECK(darkB.color.text == darkA.color.text && darkB.color.accent == darkA.color.accent);
+  CHECK(darkB.color.line == darkA.color.line);
+  // White stays white; mid greys deepen.
   CHECK(lookColor(deep, 0xffffff) == lookColor(plain, 0xffffff));
   CHECK(luma(lookColor(deep, 0x808080)) < luma(lookColor(plain, 0x808080)));
+}
+
+// Regression (CYD): with high contrast, pure white glared next to the
+// near-whites ("looks HDR"). White level compresses only the highlights.
+TEST(white_level_compresses_highlights_and_warmth_trims_blue) {
+  Look full, soft;
+  soft.whites = 40;
+  CHECK(luma(lookColor(soft, 0xffffff)) < 240);
+  CHECK(lookColor(soft, 0x606060) == lookColor(full, 0x606060));  // below the knee: unchanged
+  const int gapFull = luma(lookColor(full, 0xffffff)) - luma(lookColor(full, 0xe0e0e0));
+  const int gapSoft = luma(lookColor(soft, 0xffffff)) - luma(lookColor(soft, 0xe0e0e0));
+  CHECK(gapSoft < gapFull);
+  Look warm;
+  warm.warmth = 100;
+  const Color w = lookColor(warm, 0xffffff);
+  CHECK(red8(w) > 245 && blue8(w) < red8(w) - 30 && green8(w) < red8(w));
 }
 
 TEST(calibration_settings_reach_the_panel_and_theme) {
@@ -128,7 +150,7 @@ TEST(calibration_settings_reach_the_panel_and_theme) {
   SystemSettings p = s.os.settings();
   p.panelVcom = -6;
   p.panelRefreshHz = 100;
-  p.contrast = 50;
+  p.contrastDark = 50;  // the fixture is at night: dark mode
   p.dither = false;
   s.os.applySettings(p);
   CHECK(s.dev.display.trims == before + 1);
@@ -156,10 +178,12 @@ TEST(settings_v3_records_are_migrated_with_board_defaults) {
   } v3{Appearance::Light, 150, 60, 0, true, "AEST-10", true, ColorTone::Vivid};
   CHECK(saveRecord(&store, "sys", "settings", 3, &v3, sizeof(v3)));
   SystemSettings s;
-  s.contrast = 40;  // a board default (the CYD sketch sets one)
+  s.contrastLight = 86;  // board defaults (the CYD sketch sets them)
+  s.contrastDark = 74;
   bool migrated = false;
   CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok && migrated);
-  CHECK(s.brightness == 150 && s.colorTone == ColorTone::Vivid && s.contrast == 40 && s.dither);
+  CHECK(s.brightness == 150 && s.colorTone == ColorTone::Vivid && s.contrastLight == 86 && s.contrastDark == 74 &&
+        s.dither);
   CHECK(s.touchScaleX == 1024 && s.skyPin == 0);
 }
 
@@ -218,8 +242,9 @@ TEST(display_screen_rows_and_calibrate) {
   // Row 4: Calibrate opens the calibration screen.
   s.tap(area.centerX(), top + 4 * rowH + rowH / 2);
   CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Calibrate") == 0);
-  // Its tabs switch between Colour and Flicker; both render at every size.
-  s.tap(area.right() - area.w / 4, area.y + t.m.control / 2);
+  // Its tabs switch between Tone, Colour and Panel.
+  const int tabsW = area.w - t.dp(72) - t.m.gapM;
+  s.tap(area.x + tabsW * 5 / 6, area.y + t.m.control / 2);
   s.run(100);
   CHECK(!s.os.renderPending());
 }
@@ -239,8 +264,63 @@ TEST(calibration_screens_render_at_every_size) {
     CHECK(area.y + t.dp(4) + 5 * rowH <= area.bottom() + t.dp(8));  // the card fits
     s.tap(area.centerX(), area.y + t.dp(4) + 4 * rowH + rowH / 2);
     CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Calibrate") == 0);
-    s.tap(area.right() - area.w / 4, area.y + t.m.control / 2);  // Flicker tab
-    s.run(100);
-    CHECK(!s.os.renderPending());
+    const int tabsW = area.w - t.dp(72) - t.m.gapM;
+    for (int tab = 1; tab < 3; ++tab) {
+      s.tap(area.x + tabsW * (2 * tab + 1) / 6, area.y + t.m.control / 2);
+      s.run(100);
+      CHECK(!s.os.renderPending());
+    }
   }
+}
+
+TEST(settings_v4_records_are_migrated_keeping_calibration) {
+  MemoryStore store;
+  struct V4 {
+    Appearance appearance;
+    uint8_t brightness;
+    uint16_t dimAfterSec, sleepAfterSec;
+    bool clock24h;
+    char timezone[48];
+    bool nightDim;
+    ColorTone colorTone;
+    uint8_t contrast;
+    bool dither;
+    int8_t panelVcom;
+    uint8_t panelRefreshHz;
+    uint8_t skyPin;
+    int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+  } v4{Appearance::Dark, 120, 60, 0, true, "AEST-10", true, ColorTone::Rich, 74, false, -4, 100, 2,
+       1030, 7, 1020, -2};
+  CHECK(saveRecord(&store, "sys", "settings", 4, &v4, sizeof(v4)));
+  SystemSettings s;
+  s.contrastLight = 86;
+  s.contrastDark = 74;
+  s.whiteLevel = 70;
+  bool migrated = false;
+  CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok && migrated);
+  CHECK(s.colorTone == ColorTone::Rich && !s.dither && s.panelVcom == -4 && s.panelRefreshHz == 100 && s.skyPin == 2);
+  CHECK(s.touchScaleX == 1030 && s.touchOffsetX == 7 && s.touchScaleY == 1020 && s.touchOffsetY == -2);
+  CHECK(s.contrastLight == 86 && s.contrastDark == 74 && s.whiteLevel == 70);  // board defaults
+}
+
+TEST(calibrate_reset_restores_the_board_defaults_for_its_tab) {
+  SimSession s(320, 240);
+  SystemSettings p = s.os.settings();
+  p.whiteLevel = 20;
+  p.warmth = 90;
+  p.colorTone = ColorTone::Vivid;
+  s.os.applySettings(p);
+  s.os.launch("settings");
+  s.run(100);
+  const Point display = s.settingsRow(1);
+  s.tap(display.x, display.y);
+  const Theme &t = s.os.theme();
+  const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
+  const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 5;
+  const int rowH = want <= fit ? want : fit < t.dp(32) ? t.dp(32) : fit;
+  s.tap(area.centerX(), area.y + t.dp(4) + 4 * rowH + rowH / 2);  // Calibrate
+  s.tap(area.right() - t.dp(36), area.y + t.m.control / 2);       // Reset (Tone tab)
+  CHECK(s.os.settings().whiteLevel == s.os.defaultSettings().whiteLevel);
+  CHECK(s.os.settings().warmth == s.os.defaultSettings().warmth);
+  CHECK(s.os.settings().colorTone == ColorTone::Vivid);  // other tabs untouched
 }

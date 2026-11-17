@@ -50,10 +50,16 @@ void setup() {
   config.wifiPassword = STELLA_WIFI_PASSWORD;
   strncpy(config.defaults.timezone, STELLA_DEFAULT_TIMEZONE, sizeof(config.defaults.timezone) - 1);
   // Panel calibration defaults for this board (Settings > Display > Calibrate
-  // changes them on the device). The CYD's TN panel washes pastels out and
-  // lifts dark tones, so it starts richer and with some contrast.
+  // changes them on the device). The CYD's TN panel washes pastels out, lifts
+  // dark tones and runs cold. Contrast was matched to a Mac by eye on a CYD
+  // (light 86 %, dark 74 %); white level and warmth are starting points.
+  // The panel's VCOM and frame rate stay at the TFT_eSPI ILI9341_2 values
+  // most CYD projects use.
   config.defaults.colorTone = stella::ColorTone::Rich;
-  config.defaults.contrast = 40;
+  config.defaults.contrastLight = 86;
+  config.defaults.contrastDark = 74;
+  config.defaults.whiteLevel = 70;
+  config.defaults.warmth = 30;
   if (!os.begin(board.board(), config)) {
     Serial.println("Stella failed to start");
     return;

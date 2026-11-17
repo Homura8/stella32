@@ -32,7 +32,10 @@ void SystemSettings::sanitize() {
   timezone[sizeof(timezone) - 1] = '\0';
   if (!timezone[0]) strcpy(timezone, "UTC0");
   if ((uint8_t)colorTone > (uint8_t)ColorTone::Vivid) colorTone = ColorTone::Soft;
-  if (contrast > 100) contrast = 100;
+  if (contrastLight > 100) contrastLight = 100;
+  if (contrastDark > 100) contrastDark = 100;
+  if (whiteLevel > 100) whiteLevel = 100;
+  if (warmth > 100) warmth = 100;
   if (panelVcom < -30) panelVcom = -30;
   if (panelVcom > 30) panelVcom = 30;
   if (panelRefreshHz != 0 && (panelRefreshHz < 60 || panelRefreshHz > 120)) panelRefreshHz = 0;
@@ -82,6 +85,24 @@ struct SettingsV3 {
   char timezone[48];
   bool nightDim;
   ColorTone colorTone;
+};
+
+// Frozen layout of version 4 (the 0.3.1 branch, second build). Never edit.
+struct SettingsV4 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  ColorTone colorTone;
+  uint8_t contrast;
+  bool dither;
+  int8_t panelVcom;
+  uint8_t panelRefreshHz;
+  uint8_t skyPin;
+  int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
 };
 
 uint8_t nightBrightness(uint8_t level) {
@@ -141,6 +162,32 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       memcpy(loaded.timezone, v3.timezone, sizeof(loaded.timezone));
       loaded.nightDim = v3.nightDim;
       loaded.colorTone = v3.colorTone;
+      if (migrated) *migrated = true;
+    }
+  } else if (s == RecordStatus::OldVersion && found == 4) {
+    SettingsV4 v4;
+    s = loadRecord(store, kNamespace, kKey, 4, &v4, sizeof(v4));
+    if (s == RecordStatus::Ok) {
+      loaded = out;
+      loaded.appearance = v4.appearance;
+      loaded.brightness = v4.brightness;
+      loaded.dimAfterSec = v4.dimAfterSec;
+      loaded.sleepAfterSec = v4.sleepAfterSec;
+      loaded.clock24h = v4.clock24h;
+      memcpy(loaded.timezone, v4.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v4.nightDim;
+      loaded.colorTone = v4.colorTone;
+      // v4's single contrast also darkened light inks in dark mode; v5's
+      // per-mode contrast means something different, so it starts from the
+      // board's defaults rather than the old value.
+      loaded.dither = v4.dither;
+      loaded.panelVcom = v4.panelVcom;
+      loaded.panelRefreshHz = v4.panelRefreshHz;
+      loaded.skyPin = v4.skyPin;
+      loaded.touchScaleX = v4.touchScaleX;
+      loaded.touchOffsetX = v4.touchOffsetX;
+      loaded.touchScaleY = v4.touchScaleY;
+      loaded.touchOffsetY = v4.touchOffsetY;
       if (migrated) *migrated = true;
     }
   }

@@ -18,7 +18,7 @@ management and versioned settings.
 | --- | --- |
 | Version | 0.3.1, CYD polish: colour, brightness, paging |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 90 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 93 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -111,12 +111,12 @@ In the Arduino IDE: add this repository as a library, open
    range, also at night ("dimmed for the night"), and the backlight does not
    flicker (20 kHz PWM).
 7. *Settings > Display > Calibrate*: with
-   `docs/screenshots/320x240/17-calibrate-colour-day.png` open on a good
-   monitor, move *Contrast* (and pick a *Colour*) until the grey ramp and
-   the text swatch match; on *Flicker*, move the slider until the
-   checkerboard stops shimmering, and try the refresh rates. Turning
-   *Smooth sky* off shows whether dithering causes any banding or flicker.
-   Report the values so they can become the CYD defaults.
+   `docs/screenshots/320x240/17-calibrate-tone-day.png` (and `-night`) open
+   on a good monitor, fine-tune *Contrast* (light and dark mode separately),
+   *White level* and *Warmth* until the grey ramp, text and background match;
+   *Reset* returns a tab to the CYD defaults. Turning *Smooth sky* off shows
+   whether dithering causes banding or flicker. Leave *Panel* at its
+   defaults unless the screen shimmers.
    The home screen's ‹ › buttons page through apps while *Set up Wi-Fi* shows;
    tapping a sky in *Appearance* keeps it.
 8. *Touch test > Calibrate*: tap the four crosses with the stylus; touches

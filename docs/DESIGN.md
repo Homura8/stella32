@@ -40,24 +40,32 @@ to follow the time); night dimming still follows the clock.
 ## Panel calibration (`Look`)
 
 Small TN panels (like the CYD's) wash pastels out to white, lift dark tones
-(text looks light lilac, "dark" mode looks grey) and flatten the sky phases.
-*Settings > Display > Calibrate* tunes how the palette is rendered on this
-panel, live, against the same screen on a good monitor
-(`docs/screenshots/*/17-calibrate-colour-*.png`):
+(text looks light lilac, "dark" mode looks grey), run cold and flatten the
+sky phases. *Settings > Display > Calibrate* tunes how the palette is
+rendered on this panel, live, against the same screen on a good monitor
+(`docs/screenshots/*/17-calibrate-tone-*.png`). Three tabs, each with a
+*Reset* to the board's defaults:
 
-- **Contrast** (0-100 %): a gamma on every colour, text included (1.0 at 0 %,
-  2.2 at 100 %). White stays white.
-- **Colour** (`ColorTone`), below.
-- **Smooth sky**: ordered dithering of the sky gradient (off = plain rounding;
-  a test for banding or flicker).
-- **Flicker** and **Refresh** (panels that support `Display::PanelTrim`):
-  the LCD's VCOM offset, tuned against a checkerboard patch, and its frame
-  rate.
+- **Tone**
+  - **Contrast** (0-100 %, separate for light and dark mode): a gamma
+    (1.0 at 0 %, 2.2 at 100 %) on backgrounds and materials, and in light mode
+    on text too. In dark mode light inks (text, accent, lines, toggles) keep
+    their level, so controls stay visible on the deepened background.
+  - **White level** (0-100 %): compresses the tones above a knee (200 of
+    255), so pure white does not glare next to near-whites after a strong
+    contrast.
+  - **Warmth** (0-100 %): trims blue (up to 16 %) and a little green (5 %).
+- **Colour**: the palette tone (below) and **Smooth sky** (ordered dithering
+  of the sky gradient; off = plain rounding).
+- **Panel** (displays with `Display::PanelTrim`): the LCD's VCOM offset and
+  frame rate. They start at the panel driver's values; change them only if
+  the screen shimmers.
 
 All of it is applied once in `makeTheme` (and `Display::setPanelTrim`), so
-drawing code never changes. The design defaults (Soft, 0 %) are what the
-screenshots show; a board sketch sets its panel's defaults (the CYD starts at
-Rich, 40 %). Tones:
+drawing code never changes. The design defaults (Soft, 0 %, white 100 %,
+warmth 0 %) are what the screenshots show; a board sketch sets its panel's
+defaults. The CYD starts at Rich, contrast 86 % light / 74 % dark (matched to
+a Mac by eye on a CYD), white 70 %, warmth 30 %. Tones:
 
 | Tone | Light skies | Saturation | Light depth (gamma) | Edges and shadows |
 | --- | --- | --- | --- | --- |

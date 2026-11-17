@@ -129,6 +129,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   const AppInfo *appAt(size_t index) const override;
   void toast(const char *text) override;
   const SystemSettings &settings() const override { return settings_; }
+  const SystemSettings &defaultSettings() const override { return config_.defaults; }
   void applySettings(const SystemSettings &settings) override;
   SystemStatus status() const override;
   NetworkControl &network() override { return wifi_; }

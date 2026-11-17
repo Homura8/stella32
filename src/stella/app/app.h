@@ -190,6 +190,8 @@ class AppContext : public Invalidator {
   // System.
   virtual void toast(const char *text) = 0;
   virtual const SystemSettings &settings() const = 0;
+  // The board's defaults (e.g. to reset a calibration).
+  virtual const SystemSettings &defaultSettings() const = 0;
   // Apply new settings (theme, brightness, timezone...) and persist them soon.
   virtual void applySettings(const SystemSettings &settings) = 0;
   virtual SystemStatus status() const = 0;

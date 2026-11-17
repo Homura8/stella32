@@ -11,9 +11,10 @@
 namespace stella {
 
 struct SystemSettings {
-  // v2 added nightDim, v3 colorTone, v4 the display and touch calibration.
-  // Older records are migrated by loadSettings().
-  static constexpr uint16_t kVersion = 4;
+  // v2 added nightDim, v3 colorTone, v4 the display and touch calibration,
+  // v5 per-mode contrast, white level and warmth. Older records are migrated
+  // by loadSettings().
+  static constexpr uint16_t kVersion = 5;
 
   Appearance appearance = Appearance::Auto;
   uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
@@ -24,7 +25,10 @@ struct SystemSettings {
   bool nightDim = true;          // dim the backlight during the night phase
   ColorTone colorTone = ColorTone::Soft;  // palette strength for this panel
   // Display calibration (boards supply their own defaults; see CYD.ino).
-  uint8_t contrast = 0;          // 0..100, see Look::contrast
+  uint8_t contrastLight = 0;     // 0..100, see Look::contrast (light mode)
+  uint8_t contrastDark = 0;      // ... and dark mode
+  uint8_t whiteLevel = 100;      // 0..100, see Look::whites
+  uint8_t warmth = 0;            // 0..100, see Look::warmth
   bool dither = true;            // smooth sky gradients
   int8_t panelVcom = 0;          // Display::PanelTrim::vcom
   uint8_t panelRefreshHz = 0;    // Display::PanelTrim::refreshHz (0 = default)
@@ -32,10 +36,12 @@ struct SystemSettings {
   // Touch correction applied to every touch point: x' = x * scaleX / 1024 + offsetX.
   int16_t touchScaleX = 1024, touchOffsetX = 0, touchScaleY = 1024, touchOffsetY = 0;
 
-  Look look() const {
+  Look look(bool dark) const {
     Look l;
     l.tone = colorTone;
-    l.contrast = contrast;
+    l.contrast = dark ? contrastDark : contrastLight;
+    l.whites = whiteLevel;
+    l.warmth = warmth;
     l.dither = dither;
     return l;
   }
