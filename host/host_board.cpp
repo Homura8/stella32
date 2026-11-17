@@ -85,6 +85,7 @@ int SimWifi::scanResults(WifiNetwork *out, int capacity) {
 
 int SimHttp::get(const char *url, uint32_t, size_t maxBodyBytes, HttpSink &sink) {
   ++requests;
+  if (strstr(url, "manifest.json")) ++manifestRequests;
   lastUrl = url;
   if (failWith) return failWith;
   for (const Route &r : routes) {

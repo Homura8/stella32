@@ -70,9 +70,10 @@ void UpdateService::post(Command c) {
 
 JobPolicy UpdateService::policy() const {
   JobPolicy p;
-  p.intervalMs = 24u * 60u * 60u * 1000u;  // nothing runs by itself: commands wake it
-  p.retryMs = p.intervalMs;
-  p.maxBackoffMs = p.intervalMs;
+  p.intervalMs = kAutoCheckIntervalMs;  // the daily check; commands wake it sooner
+  p.retryMs = 30u * 60u * 1000u;        // a failed daily check tries again in half an hour,
+  p.maxBackoffMs = 6u * 60u * 60u * 1000u;  // then less often
+  p.needsNetwork = true;
   return p;
 }
 
@@ -90,14 +91,20 @@ void UpdateService::fail(const char *reason) {
 
 JobResult UpdateService::run(uint32_t) {
   const Command c = (Command)command_.exchange((uint8_t)Command::None);
-  if (!enabled_ || c == Command::None) return JobResult::Ok;
+  if (!enabled_) return JobResult::Ok;
   const UpdateState s = status_.state;
+  if (c == Command::None) {
+    // The daily check. Only from a calm state: it must not disturb a result
+    // the person has not looked at (Failed) or an offered image (Available).
+    if (autoCheck_.load() && (s == UpdateState::Idle || s == UpdateState::UpToDate)) return doCheck(true);
+    return JobResult::Ok;
+  }
   if (c == Command::Dismiss) {
     if (s == UpdateState::Failed || s == UpdateState::UpToDate) publish(UpdateState::Idle);
   } else if (c == Command::Check) {
     if (s == UpdateState::Idle || s == UpdateState::UpToDate || s == UpdateState::Failed ||
         s == UpdateState::Available)
-      doCheck();
+      doCheck(false);
   } else if (c == Command::Install) {
     if (s == UpdateState::Available) doInstall();
   }
@@ -126,33 +133,43 @@ bool UpdateService::manifestComplete() const {
          compareVersions(manifest_.version, "0.0.0") != -2 && strncmp(manifest_.url, "https://", 8) == 0;
 }
 
-void UpdateService::doCheck() {
-  publish(UpdateState::Checking);
+JobResult UpdateService::doCheck(bool quiet) {
+  if (!quiet) publish(UpdateState::Checking);
   manifest_ = Manifest{};
   FetchLimits limits;
   limits.maxBytes = 4096;
   limits.timeoutMs = 15000;
   const FetchResult r = http_->getJson(manifestUrl_, *this, limits);
   if (!r.ok()) {
+    if (quiet) {
+      LOGW(kTag, "daily check: no answer (%d)", (int)r.kind);
+      return r.jobResult();  // Busy defers; anything else retries later with backoff
+    }
     fail(r.kind == FetchResult::Busy ? "Network busy, try again" : "Couldn't reach the update server");
-    return;
+    return JobResult::Ok;
   }
   if (!manifestComplete()) {
+    if (quiet) {
+      LOGW(kTag, "daily check: the update information is not valid");
+      return JobResult::Failed;
+    }
     fail("The update information is not valid");
-    return;
+    return JobResult::Ok;
   }
   copyText(status_.version, sizeof(status_.version), manifest_.version);
   status_.size = manifest_.size;
   const int order = compareVersions(manifest_.version, current_);
   if (order <= 0) {
     publish(UpdateState::UpToDate);
-    return;
+    return JobResult::Ok;
   }
   if (manifest_.size > slot_->capacity()) {
+    if (quiet) return JobResult::Ok;  // nothing to offer; the manual check explains
     fail("The update is too big for this device");
-    return;
+    return JobResult::Ok;
   }
   publish(UpdateState::Available);
+  return JobResult::Ok;
 }
 
 void UpdateService::doInstall() {

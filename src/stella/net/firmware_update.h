@@ -14,8 +14,10 @@
 //   4. Only then is the slot made the next boot image, *pending*: if the new
 //      firmware does not run healthily long enough to be confirmed, the
 //      bootloader returns to the previous one by itself.
-// The update runs as a Job on the service thread and is triggered by the
-// person (Settings > About > Software update); nothing updates by itself.
+// The update runs as a Job on the service thread. Installing is always the
+// person's choice (Settings > About > Software update). Looking for a newer
+// version can happen by itself, once a day (a setting, on by default): it only
+// changes what Settings says ("Update 0.6.1 available"), never the firmware.
 #include <atomic>
 #include <stdint.h>
 
@@ -63,6 +65,7 @@ class UpdateControl {
 class UpdateService : public Job, public UpdateControl, public JsonHandler {
  public:
   static constexpr uint32_t kMaxImageBytes = 2u * 1024u * 1024u;
+  static constexpr uint32_t kAutoCheckIntervalMs = 24u * 60u * 60u * 1000u;
 
   explicit UpdateService(Topic<UpdateStatus> &topic) : topic_(topic) {}
   // Before the scheduler starts. `manifestUrl` must be HTTPS.
@@ -75,6 +78,9 @@ class UpdateService : public Job, public UpdateControl, public JsonHandler {
   void check() override { post(Command::Check); }
   void install() override { post(Command::Install); }
   void dismiss() override { post(Command::Dismiss); }
+  // The daily background check (any thread). Off: only the person's Check runs.
+  void setAutoCheck(bool on) { autoCheck_.store(on); }
+  bool autoCheck() const { return autoCheck_.load(); }
 
   // Job (service thread).
   const char *name() const override { return "update"; }
@@ -105,7 +111,9 @@ class UpdateService : public Job, public UpdateControl, public JsonHandler {
 
   void post(Command c);
   void publish(UpdateState state, const char *error = "");
-  void doCheck();
+  // `quiet` (the daily check) leaves the shown state alone until it has an
+  // answer and never turns a network problem into a visible error.
+  JobResult doCheck(bool quiet);
   void doInstall();
   void fail(const char *reason);
   bool manifestComplete() const;
@@ -120,6 +128,7 @@ class UpdateService : public Job, public UpdateControl, public JsonHandler {
   char current_[16] = {0};
   bool enabled_ = false;
   std::atomic<uint8_t> command_{0};
+  std::atomic<bool> autoCheck_{false};
   UpdateStatus status_;
   Manifest manifest_{};
 };

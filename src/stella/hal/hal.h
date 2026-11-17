@@ -108,6 +108,9 @@ class Sound {
  public:
   virtual ~Sound() = default;
   virtual void tone(uint16_t hz) = 0;
+  // Loudness for every later tone, 0..100 percent (0 = silent). Boards map it
+  // onto what their output can do; the default ignores it.
+  virtual void setVolume(uint8_t percent) { (void)percent; }
 };
 
 // Everything a board port provides, gathered for Runtime::begin().

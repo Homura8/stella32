@@ -43,6 +43,7 @@ class SimSession {
   apps::WeatherApp weather;
   apps::AlarmsApp alarms;
   apps::TimerApp timer;
+  apps::StopwatchApp stopwatch;
   RuntimeConfig config;
 };
 

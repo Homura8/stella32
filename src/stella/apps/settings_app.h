@@ -24,11 +24,11 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 5;
+    static constexpr int kRows = 6;
     SettingsApp &app_;
     Rect card_;
     ListRow rows_[kRows];
-    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0};
+    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0};
   };
 
   class WifiScreen : public Screen {
@@ -103,6 +103,22 @@ class SettingsApp : public App {
     bool night_ = false;  // the night phase (by the clock) is on now
   };
 
+  // Settings > Sound: the alert volume. Letting go of the slider plays a short
+  // chime at the new level.
+  class SoundScreen : public Screen {
+   public:
+    const char *title() const override { return "Sound"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+
+   private:
+    Rect card_, label_, note_;
+    Slider volume_;
+    bool changed_ = false;
+  };
+
   // Settings > Display > Calibrate: tune the panel until it matches a good
   // reference screen. Tone: contrast (per mode), white level, warmth.
   // Colour: palette tone, sky dithering. Panel: LCD VCOM and frame rate.
@@ -172,7 +188,8 @@ class SettingsApp : public App {
     void refresh(AppContext &ctx);
 
    private:
-    Rect card_, rows_[2], bar_, status_;
+    Rect card_, rows_[2], bar_, status_, autoRow_;
+    Toggle auto_;
     Button action_;
     UpdateStatus st_;
     char installed_[32] = {0}, offered_[40] = {0}, statusText_[128] = {0};
@@ -207,6 +224,7 @@ class SettingsApp : public App {
   CalibrateScreen calibrate_;
   AppearanceScreen appearance_;
   TimeScreen time_;
+  SoundScreen sound_;
   UpdateScreen softwareUpdate_;
   AboutScreen about_;
 };

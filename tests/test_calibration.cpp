@@ -192,7 +192,7 @@ TEST(tapping_a_sky_keeps_it_and_tapping_again_follows_the_time) {
   SimSession s(320, 240, kMorningEpoch);  // day
   s.os.launch("settings");
   s.run(100);
-  const Point row = s.settingsRow(2);
+  const Point row = s.settingsRow(3);
   s.tap(row.x, row.y);  // Appearance
   const Theme &t = s.os.theme();
   Rect r[3];
@@ -332,7 +332,7 @@ TEST(time_zone_list_scrolls_with_its_buttons) {
   SimSession s(320, 240);
   s.os.launch("settings");
   s.run(100);
-  const Point row = s.settingsRow(3);
+  const Point row = s.settingsRow(4);
   s.tap(row.x, row.y);  // Time
   const Theme &t = s.os.theme();
   Rect r[3];

@@ -226,6 +226,9 @@ class AppContext : public Invalidator {
   // Show a system alert owned by the calling app; one with the same tag is
   // replaced. Alerts queue (a few) while another is showing. False if full.
   virtual bool showAlert(const Alert &alert) = 0;
+  // Play a short chime at the current volume (Settings uses it so a volume
+  // change can be heard). Ignored while an alert is ringing or without a speaker.
+  virtual void previewChime() = 0;
   // Withdraw the calling app's alert with this tag (shown or queued) without
   // an onAlert() callback.
   virtual void dismissAlert(uint16_t tag) = 0;

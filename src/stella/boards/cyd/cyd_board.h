@@ -24,12 +24,6 @@
 #define STELLA_CYD_DMA 0
 #endif
 
-// Alert chime loudness: PWM duty out of 1023 on the speaker pin. A narrow
-// pulse has a weaker fundamental, so small values are gentler (512 = loudest).
-#ifndef STELLA_CYD_TONE_DUTY
-#define STELLA_CYD_TONE_DUTY 64
-#endif
-
 namespace stella {
 namespace cyd {
 
@@ -167,7 +161,9 @@ class CydTouch : public TouchInput {
 };
 
 // Square-wave tones on the speaker connector (LEDC PWM). Silent unless a
-// speaker is plugged in.
+// speaker is plugged in. Volume is the pulse width: a narrow pulse has a weak
+// fundamental, a 50 % duty (512 of 1023) is the loudest this output can be.
+// The curve is quadratic so the middle of the slider is a comfortable level.
 class CydSound : public Sound {
  public:
   void begin() { attached_ = ledcAttach(Profile::kSpeaker, 2000, 10); }
@@ -179,12 +175,22 @@ class CydSound : public Sound {
       return;
     }
     ledcChangeFrequency(Profile::kSpeaker, hz, 10);
-    ledcWrite(Profile::kSpeaker, STELLA_CYD_TONE_DUTY);
+    ledcWrite(Profile::kSpeaker, duty());
+  }
+  void setVolume(uint8_t percent) override {
+    volume_ = percent > 100 ? 100 : percent;
+    if (attached_ && current_) ledcWrite(Profile::kSpeaker, duty());
+  }
+  // 0 for a silent volume, else 4 .. 512.
+  static uint32_t dutyFor(uint8_t percent) {
+    return percent == 0 ? 0u : 4u + 508u * percent * percent / 10000u;
   }
 
  private:
+  uint32_t duty() const { return dutyFor(volume_); }
   bool attached_ = false;
   uint16_t current_ = 0;
+  uint8_t volume_ = 60;
 };
 
 // Everything the runtime needs, ready to hand to Runtime::begin().

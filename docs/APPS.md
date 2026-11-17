@@ -137,7 +137,7 @@ screen, plays the chime if asked, and appears over any app:
 Alert a;
 a.title = "Time's up";
 a.message = "5 min timer";
-a.icon = icons::stopwatch;
+a.icon = icons::hourglass;
 a.primary = "Done";
 a.secondary = "Again";   // optional
 a.tag = kDoneTag;        // yours; identifies the alert in onAlert
@@ -151,7 +151,12 @@ void onAlert(uint16_t tag, int action, AppContext &ctx) override {
 ```
 
 The Alarms and Timer apps (`src/stella/apps/alarms_app.*`, `timer_app.*`)
-are complete examples.
+are complete examples. The Stopwatch (`stopwatch_app.*`) shows the other
+shape of time-based work: no alert, state that keeps counting while another
+app is in front (it only stores the start time, so nothing has to run), a
+wake every 12 hours that folds the running segment into the total so the
+counter can never wrap, and a screen tick aligned to the next tenth of a
+second that repaints only the digits that changed.
 
 ## Rules of thumb
 

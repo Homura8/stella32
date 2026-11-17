@@ -5,6 +5,7 @@
 #include "clock_app.h"
 #include "launcher.h"
 #include "settings_app.h"
+#include "stopwatch_app.h"
 #include "timer_app.h"
 #include "touch_test.h"
 #include "weather_app.h"

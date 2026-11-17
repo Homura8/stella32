@@ -100,10 +100,19 @@ or display I/O.
   server is polled from the Wi-Fi job (every 25 ms while open). It closes on
   success, on *Cancel* or leaving the screen, and after 10 minutes. A wrong
   password leaves it open with the reason on the page and on the device. The
-  page is plain HTTP over the protected access point (at most two clients);
+  page is plain HTTP over the protected access point (three clients);
   the temporary password lives only in `WifiManager` (mutex-guarded, wiped on
-  close), never in a topic or a log. Only the thin `Esp32SetupServer` (web
-  server, DNS, access point) lives in the port.
+  close), never in a topic or a log. Only the thin `Esp32SetupServer` (sockets,
+  DNS, access point) lives in the port. **The server never waits**: a phone
+  that joins opens several connections at once (captive-portal probes,
+  speculative sockets that send nothing), and the Arduino `WebServer` serves
+  one at a time and waits up to five seconds on each silent one, which made
+  the page take about a minute on a real phone (0.6.0). `Esp32SetupServer`
+  accepts every pending connection into one of a few slots, feeds whatever
+  has arrived to the portable, bounded `HttpRequestParser`
+  (`net/http_request.*`: method, path and a form body of at most 512 bytes;
+  header lines are inspected and dropped, so nothing grows), answers as soon
+  as a request is complete and closes sockets that stay silent for 2.5 s.
 - **Freshness** (`service/data_status.h`): every data service keeps its last
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
@@ -242,7 +251,13 @@ the device and stored in the system settings (record v5):
 
 `Settings > About > Software update` checks for, installs and restarts into a
 new firmware, with no USB cable and nothing to set up beyond one flash.
-Nothing runs by itself (`net/firmware_update.*`, `tools/update_tool.py`):
+**Installing is always the person's tap.** *Looking* can run by itself
+(`SystemSettings::autoUpdate`, on by default, "Check daily" on the update
+screen): the update job makes a quiet check two minutes after boot and then
+once a day, only from a calm state (never over an offer or a result nobody has
+seen), and shows nothing of a failure (it retries after 30 minutes, backing off
+to 6 hours); an offer appears as "Update x.y.z" on Settings' About row
+(`net/firmware_update.*`, `tools/update_tool.py`):
 
 1. **Publishing is automatic.** The `Publish update` workflow runs on every
    merge to `main`: it builds the firmware and publishes it with a
@@ -314,9 +329,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,476,211 B of a 1,966,080 B app slot (75%); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 79,788 B; 247,892 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,495,365 B flash, 93,412 B static RAM |
+| Program (flash) | 1,463,891 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 83,020 B; 244,660 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
+| With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |

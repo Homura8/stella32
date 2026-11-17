@@ -24,6 +24,9 @@ struct ChimeNote {
 };
 constexpr ChimeNote kChime[] = {{1047, 150}, {0, 70}, {1319, 150}, {0, 70}, {1568, 240}, {0, 1100}};
 constexpr uint8_t kChimeNotes = sizeof(kChime) / sizeof(kChime[0]);
+// The short chime Settings plays so a volume change can be heard.
+constexpr ChimeNote kPreview[] = {{1319, 110}, {1568, 170}, {0, 0}};
+constexpr uint8_t kPreviewNotes = sizeof(kPreview) / sizeof(kPreview[0]);
 
 void applyTimezone(const char *posix) {
   setenv("TZ", posix, 1);
@@ -70,6 +73,7 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   }
   applyTimezone(settings_.timezone);
   applyPanelTrim(true);
+  applyVolume();
 
   size_t retainedSize = 0;
   void *retained = board.platform->retainedMemory(retainedSize);
@@ -86,7 +90,10 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   if (wifi_.available()) jobs_.add(wifi_, millis());
   http_.configure(board.http, &networkResource_);
   updater_.configure(&http_, board.firmware, board.platform, &jobs_, config.updateManifestUrl, STELLA_VERSION);
-  if (updater_.enabled()) jobs_.add(updater_, millis(), 0);
+  updater_.setAutoCheck(settings_.autoUpdate);
+  // The first daily check waits a couple of minutes, so boot, Wi-Fi and the
+  // first weather fetch get the network (and its TLS lease) first.
+  if (updater_.enabled()) jobs_.add(updater_, millis(), 2u * 60u * 1000u);
   // A freshly updated image runs on probation: it is confirmed after a healthy
   // minute, and otherwise the bootloader returns to the previous one.
   updateUnconfirmed_ = board.platform->updatePending();
@@ -192,6 +199,7 @@ uint32_t Runtime::step() {
 
   runWakes(now);
   updateAlert(millis());
+  updatePreview(millis());
 
   if (tickArmed_ && reached(now, nextTickAt_)) {
     if (Screen *s = topScreen()) {
@@ -253,6 +261,7 @@ uint32_t Runtime::step() {
     if (alerts_[0].sound && board_.sound) wait = minWait(wait, remainingMs(now, chimeAt_));
     if (alerts_[0].timeoutMs) wait = minWait(wait, remainingMs(now, alertShownAt_ + alerts_[0].timeoutMs));
   }
+  if (previewStep_) wait = minWait(wait, remainingMs(now, previewAt_));
   return wait;
 }
 
@@ -607,13 +616,21 @@ void Runtime::applyPanelTrim(bool force) {
 
 void Runtime::applySettings(const SystemSettings &s) {
   const bool timezoneChanged = strcmp(s.timezone, settings_.timezone) != 0;
+  const bool autoUpdateWasOn = settings_.autoUpdate;
   settings_ = s;
   settings_.sanitize();
+  // Turning the daily check on looks right away (quietly) instead of tomorrow.
+  if (settings_.autoUpdate && !autoUpdateWasOn) {
+    updater_.setAutoCheck(true);
+    jobs_.requestRun(updater_);
+  }
   if (timezoneChanged) applyTimezone(settings_.timezone);
   applyPanelTrim(false);
   settingsDirty_ = true;
   settingsSaveAt_ = millis() + kSettingsDebounceMs;
   applyBrightness();
+  applyVolume();
+  updater_.setAutoCheck(settings_.autoUpdate);
   updateTheme(false);
   invalidate(statusBarRect());
 }
@@ -921,6 +938,34 @@ void Runtime::updateAlert(uint32_t now) {
   }
 }
 
+void Runtime::previewChime() {
+  if (!board_.sound || settings_.volume == 0 || (alertCount_ && alerts_[0].sound)) return;
+  previewStep_ = 1;
+  previewAt_ = millis();
+  updatePreview(previewAt_);
+}
+
+void Runtime::updatePreview(uint32_t now) {
+  if (!previewStep_ || !reached(now, previewAt_)) return;
+  if (alertCount_ && alerts_[0].sound) {  // a real alert took the speaker
+    previewStep_ = 0;
+    return;
+  }
+  const ChimeNote &note = kPreview[previewStep_ - 1];
+  board_.sound->tone(note.hz);
+  if (note.hz == 0) {
+    previewStep_ = 0;
+    return;
+  }
+  previewAt_ = now + note.ms;
+  previewStep_ = (uint8_t)(previewStep_ + 1);
+  if (previewStep_ > kPreviewNotes) previewStep_ = 0;
+}
+
+void Runtime::applyVolume() {
+  if (board_.sound) board_.sound->setVolume(settings_.volume);
+}
+
 void Runtime::layoutAlert() {
   const Theme &t = theme_;
   const PendingAlert &a = alerts_[0];
@@ -958,7 +1003,7 @@ void Runtime::drawAlert(Canvas &c) {
   const Palette &p = t.color;
   const PendingAlert &a = alerts_[0];
   // A soft veil over everything, then the card.
-  c.fillRect(screen_, p.shadow, p.dark ? 150 : 96);
+  c.fillRect(screen_, p.shadow, p.dark ? 110 : 96);
   if (!c.visible(alertCard_.inset(-glassOutset(t)))) return;
   // Nearly opaque, so whatever is underneath never competes with the text.
   paintGlass(c, t, alertCard_, t.m.radiusCard);
