@@ -127,19 +127,29 @@ JobPolicy WeatherService::policy() const {
   return p;
 }
 
+int WeatherService::buildUrl(char *out, size_t capacity, uint8_t place) {
+  if (place >= kPlaceCount) place = 0;
+  const int n = snprintf(out, capacity,
+                         "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"
+                         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m"
+                         "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+                         "&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=%d"
+                         "&timezone=auto&forecast_days=%d&timeformat=unixtime",
+                         kPlaces[place].latitude, kPlaces[place].longitude, WeatherReport::kHours, WeatherReport::kDays);
+  return n > 0 && (size_t)n < capacity ? n : -1;
+}
+
 JobResult WeatherService::run(uint32_t nowMs) {
   WeatherSnapshot snap = topic_.get();
   const uint8_t place = place_.load() < kPlaceCount ? place_.load() : 0;
   snap.place = place;
   if (!http_ || !http_->available()) return JobResult::Ok;
-  char url[384];
-  snprintf(url, sizeof(url),
-           "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"
-           "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m"
-           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-           "&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=%d"
-           "&timezone=auto&forecast_days=%d&timeformat=unixtime",
-           kPlaces[place].latitude, kPlaces[place].longitude, WeatherReport::kHours, WeatherReport::kDays);
+  char url[kUrlBytes];
+  if (buildUrl(url, sizeof(url), place) < 0) {  // a bug, not a network problem: say so, send nothing
+    snap.status.failed(nowMs, "Weather request too long");
+    topic_.publish(snap);
+    return JobResult::Failed;
+  }
   parsing_ = WeatherReport{};
   parsing_.place = place;
   seenTemperature_ = seenCode_ = false;

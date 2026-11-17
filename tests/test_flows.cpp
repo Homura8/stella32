@@ -265,3 +265,26 @@ TEST(the_next_hours_screen_renders_at_every_size_in_both_clock_styles) {
     }
   }
 }
+
+// Regression: 0.9.0 grew the request to 387 characters in a 384-byte buffer, so
+// it was cut off ("timeformat=unix") and Open-Meteo answered 400 for everyone.
+TEST(every_weather_request_fits_whole_and_is_what_open_meteo_expects) {
+  int count = 0;
+  weatherPlaces(count);
+  for (int place = 0; place < count; ++place) {
+    char url[WeatherService::kUrlBytes];
+    const int n = WeatherService::buildUrl(url, sizeof(url), (uint8_t)place);
+    CHECK(n > 0 && n < (int)sizeof(url) - 64);  // and with room to grow
+    const std::string text(url);
+    CHECK(text.size() >= 20 && text.compare(text.size() - 20, 20, "&timeformat=unixtime") == 0);
+    CHECK(text.find("&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=12") != std::string::npos);
+  }
+  // A buffer that is too small is refused, never a cut-off request.
+  char small[200];
+  CHECK_EQ(WeatherService::buildUrl(small, sizeof(small), 0), -1);
+  // On a whole device the request that went out is the complete one.
+  SimSession s(320, 240);
+  const std::string sent = s.dev.http.lastUrl;
+  CHECK(sent.find("open-meteo") != std::string::npos);
+  CHECK(sent.compare(sent.size() - 20, 20, "&timeformat=unixtime") == 0);
+}
