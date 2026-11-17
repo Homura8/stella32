@@ -84,8 +84,9 @@ struct Rig {
   Runtime os;
   RuntimeConfig cfg;
   apps::LauncherApp launcher;
-  explicit Rig(const char *manifestUrl, bool pending = false) {
+  explicit Rig(const char *manifestUrl, bool pending = false, uint8_t crumbStage = 0, uint8_t crumbPercent = 0) {
     dev.platform.setEpoch(kEveningEpoch);
+    if (crumbStage) update_crumb::set(&dev.platform, crumbStage, crumbPercent);  // what an earlier run left behind
     dev.platform.setUpdatePending(pending);
     cfg.renderBuffer = dev.buffer.data();
     cfg.renderBufferPixels = dev.buffer.size();
@@ -530,4 +531,73 @@ TEST(settings_shows_the_offered_update_and_the_toggle_saves) {
   s.tap(entry.centerX(), entry.centerY());
   CHECK(strcmp(s.os.topScreen()->title(), "Software update") == 0);
   CHECK(s.os.settings().autoUpdate);
+}
+
+// ------------------------------------------------------------ explaining a reset
+
+TEST(update_crumb_round_trips_is_reported_once_and_ignores_garbage) {
+  SimPlatform p;
+  uint8_t stage = 99, percent = 99;
+  CHECK(!update_crumb::take(&p, stage, percent));  // nothing there
+  update_crumb::set(&p, update_crumb::Downloading, 34);
+  CHECK(update_crumb::take(&p, stage, percent) && stage == update_crumb::Downloading && percent == 34);
+  CHECK(!update_crumb::take(&p, stage, percent));  // reported once
+  update_crumb::set(&p, update_crumb::Finishing, 100);
+  update_crumb::set(&p, update_crumb::None, 0);  // an update that ended normally leaves nothing
+  CHECK(!update_crumb::take(&p, stage, percent));
+  // Random memory (as after power-on) is not mistaken for a crumb.
+  size_t size = 0;
+  unsigned char *block = static_cast<unsigned char *>(p.retainedMemory(size));
+  for (size_t i = 0; i < size; ++i) block[i] = (unsigned char)(i * 37 + 11);
+  CHECK(!update_crumb::take(&p, stage, percent));
+  update_crumb::set(&p, update_crumb::Downloading, 50);
+  block[update_crumb::kOffset + 5] ^= 0x40;  // a flipped bit in the percent
+  CHECK(!update_crumb::take(&p, stage, percent));
+  char text[40];
+  update_crumb::describe(update_crumb::Downloading, 7, text, sizeof(text));
+  CHECK(strcmp(text, "update: downloading 7%") == 0);
+  update_crumb::describe(update_crumb::Preparing, 0, text, sizeof(text));
+  CHECK(strcmp(text, "update: starting") == 0);
+}
+
+TEST(a_reset_during_an_update_is_explained_after_restart) {
+  Rig rig("https://updates.example/stella/manifest.json", false, update_crumb::Downloading, 34);
+  const SystemStatus st = rig.os.status();
+  CHECK(strcmp(st.resetNote, "update: downloading 34%") == 0);
+  Rig clean("https://updates.example/stella/manifest.json");
+  CHECK(clean.os.status().resetNote[0] == '\0');
+}
+
+TEST(an_install_leaves_a_crumb_while_it_runs_and_none_afterwards) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  runCheck(s);
+  bool sawPreparing = false, sawDownloading = false, sawFinishing = false;
+  s.dev.firmware.onEvent = [&](const SimFirmware &f) {
+    uint8_t stage = 0, percent = 0;
+    if (!update_crumb::take(&s.dev.platform, stage, percent)) return;
+    sawPreparing |= stage == update_crumb::Preparing;
+    sawDownloading |= stage == update_crumb::Downloading;
+    sawFinishing |= stage == update_crumb::Finishing;
+    update_crumb::set(&s.dev.platform, stage, percent);  // put it back: we only looked
+    (void)f;
+  };
+  runInstall(s);
+  CHECK(s.os.update().status().state == UpdateState::Ready);
+  CHECK(sawPreparing && sawDownloading && sawFinishing);
+  s.dev.firmware.onEvent = nullptr;
+  uint8_t stage = 0, percent = 0;
+  CHECK(!update_crumb::take(&s.dev.platform, stage, percent));  // finished: nothing to explain
+}
+
+TEST(a_failed_install_leaves_no_crumb) {
+  SimSession s(320, 240);
+  Offer o;
+  o.sha256 = std::string(64, '0');  // the download will not match
+  serve(s, o);
+  runCheck(s);
+  runInstall(s);
+  CHECK(s.os.update().status().state == UpdateState::Failed);
+  uint8_t stage = 0, percent = 0;
+  CHECK(!update_crumb::take(&s.dev.platform, stage, percent));
 }

@@ -1,6 +1,8 @@
 #include "firmware_update.h"
 
 #include <math.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "../core/log.h"
@@ -11,7 +13,64 @@ namespace {
 
 constexpr const char *kTag = "update";
 
+constexpr uint32_t kCrumbMagic = 0x43524d42u;  // "CRMB"
+
+struct Crumb {
+  uint32_t magic;
+  uint8_t stage, percent;
+  uint16_t reserved;
+  uint32_t check;
+};
+static_assert(sizeof(Crumb) == update_crumb::kBytes, "crumb layout");
+
+unsigned char *crumbBlock(Platform *platform) {
+  if (!platform) return nullptr;
+  size_t size = 0;
+  unsigned char *block = static_cast<unsigned char *>(platform->retainedMemory(size));
+  return block && size >= update_crumb::kOffset + sizeof(Crumb) ? block + update_crumb::kOffset : nullptr;
+}
+
+uint32_t crumbCheck(const Crumb &c) { return hash32(&c, offsetof(Crumb, check)); }
+
 }  // namespace
+
+namespace update_crumb {
+
+void set(Platform *platform, uint8_t stage, uint8_t percent) {
+  unsigned char *block = crumbBlock(platform);
+  if (!block) return;
+  Crumb c{};
+  if (stage != None) {
+    c.magic = kCrumbMagic;
+    c.stage = stage;
+    c.percent = percent;
+    c.check = crumbCheck(c);
+  }
+  memcpy(block, &c, sizeof(c));
+}
+
+bool take(Platform *platform, uint8_t &stage, uint8_t &percent) {
+  unsigned char *block = crumbBlock(platform);
+  if (!block) return false;
+  Crumb c;
+  memcpy(&c, block, sizeof(c));
+  memset(block, 0, sizeof(c));  // reported once
+  if (c.magic != kCrumbMagic || c.check != crumbCheck(c) || c.stage == None || c.stage > Finishing) return false;
+  stage = c.stage;
+  percent = c.percent > 100 ? 100 : c.percent;
+  return true;
+}
+
+void describe(uint8_t stage, uint8_t percent, char *out, size_t capacity) {
+  switch (stage) {
+    case Preparing: snprintf(out, capacity, "update: starting"); break;
+    case Downloading: snprintf(out, capacity, "update: downloading %u%%", (unsigned)percent); break;
+    case Finishing: snprintf(out, capacity, "update: finishing"); break;
+    default: snprintf(out, capacity, "%s", ""); break;
+  }
+}
+
+}  // namespace update_crumb
 
 // Streams the image into the slot while hashing it; refuses more than the
 // manifest promised.
@@ -85,6 +144,7 @@ void UpdateService::publish(UpdateState state, const char *error) {
 
 void UpdateService::fail(const char *reason) {
   LOGW(kTag, "update failed: %s", reason);
+  update_crumb::set(platform_, update_crumb::None, 0);  // handled: nothing to explain after a restart
   status_.percent = 0;
   publish(UpdateState::Failed, reason);
 }
@@ -179,10 +239,13 @@ void UpdateService::doInstall() {
   }
   status_.percent = 0;
   publish(UpdateState::Downloading);
+  update_crumb::set(platform_, update_crumb::Preparing, 0);
   if (!slot_->begin(manifest_.size)) {
+    update_crumb::set(platform_, update_crumb::None, 0);
     fail("Can't write the update slot");
     return;
   }
+  update_crumb::set(platform_, update_crumb::Downloading, 0);
   ImageSink sink(*slot_, manifest_.size);
   // Report progress as it streams (every 2 %), without a topic update per chunk.
   class Progress : public HttpSink {
@@ -193,6 +256,7 @@ void UpdateService::doInstall() {
       const uint8_t pct = (uint8_t)((uint64_t)inner_.received() * 100u / s_.manifest_.size);
       if (pct >= s_.status_.percent + 2) {
         s_.status_.percent = pct;
+        update_crumb::set(s_.platform_, update_crumb::Downloading, pct);
         s_.topic_.publish(s_.status_);
       }
       return true;
@@ -207,6 +271,7 @@ void UpdateService::doInstall() {
   limits.timeoutMs = 30000;
   limits.leaseWaitMs = 60000;
   const FetchResult r = http_->get(manifest_.url, progress, limits);
+  update_crumb::set(platform_, update_crumb::Finishing, 100);
   if (!r.ok() || sink.tooMuch() || sink.writeFailed()) {
     slot_->abort();
     fail(sink.writeFailed()   ? "Writing the update failed"
@@ -241,6 +306,7 @@ void UpdateService::doInstall() {
   }
   LOGI(kTag, "update %s staged; restart to run it", manifest_.version);
   status_.percent = 100;
+  update_crumb::set(platform_, update_crumb::None, 0);
   publish(UpdateState::Ready);
 }
 

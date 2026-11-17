@@ -53,6 +53,22 @@ struct UpdateStatus {
   char error[48] = {0};
 };
 
+// A note left in retained memory (next to the supervisor's restart record)
+// while an update runs. If the device resets in the middle, the next boot can
+// say when ("Crash · update: downloading 34%"), which is otherwise
+// invisible without a serial cable. Validated by magic and checksum because
+// the memory is random after power-on.
+namespace update_crumb {
+enum Stage : uint8_t { None = 0, Preparing = 1, Downloading = 2, Finishing = 3 };
+constexpr size_t kOffset = 40;  // after RestartRecord
+constexpr size_t kBytes = 12;
+void set(Platform *platform, uint8_t stage, uint8_t percent);
+// Reads and clears. False when there is no valid crumb.
+bool take(Platform *platform, uint8_t &stage, uint8_t &percent);
+// "update: downloading 34%" (shown after the reset cause).
+void describe(uint8_t stage, uint8_t percent, char *out, size_t capacity);
+}  // namespace update_crumb
+
 class UpdateControl {
  public:
   virtual ~UpdateControl() = default;

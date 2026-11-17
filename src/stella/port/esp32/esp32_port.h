@@ -202,7 +202,10 @@ class Esp32Firmware : public FirmwareSlot {
     abort();
     part_ = target();
     if (!part_ || size > part_->size) return false;
-    open_ = esp_ota_begin(part_, size, &handle_) == ESP_OK;
+    // Erase as the image is written (sector by sector) instead of the whole
+    // slot up front: that is one long flash operation of several seconds, and
+    // the heaviest current draw of the whole update, before a byte arrives.
+    open_ = esp_ota_begin(part_, OTA_WITH_SEQUENTIAL_WRITES, &handle_) == ESP_OK;
     return open_;
   }
   bool write(const uint8_t *data, size_t size) override { return open_ && esp_ota_write(handle_, data, size) == ESP_OK; }

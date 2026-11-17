@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.7.0"
+#define STELLA_VERSION "0.7.1"
 #endif
 
 namespace stella {
@@ -283,6 +283,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     uint32_t startMs = 0;
     bool active = false;
   } transition_;
+  char resetNote_[40] = {0};
   bool transitionsSlow_ = false;  // a frame took too long: slide no more this boot
   uint8_t previewStep_ = 0;  // 0 = no preview playing; else 1 + the note being played
   uint32_t previewAt_ = 0;
