@@ -110,32 +110,88 @@ bool ClockApp::ClockScreen::onEvent(const Event &e, AppContext &ctx) {
 
 // ------------------------------------------------------------------ bedside
 
+namespace {
+
+// Star positions as 1/256 of the display (edge-weighted, like Nightstand's).
+constexpr uint8_t kStarX[10] = {59, 196, 14, 242, 37, 225, 18, 240, 75, 180};
+constexpr uint8_t kStarY[10] = {48, 48, 98, 97, 151, 153, 211, 215, 234, 230};
+
+Point at256(const Rect &area, int fx, int fy) {
+  return Point{(int16_t)(area.x + area.w * fx / 256), (int16_t)(area.y + area.h * fy / 256)};
+}
+
+}  // namespace
+
+int bedsideFrameAt(uint32_t ms) {
+  const uint32_t phase = ms % 16000u;
+  return (int)((phase / 4000u) % 2u) * 2 + (phase >= 15000u ? 1 : 0);
+}
+
+uint32_t bedsideMsToNextFrame(uint32_t ms) {
+  const uint32_t phase = ms % 16000u;
+  static const uint32_t kEdges[] = {4000, 8000, 12000, 15000, 16000};
+  for (uint32_t edge : kEdges)
+    if (edge > phase) return edge - phase + 5;
+  return 5;
+}
+
+int ClockApp::BedsideScreen::starLevel(int star, int frame) { return ((star + frame) & 3) == 0 ? 1 : 0; }
+
+Rect ClockApp::BedsideScreen::starBox(int star) const {
+  return Rect(stars_[star].x - 1, stars_[star].y - 1, starSize_ + 2, starSize_ + 2);
+}
+
 void ClockApp::BedsideScreen::layout(const Rect &area, const Theme &t) {
   area_ = area;
-  const Font &display = *t.font.display;
-  Rect parts[5];
-  column(area.inset(t.m.margin, t.m.margin),
-         {flex(), px(display.ascent + t.dp(4)), px(t.font.body->lineHeight), px(t.font.caption->lineHeight + t.dp(4)),
-          flex()},
-         t.m.gapM, parts);
-  time_ = parts[1];
-  date_ = parts[2];
-  alarm_ = parts[3];
+  const Rect inner = area.inset(t.m.margin, t.m.margin);
+  // The largest numerals in which "88:88" and AM/PM still fit the width.
+  int digit = 0;
+  for (char d = '0'; d <= '9'; ++d) {
+    const char one[2] = {d, 0};
+    const int w = Canvas::textWidth(*t.font.bedside, one);
+    if (w > digit) digit = w;
+  }
+  const int suffix = t.dp(6) + (Canvas::textWidth(*t.font.title, "AM") > Canvas::textWidth(*t.font.title, "PM")
+                                    ? Canvas::textWidth(*t.font.title, "AM")
+                                    : Canvas::textWidth(*t.font.title, "PM"));
+  clockFont_ = 4 * digit + Canvas::textWidth(*t.font.bedside, ":") + suffix <= inner.w ? t.font.bedside : t.font.display;
+
+  Rect r[8];
+  column(inner,
+         {px(t.font.body->lineHeight), flex(), px(clockFont_->ascent + t.dp(6)), px(t.dp(14)),
+          px(t.font.title->lineHeight), px(t.font.body->lineHeight), flex(), px(t.font.caption->lineHeight)},
+         t.m.gapS, r);
+  date_ = r[0];
+  clock_ = r[2];
+  divider_ = r[3];
+  glanceRow_ = r[4];
+  alarmRow_ = r[5];
+  footer_ = r[7];
+
+  moonR_ = t.dp(12);
+  moon_ = Point{(int16_t)(inner.x + moonR_), (int16_t)(inner.y + moonR_ + t.dp(1))};
+  sparkleBig_ = t.dp(14);
+  sparkleSmall_ = t.dp(9);
+  bigSparkle_ = Point{(int16_t)(inner.right() - t.dp(14)), (int16_t)(inner.y + t.dp(12))};
+  smallSparkle_ = Point{(int16_t)(bigSparkle_.x + t.dp(10)), (int16_t)(bigSparkle_.y + t.dp(18))};
+  planet_ = at256(area, 244, 131);
+  starSize_ = t.density == Density::Regular ? 2 : 1;
+  for (int i = 0; i < kStars; ++i) stars_[i] = at256(area, kStarX[i], kStarY[i]);
 }
 
 void ClockApp::BedsideScreen::refresh(AppContext &ctx) {
   const LocalTime now = ctx.localTime();
+  const SystemStatus status = ctx.status();
   char timeText[sizeof(timeText_)], suffix[sizeof(suffix_)] = "", date[sizeof(dateText_)], alarm[sizeof(alarmText_)] = "";
   ctx.formatTime(now, timeText, sizeof(timeText));
   if (now.valid && !ctx.settings().clock24h) snprintf(suffix, sizeof(suffix), "%s", now.hour < 12 ? "AM" : "PM");
   formatLongDate(now, date, sizeof(date));
-  const int64_t next = ctx.status().nextAlarm;
   bool hasAlarm = false;
-  if (now.valid && next > now.epoch) {
-    const LocalTime at = ctx.localTimeAt(next);
+  if (now.valid && status.nextAlarm > now.epoch) {
+    const LocalTime at = ctx.localTimeAt(status.nextAlarm);
     char when[12], wait[24];
     ctx.formatTime(at, when, sizeof(when));
-    describeWait((int)((next - now.epoch + 59) / 60), wait, sizeof(wait));
+    describeWait((int)((status.nextAlarm - now.epoch + 59) / 60), wait, sizeof(wait));
     snprintf(alarm, sizeof(alarm), "%s%s \xc2\xb7 in %s", when,
              ctx.settings().clock24h ? "" : at.hour < 12 ? " AM" : " PM", wait);
     hasAlarm = true;
@@ -143,7 +199,7 @@ void ClockApp::BedsideScreen::refresh(AppContext &ctx) {
   if (strcmp(timeText, timeText_) || strcmp(suffix, suffix_)) {
     memcpy(timeText_, timeText, sizeof(timeText));
     memcpy(suffix_, suffix, sizeof(suffix));
-    ctx.invalidate(time_);
+    ctx.invalidate(clock_);
   }
   if (strcmp(date, dateText_)) {
     memcpy(dateText_, date, sizeof(date));
@@ -152,41 +208,115 @@ void ClockApp::BedsideScreen::refresh(AppContext &ctx) {
   if (strcmp(alarm, alarmText_) || hasAlarm != hasAlarm_) {
     memcpy(alarmText_, alarm, sizeof(alarm));
     hasAlarm_ = hasAlarm;
-    ctx.invalidate(alarm_);
+    ctx.invalidate(alarmRow_);
+  }
+  if (strcmp(status.glance.text, glance_.text) || status.glance.icon != glance_.icon) {
+    glance_ = status.glance;
+    ctx.invalidate(glanceRow_);
   }
   timeKnown_ = now.valid;
 }
 
+// Repaint only what the new frame changes.
+void ClockApp::BedsideScreen::animate(AppContext &ctx, int frame) {
+  if (frame == frame_) return;
+  const int old = frame_;
+  const int r = moonR_;
+  ctx.invalidate(Rect(moon_.x - r - 2, moon_.y - r - 2, 2 * r + 5, 2 * r + 6));
+  if ((old ^ frame) & 2) {
+    ctx.invalidate(Rect(bigSparkle_.x - sparkleBig_ / 2 - 1, bigSparkle_.y - sparkleBig_ / 2 - 1, sparkleBig_ + 2,
+                        sparkleBig_ + 2));
+  }
+  ctx.invalidate(Rect(planet_.x - sparkleSmall_ - 1, planet_.y - 4, 2 * sparkleSmall_ + 3, 9));
+  for (int i = 0; i < kStars; ++i)
+    if (starLevel(i, old) != starLevel(i, frame)) ctx.invalidate(starBox(i));
+  frame_ = frame;
+}
+
 void ClockApp::BedsideScreen::onShow(AppContext &ctx) {
   timeText_[0] = dateText_[0] = alarmText_[0] = 0;  // paint everything afresh
+  glance_ = Glance{};
+  frame_ = bedsideFrameAt(ctx.millis());
   refresh(ctx);
 }
 
 uint32_t ClockApp::BedsideScreen::onTick(AppContext &ctx) {
+  const uint32_t ms = ctx.millis();
+  animate(ctx, bedsideFrameAt(ms));
   refresh(ctx);
   const LocalTime now = ctx.localTime();
-  return now.valid ? (uint32_t)(60 - now.second) * 1000u + 50u : 1000u;
+  const uint32_t minute = now.valid ? (uint32_t)(60 - now.second) * 1000u + 50u : 1000u;
+  const uint32_t frame = bedsideMsToNextFrame(ms);
+  return minute < frame ? minute : frame;
+}
+
+void ClockApp::BedsideScreen::drawMoon(Canvas &c, const Theme &t) const {
+  const Palette &p = t.color;
+  // A tiny sleepy moon: it bobs one pixel and blinks (the eye is a cut-out of
+  // the crescent: a dot when open, a short line when closed).
+  const int r = moonR_;
+  const int cx = moon_.x, cy = moon_.y + (frame_ >> 1);
+  c.fillCircle(cx, cy, r, p.bedMuted);
+  c.fillCircle(cx + r * 4 / 7, cy - r * 3 / 7, r * 6 / 7, p.bedBg);
+  const int ex = cx - r * 3 / 7, ey = cy + r / 7;
+  if (frame_ & 1) c.fillRect(Rect(ex - r / 5 - 1, ey, r * 2 / 5 + 3, starSize_), p.bedBg);
+  else c.fillRect(Rect(ex, ey, starSize_, starSize_), p.bedBg);
+}
+
+void ClockApp::BedsideScreen::drawSky(Canvas &c, const Theme &t) const {
+  const Palette &p = t.color;
+  const Color faint = blend(p.bedBg, p.bedStar, 150), soft = p.bedStar;
+  for (int i = 0; i < kStars; ++i)
+    c.fillRect(Rect(stars_[i].x, stars_[i].y, starSize_, starSize_), starLevel(i, frame_) ? soft : faint);
+  const bool twinkle = (frame_ & 2) != 0;
+  const int big = twinkle ? sparkleBig_ : sparkleBig_ * 3 / 4;
+  icons::sparkle(c, Rect(bigSparkle_.x - big / 2, bigSparkle_.y - big / 2, big, big), twinkle ? p.bedText : p.bedStar);
+  icons::sparkle(c, Rect(smallSparkle_.x - sparkleSmall_ / 2, smallSparkle_.y - sparkleSmall_ / 2, sparkleSmall_,
+                         sparkleSmall_),
+                 p.bedStar);
+  // A ringed planet drifting a pixel.
+  const int px = planet_.x - (frame_ >> 1), py = planet_.y + (frame_ & 1);
+  c.fillCircle(px, py, t.dp(2), soft);
+  c.hline(px - sparkleSmall_ / 2, py, sparkleSmall_ + 1, faint);
 }
 
 void ClockApp::BedsideScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
-  c.fill(p.bedBg);  // a flat background: nothing to dither, nothing to flicker
-  const Font &display = *t.font.display;
-  const int baseline = time_.y + display.ascent;
-  const int timeW = Canvas::textWidth(display, timeText_);
-  const int suffixW = suffix_[0] ? Canvas::textWidth(*t.font.title, suffix_) + t.dp(6) : 0;
-  const int x = time_.centerX() - (timeW + suffixW) / 2;
-  c.drawText(display, timeText_, x, baseline, timeKnown_ ? p.bedText : p.bedMuted);
-  if (suffix_[0]) c.drawText(*t.font.title, suffix_, x + timeW + t.dp(6), baseline, p.bedMuted);
+  c.fill(p.bedBg);  // black: low backlight, nothing to dither
+  drawSky(c, t);
+  drawMoon(c, t);
   c.drawTextIn(*t.font.body, dateText_, date_, p.bedMuted, Align::Center);
+
+  const Font &face = *clockFont_;
+  const int baseline = clock_.y + face.ascent;
+  const int timeW = Canvas::textWidth(face, timeText_);
+  const int suffixW = suffix_[0] ? Canvas::textWidth(*t.font.title, suffix_) + t.dp(6) : 0;
+  const int x = clock_.centerX() - (timeW + suffixW) / 2;
+  c.drawText(face, timeText_, x, baseline, timeKnown_ ? p.bedClock : p.bedMuted);
+  if (suffix_[0]) c.drawText(*t.font.title, suffix_, x + timeW + t.dp(6), baseline, p.bedMuted);
+
+  // A thin rule with a star in the middle, under the clock.
+  const int star = t.dp(10), half = divider_.w / 6;
+  c.hline(divider_.centerX() - half - star, divider_.centerY(), half, p.bedStar);
+  c.hline(divider_.centerX() + star + 1, divider_.centerY(), half, p.bedStar);
+  icons::sparkle(c, center(divider_, star, star), p.bedText);
+
+  if (!glance_.empty()) {
+    const int icon = glance_.icon ? t.dp(20) : 0, gap = glance_.icon ? t.dp(6) : 0;
+    const int w = icon + gap + Canvas::textWidth(*t.font.title, glance_.text);
+    const Rect line = center(glanceRow_, w < glanceRow_.w ? w : glanceRow_.w, glanceRow_.h);
+    if (glance_.icon) glance_.icon(c, leading(line, icon), p.bedText);
+    c.drawTextIn(*t.font.title, glance_.text, Rect(line.x + icon + gap, line.y, line.w - icon - gap, line.h), p.bedText);
+  }
   if (hasAlarm_) {
-    const int icon = t.dp(14);
-    const int w = icon + t.dp(6) + Canvas::textWidth(*t.font.caption, alarmText_);
-    const Rect line = center(alarm_, w < alarm_.w ? w : alarm_.w, alarm_.h);
-    icons::bell(c, leading(line, icon), p.bedMuted);
-    c.drawTextIn(*t.font.caption, alarmText_, Rect(line.x + icon + t.dp(6), line.y, line.w - icon - t.dp(6), line.h),
+    const int icon = t.dp(13);
+    const int w = icon + t.dp(6) + Canvas::textWidth(*t.font.body, alarmText_);
+    const Rect line = center(alarmRow_, w < alarmRow_.w ? w : alarmRow_.w, alarmRow_.h);
+    icons::bell(c, leading(line, icon), p.bedText);
+    c.drawTextIn(*t.font.body, alarmText_, Rect(line.x + icon + t.dp(6), line.y, line.w - icon - t.dp(6), line.h),
                  p.bedMuted);
   }
+  c.drawTextIn(*t.font.caption, "Tap anywhere to return", footer_, p.bedStar, Align::Center);
 }
 
 bool ClockApp::BedsideScreen::onEvent(const Event &e, AppContext &ctx) {

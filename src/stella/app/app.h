@@ -157,6 +157,14 @@ struct LocalTime {
   int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, weekday = 0, yearDay = 0;
 };
 
+// A short line an app offers to idle faces (the bedside clock), e.g. the
+// current weather: "14\xc2\xb0 Overcast" with its icon.
+struct Glance {
+  IconFn icon = nullptr;
+  char text[32] = {0};
+  bool empty() const { return text[0] == '\0'; }
+};
+
 struct SystemStatus {
   const char *board = "";
   const char *version = "";
@@ -172,6 +180,7 @@ struct SystemStatus {
   uint32_t uiStackFree = 0, serviceStackFree = 0;  // lowest free stack seen, bytes
   bool panelTrim = false;  // the display supports VCOM / refresh adjustment
   int64_t nextAlarm = 0;   // epoch seconds of the earliest app alarm, 0 = none (setNextAlarm)
+  Glance glance;           // the first app's glance line (setGlance)
 };
 
 class AppContext : public Invalidator {
@@ -219,6 +228,9 @@ class AppContext : public Invalidator {
   // not at all). SystemStatus::nextAlarm is the earliest of all apps; the
   // bedside clock shows it.
   virtual void setNextAlarm(int64_t epochSeconds) = 0;
+  // The calling app offers a short line for idle faces (nullptr or "" clears
+  // it). SystemStatus::glance is the first app that has one.
+  virtual void setGlance(IconFn icon, const char *text) = 0;
   // Run the calling app's onWake() after `delayMs` (sooner than it asked).
   // Each onWake() return value then sets the next wake, so an app with
   // several deadlines returns the nearest one.

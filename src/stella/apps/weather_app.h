@@ -83,6 +83,7 @@ class WeatherApp : public App {
   void onStart(AppContext &ctx) override;
   void onTopic(uint16_t topicId, AppContext &ctx) override;
   void onRoute(const char *route, AppContext &ctx) override;  // "places"
+  uint32_t onWake(AppContext &ctx) override;
   WeatherSnapshot snapshot() const { return topic_.get(); }
 
  private:
@@ -124,6 +125,7 @@ class WeatherApp : public App {
   };
 
   void choosePlace(uint8_t place, AppContext &ctx);
+  bool publishGlance(AppContext &ctx);  // "14° Overcast" for idle faces (the bedside clock); false if none
 
   Topic<WeatherSnapshot> topic_{topics::kWeather};
   WeatherService service_{topic_};

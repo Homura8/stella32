@@ -13,7 +13,25 @@ namespace {
 
 const char *topApp(SimSession &s) { return s.os.foreground() ? s.os.foreground()->info().id : ""; }
 
+// Animation frames and the minute change on their own, so a comparison with
+// a full redraw first waits until neither is about to happen.
+bool nearFrameEdge(uint32_t ms) {
+  const uint32_t phase = ms % 16000u;
+  for (uint32_t edge : {0u, 4000u, 8000u, 12000u, 15000u})
+    if (phase >= edge && phase - edge < 150) return true;  // just changed (the tick lands a few ms later)
+  return apps::bedsideMsToNextFrame(ms) <= 600;           // about to change
+}
+
+void settle(SimSession &s) {
+  for (int i = 0; i < 100; ++i) {
+    const LocalTime now = s.os.localTime();
+    if (!nearFrameEdge(s.dev.platform.millis()) && now.second < 55) break;
+    s.run(100);
+  }
+}
+
 bool sameAsFullRedraw(SimSession &s) {
+  settle(s);
   const std::vector<Color> incremental = s.dev.display.framebuffer();
   s.os.invalidateAll();
   s.run(20);
@@ -28,6 +46,8 @@ SystemSettings quickDim(SimSession &s, uint8_t bedside) {
   return p;
 }
 
+bool luma_over(Color c, int level) { return (red8(c) * 299 + green8(c) * 587 + blue8(c) * 114) / 1000 > level; }
+
 bool isBedside(SimSession &s) { return s.os.topScreen() && s.os.topScreen()->fullscreen(); }
 
 }  // namespace
@@ -40,7 +60,7 @@ TEST(bedside_takes_over_after_the_idle_dim_at_night_and_a_tap_leaves) {
   // Fullscreen: no sky and no status bar, just the flat bedside colour behind the text.
   const Color bg = s.os.theme().color.bedBg;
   CHECK(s.dev.display.pixel(2, 2) == bg && s.dev.display.pixel(318, 237) == bg);
-  CHECK(s.dev.display.pixel(10, s.os.theme().m.statusBar / 2) == bg);
+  CHECK(s.dev.display.pixel(160, 3) == bg);
   CHECK(sameAsFullRedraw(s));
   // The backlight is lower than the plain dim.
   SimSession plain(320, 240);
@@ -50,7 +70,7 @@ TEST(bedside_takes_over_after_the_idle_dim_at_night_and_a_tap_leaves) {
   // The waking tap leaves for the Clock; the status bar is back.
   s.tap(160, 120);
   CHECK(!isBedside(s) && strcmp(topApp(s), "clock") == 0 && s.os.power() == PowerState::Active);
-  CHECK(s.dev.display.pixel(10, s.os.theme().m.statusBar / 2) != s.os.theme().color.bedBg);
+  CHECK(s.dev.display.pixel(160, 3) != s.os.theme().color.bedBg);
   CHECK(sameAsFullRedraw(s));
   // Idle again: it comes back.
   s.run(31000);
@@ -144,11 +164,12 @@ TEST(bedside_shows_the_next_alarm_and_follows_the_minute) {
   s.os.launch("clock", "bedside");
   s.run(100);
   CHECK(withAlarm != s.dev.display.framebuffer());  // the alarm line is gone
-  // Each minute only the time is repainted, not the whole screen.
+  // A whole minute of animation and the minute change repaint a couple of
+  // screens' worth in total (small spots every four seconds, not whole frames).
   s.run(3000);
   s.dev.display.resetCounters();
   s.run(61 * 1000);
-  CHECK(s.dev.display.pixelsWritten() < 320u * 240u / 2 && s.dev.display.writes() >= 1);
+  CHECK(s.dev.display.pixelsWritten() < 5u * 320u * 240u / 2u && s.dev.display.writes() >= 1);
   CHECK(sameAsFullRedraw(s));
 }
 
@@ -233,4 +254,71 @@ TEST(display_screen_bedside_row_sets_the_mode) {
   CHECK(s.os.settings().bedside == 2);
   s.tap(area.x + area.w * 3 / 4 - t.dp(30), y);
   CHECK(s.os.settings().bedside != 2);
+}
+
+TEST(bedside_animation_cycle_and_calm_repaints) {
+  using apps::bedsideFrameAt;
+  using apps::bedsideMsToNextFrame;
+  // The 16 s cycle: twinkle on the second and fourth 4 s, one blink at the end.
+  CHECK_EQ(bedsideFrameAt(0), 0);
+  CHECK_EQ(bedsideFrameAt(4500), 2);
+  CHECK_EQ(bedsideFrameAt(9000), 0);
+  CHECK_EQ(bedsideFrameAt(13000), 2);
+  CHECK_EQ(bedsideFrameAt(15500), 3);
+  CHECK_EQ(bedsideFrameAt(16000), 0);
+  CHECK(bedsideMsToNextFrame(100) > 3900 && bedsideMsToNextFrame(14990) < 20 && bedsideMsToNextFrame(15500) < 600);
+  // Over a full cycle only the twinkling spots repaint: less than one screen
+  // in total (a full repaint on every frame would be five).
+  SimSession s(320, 240, kEveningEpoch);
+  s.os.launch("clock", "bedside");
+  s.run(300);
+  settle(s);
+  while (bedsideFrameAt(s.dev.platform.millis()) != 0) s.run(50);  // start of a cycle
+  s.dev.display.resetCounters();
+  const LocalTime start = s.os.localTime();
+  s.run(15900);  // the cycle, short of the minute change when we started early in it
+  if (s.os.localTime().minute == start.minute) {
+    CHECK(s.dev.display.writes() >= 4);
+    CHECK(s.dev.display.pixelsWritten() < 320u * 240u);
+  }
+  CHECK(sameAsFullRedraw(s));
+}
+
+TEST(bedside_shows_the_weather_and_withdraws_it_when_old) {
+  SimSession s(320, 240, kEveningEpoch);
+  s.run(40 * 1000);  // the Weather app was never opened: it publishes from its own timer
+  const SystemStatus st = s.os.status();
+  CHECK(!st.glance.empty() && strncmp(st.glance.text, "17", 2) == 0 && st.glance.icon != nullptr);
+  s.os.launch("clock", "bedside");
+  s.run(300);
+  const std::vector<Color> withWeather = s.dev.display.framebuffer();
+  // Four hours without a refresh: the weather line is withdrawn, not shown as current.
+  s.dev.platform.advance(4u * 60u * 60u * 1000u);
+  s.os.step();
+  CHECK(s.os.status().glance.empty());
+  s.run(300);
+  CHECK(withWeather != s.dev.display.framebuffer());
+  SimSession offline(320, 240, kEveningEpoch, Appearance::Auto, false, /*online=*/false);
+  offline.run(40 * 1000);
+  CHECK(offline.os.status().glance.empty());  // nothing to show without data
+}
+
+TEST(bedside_uses_the_largest_clock_that_fits) {
+  for (const auto &sz : {std::pair<int, int>{240, 320}, std::pair<int, int>{320, 240}, std::pair<int, int>{480, 320}}) {
+    SimSession s(sz.first, sz.second);
+    SystemSettings p = s.os.settings();
+    p.clock24h = false;  // AM/PM must fit beside the digits
+    s.os.applySettings(p);
+    s.os.launch("clock", "bedside");
+    s.run(300);
+    // Nothing of the clock may touch the display edge.
+    const Theme &t = s.os.theme();
+    bool edgeTouched = false;
+    for (int y = 0; y < sz.second && !edgeTouched; y += 2) {
+      const Color left = s.dev.display.pixel(t.m.margin / 2, y), right = s.dev.display.pixel(sz.first - 1 - t.m.margin / 2, y);
+      // Only the sparkles and the planet are allowed near the edges: they are dim.
+      edgeTouched = luma_over(left, 150) || luma_over(right, 150);
+    }
+    CHECK(!edgeTouched);
+  }
 }

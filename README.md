@@ -18,12 +18,12 @@ management and versioned settings.
 | --- | --- |
 | Version | 0.4.0, bedside clock |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 102 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 105 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
-Built-in apps: **Home** (launcher), **Clock** (with a dim fullscreen *bedside*
-mode that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
+Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *bedside* mode
+that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
 API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Settings**
 (Wi-Fi, display, appearance, time, about) and **Touch test** (calibration aid).
 Wi-Fi is set up on the device itself: scan, pick a network, type the password
@@ -122,9 +122,11 @@ In the Arduino IDE: add this repository as a library, open
    tapping a sky in *Appearance* keeps it.
 8. *Bedside clock*: with *Settings > Display > Bedside* on *Night*, leave the
    device idle at night (or open *Clock > Bedside*): the screen switches to a
-   dim clock on a flat dark background with the date and "06:45 · in 8 h 15
-   min" when an alarm is set; any tap returns to the Clock. Is the dimness
-   right for a dark room, and does the flat background still flicker?
+   black sky with faint stars (a few twinkle every 4 s), a sleepy crescent
+   moon, a big lilac clock, the date, the weather ("17° Partly cloudy", once
+   Wi-Fi has fetched it) and "06:45 · in 8 h 15 min" when an alarm is set;
+   any tap returns to the Clock. Is it dim enough for a dark room, are the
+   stars visible, and does the black background still flicker?
 9. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
 10. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it

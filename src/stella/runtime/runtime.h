@@ -138,6 +138,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void dismissAlert(uint16_t tag) override;
   void scheduleWake(uint32_t delayMs) override;
   void setNextAlarm(int64_t epochSeconds) override;
+  void setGlance(IconFn icon, const char *text) override;
   void requestJob(const Job &job) override { jobs_.requestRun(job); }
   RecordStatus loadAppRecord(const char *key, uint16_t version, void *data, size_t size) override;
   bool saveAppRecord(const char *key, uint16_t version, const void *data, size_t size) override;
@@ -152,6 +153,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     uint8_t depth = 0;
     bool started = false;
     int64_t nextAlarm = 0;   // see AppContext::setNextAlarm
+    Glance glance;           // see AppContext::setGlance
     bool wakeArmed = false;  // onWake() due at wakeAt
     uint32_t wakeAt = 0;
   };

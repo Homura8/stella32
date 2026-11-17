@@ -100,15 +100,26 @@ A `Screen` may be `fullscreen()`: the shell then draws no sky and no status bar
 under it (and offers no back or home gestures), `layout()` gets the whole
 display, `draw()` paints every pixel, and the backlight runs at a third of
 its level (never below the minimum). The screen handles its own events,
-including leaving. The bedside clock is one: a flat near-black background
-(`Palette::bedBg`, so nothing to dither), dim lilac text, the date and the
-next alarm.
+including leaving. The bedside clock is one (after Celestia Nightstand's):
+a black field (`Palette::bedBg`, so nothing to dither), faint stars, a sleepy
+crescent moon and a ringed planet, the largest numerals that fit (the
+`bedside` font), the date, the weather and the next alarm.
+
+It animates calmly on a 16 s cycle (`bedsideFrameAt`): every 4 s some stars
+twinkle, the big sparkle swells, and the moon and planet shift a pixel; once
+per cycle the moon blinks. Only the spots that change are invalidated, so a
+frame costs a few thousand pixels.
 
 An app flagged `kAppIdleFace` offers such a face. After the idle dim, if the
 setting *Bedside* is *Night* (and it is night by the clock) or *Always*, and
 the time is known, the runtime calls `launch(id, "bedside")`, but only when
 Home or that app is in front, so nothing the user is doing is replaced. Any
 tap on the face leaves it (`pop()`), landing on the Clock.
+
+Apps may offer a short line for idle faces with `AppContext::setGlance(icon,
+text)`; the Weather app publishes "17° Partly cloudy" (and withdraws it when
+the data is over 3 hours old). It does this from `onWake`, because apps that
+were never opened receive no topic notifications.
 
 Apps that ring tell the shell when with `AppContext::setNextAlarm(epoch)`;
 `SystemStatus::nextAlarm` is the earliest. `localTimeAt(epoch)` gives that
@@ -225,12 +236,12 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,361,731 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 73,180 B; 254,500 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,380,873 B flash, 86,804 B static RAM |
+| Program (flash) | 1,421,767 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 74,012 B; 253,668 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,440,809 B flash, 87,636 B static RAM |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
-| Fonts (both densities, flash) | ~98 KB |
+| Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |
 
 ## Roadmap
 

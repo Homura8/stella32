@@ -27,6 +27,9 @@ ROLES = {
     "title":    ("baloo-2-700.woff",   {"compact": 19, "regular": 24}, ASCII + EXTRAS),
     "headline": ("baloo-2-700.woff",   {"compact": 26, "regular": 34}, ASCII + EXTRAS),
     "display":  ("baloo-2-700.woff",   {"compact": 64, "regular": 88}, CLOCK),
+    # The bedside clock's numerals: as large as "88:88" plus AM/PM still fits
+    # the display width (see ClockApp::BedsideScreen).
+    "bedside":  ("baloo-2-700.woff",   {"compact": 96, "regular": 144}, " 0123456789:"),
 }
 DENSITIES = ("compact", "regular")
 

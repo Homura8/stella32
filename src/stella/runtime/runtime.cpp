@@ -619,6 +619,7 @@ SystemStatus Runtime::status() const {
   for (size_t i = 0; i < appCount_; ++i) {
     const int64_t t = apps_[i].nextAlarm;
     if (t > 0 && (s.nextAlarm == 0 || t < s.nextAlarm)) s.nextAlarm = t;
+    if (s.glance.empty() && !apps_[i].glance.empty()) s.glance = apps_[i].glance;
   }
   return s;
 }
@@ -759,6 +760,15 @@ int Runtime::callerIndex() const {
 void Runtime::setNextAlarm(int64_t epochSeconds) {
   const int index = callerIndex();
   if (index >= 0) apps_[index].nextAlarm = epochSeconds;
+}
+
+void Runtime::setGlance(IconFn icon, const char *text) {
+  const int index = callerIndex();
+  if (index < 0) return;
+  Glance &g = apps_[index].glance;
+  g.icon = icon;
+  copyText(g.text, sizeof(g.text), text ? text : "");
+  if (g.empty()) g.icon = nullptr;
 }
 
 void Runtime::scheduleWake(uint32_t delayMs) {

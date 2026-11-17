@@ -186,7 +186,28 @@ void WeatherApp::onStart(AppContext &) {}
 
 void WeatherApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kWeather || topicId == stella::topics::kNetwork) main_.refresh(ctx);
+  if (topicId == topics::kWeather) publishGlance(ctx);
 }
+
+// A recent observation is offered to the bedside clock; old data is withdrawn
+// rather than shown as if it were current.
+bool WeatherApp::publishGlance(AppContext &ctx) {
+  constexpr uint32_t kGlanceMaxAgeMs = 3u * 60u * 60u * 1000u;
+  const WeatherSnapshot s = topic_.get();
+  if (!s.report.valid || elapsedMs(ctx.millis(), s.status.updatedMs) > kGlanceMaxAgeMs) {
+    ctx.setGlance(nullptr, "");
+    return false;
+  }
+  char text[32];
+  snprintf(text, sizeof(text), "%d\xc2\xb0 %s", (int)s.report.temperatureC, weatherLabel(s.report.code));
+  ctx.setGlance(weatherIcon(s.report.code, s.report.day), text);
+  return true;
+}
+
+// Apps that were never opened get no topic notifications, so the glance is
+// also published from here: soon while there is nothing yet, then every 10 min
+// (which also withdraws data that has grown too old).
+uint32_t WeatherApp::onWake(AppContext &ctx) { return publishGlance(ctx) ? 10u * 60u * 1000u : 30u * 1000u; }
 
 void WeatherApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "places") == 0) ctx.push(places_);
