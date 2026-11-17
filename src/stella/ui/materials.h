@@ -15,6 +15,10 @@ enum class Elevation : uint8_t { Flat, Raised };
 
 // Frosted card: soft shadow, translucent glass fill, 1 px highlight rim.
 void paintGlass(Canvas &c, const Theme &t, const Rect &r, int radius, Elevation e = Elevation::Raised);
+// A soft drop shadow around a rounded rectangle, visible only outside it (for
+// opaque controls such as the accent button, knobs and selected segments).
+enum class ShadowSize : uint8_t { Small, Large };
+void paintShadow(Canvas &c, const Theme &t, const Rect &r, int radius, ShadowSize size = ShadowSize::Small);
 // How far shadows reach outside a raised surface (add to invalidation rects).
 int glassOutset(const Theme &t);
 

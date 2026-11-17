@@ -1005,9 +1005,10 @@ void Runtime::drawAlert(Canvas &c) {
   // A soft veil over everything, then the card.
   c.fillRect(screen_, p.shadow, p.dark ? 150 : 96);
   if (!c.visible(alertCard_.inset(-glassOutset(t)))) return;
-  // Nearly opaque, so whatever is underneath never competes with the text.
+  // Fully opaque: whatever is underneath must never show through, or compete
+  // with the text. (The shadow and rim come from the glass; the fill covers it.)
   paintGlass(c, t, alertCard_, t.m.radiusCard);
-  c.fillRoundRect(alertCard_.inset(1), t.m.radiusCard - 1, p.surface, 236);
+  c.fillRoundRect(alertCard_.inset(1), t.m.radiusCard - 1, p.surface, 255);
   Rect title = alertHeader_;
   if (a.icon) {
     const int r = t.dp(18);

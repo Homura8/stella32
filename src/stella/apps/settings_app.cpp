@@ -803,7 +803,7 @@ void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
     Rect parts[2];
     column(cell, {flex(), px(t.font.caption->lineHeight)}, t.dp(3), parts);
     const Rect sw = parts[0];
-    c.fillRoundRect(sw.offset(0, t.dp(2)), t.m.radiusControl, t.color.shadow, t.color.shadowAlpha);
+    paintShadow(c, t, sw, t.m.radiusControl);
     for (int y = 0; y < sw.h; ++y) {
       const int k = sw.h > 1 ? y * 255 / (sw.h - 1) : 0;
       // Each phase's own gradient, ending in its tint, so they read apart.
