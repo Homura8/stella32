@@ -16,7 +16,7 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.3.1, CYD polish: colour, brightness, paging |
+| Version | 0.3.2, CYD calibration: per-mode contrast, white level, warmth |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
 | Host tests | 93 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
@@ -94,7 +94,7 @@ In the Arduino IDE: add this repository as a library, open
 
 ## Hardware checklist (first CYD flash)
 
-1. Boot log shows `Stella 0.3.1 on ESP32-2432S028R (CYD), 320x240 compact`;
+1. Boot log shows `Stella 0.3.2 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
