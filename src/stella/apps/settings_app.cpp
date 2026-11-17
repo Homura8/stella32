@@ -54,7 +54,7 @@ const char *resetName(ResetCause c) {
 
 }  // namespace
 
-SettingsApp::SettingsApp() : main_(*this), wifi_(*this), display_(*this) {}
+SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this) {}
 
 const AppInfo &SettingsApp::info() const {
   static const AppInfo kInfo{"settings", "Settings", icons::gear, 1, 0};
@@ -63,6 +63,7 @@ const AppInfo &SettingsApp::info() const {
 
 void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kNetwork || topicId == topics::kWifiScan) wifi_.refresh(ctx);
+  if (topicId == topics::kNetwork && setup_.isVisible()) setup_.refresh(ctx);
 }
 
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
@@ -142,9 +143,12 @@ void SettingsApp::WifiScreen::layout(const Rect &content, const Theme &t) {
   forget_.label = "Forget";
   forget_.style = ButtonStyle::Quiet;
   header_ = r[1];
-  Rect h[2];
-  row(r[1], {flex(), px(t.dp(64))}, t.m.gapS, h);
-  scan_.bounds = h[1];
+  Rect h[3];
+  row(r[1], {flex(), px(t.dp(64)), px(t.dp(64))}, t.m.gapS, h);
+  phone_.bounds = h[1];
+  phone_.label = "Phone";
+  phone_.style = ButtonStyle::Quiet;
+  scan_.bounds = h[2];
   scan_.label = "Scan";
   scan_.style = ButtonStyle::Quiet;
   listCard_ = r[2];
@@ -222,6 +226,8 @@ void SettingsApp::WifiScreen::draw(Canvas &c, const Theme &t) {
   if (forget_.enabled) forget_.draw(c, t);
 
   c.drawTextIn(*t.font.caption, "Networks", header_.inset(t.dp(4), 0), p.textMuted);
+  phone_.enabled = net_.present;
+  phone_.draw(c, t);
   scan_.draw(c, t);
   paintGlass(c, t, listCard_, t.m.radiusCard);
   if (networks_.count == 0) {
@@ -252,6 +258,10 @@ bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
     ctx.network().requestScan();
     return true;
   }
+  if (phone_.enabled && phone_.handle(e, ctx)) {
+    ctx.push(app_.setup_);
+    return true;
+  }
   const int picked = list_.handle(e, ctx);
   if (picked < 0) return true;
   const WifiNetwork &n = networks_.networks[picked];
@@ -267,6 +277,100 @@ bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
     ctx.toast(message);
   }
   return true;
+}
+
+// ------------------------------------------------------------------ phone setup
+
+void SettingsApp::SetupScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int rows = t.font.title->lineHeight + t.font.headline->lineHeight + t.font.title->lineHeight + 2 * t.dp(4);
+  Rect r[3];
+  column(area, {px(rows + 2 * t.dp(8)), flex(), px(t.m.control)}, t.m.gapM, r);
+  card_ = r[0];
+  status_ = r[1];
+  cancel_.bounds = layout::center(r[2], t.dp(120), t.m.control);
+  cancel_.label = "Cancel";
+  Rect lines[3];
+  column(r[0].inset(t.m.padding, t.dp(8)),
+         {px(t.font.title->lineHeight), px(t.font.headline->lineHeight), px(t.font.title->lineHeight)}, t.dp(4), lines);
+  for (int i = 0; i < 3; ++i) {
+    Rect parts[2];
+    row(lines[i], {px(t.dp(78)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+    values_[i] = parts[1];
+  }
+}
+
+void SettingsApp::SetupScreen::onShow(AppContext &ctx) {
+  info_ = SetupInfo{};
+  sawSetup_ = false;
+  ctx.network().beginSetup();
+  refresh(ctx);
+}
+
+void SettingsApp::SetupScreen::onHide(AppContext &ctx) {
+  ctx.network().cancelSetup();
+  // The password is a temporary secret: do not leave a copy behind.
+  volatile char *p = info_.password;
+  for (size_t i = 0; i < sizeof(info_.password); ++i) p[i] = 0;
+  info_ = SetupInfo{};
+}
+
+uint32_t SettingsApp::SetupScreen::onTick(AppContext &ctx) {
+  refresh(ctx);
+  return 500;  // the access point comes up without a status change; check twice a second
+}
+
+void SettingsApp::SetupScreen::refresh(AppContext &ctx) {
+  net_ = ctx.network().status();
+  SetupInfo info;
+  if (ctx.network().setupInfo(info)) info_ = info;
+  else info_.up = false;
+  if (net_.setup) sawSetup_ = true;
+  if (sawSetup_ && !net_.setup) {
+    // Closed: it worked (we are connected), it timed out, or it was cancelled.
+    char message[48];
+    if (net_.connected) snprintf(message, sizeof(message), "Connected to %.28s", net_.ssid);
+    else snprintf(message, sizeof(message), "Setup closed");
+    ctx.toast(message);
+    ctx.pop();
+    return;
+  }
+  char text[sizeof(statusText_)];
+  if (net_.error[0] && !net_.setup) snprintf(text, sizeof(text), "%.60s", net_.error);
+  else if (!info_.up) snprintf(text, sizeof(text), "Looking for networks\xe2\x80\xa6");
+  else if (net_.state == WifiState::Connecting) snprintf(text, sizeof(text), "Connecting to %.32s\xe2\x80\xa6", net_.ssid);
+  else if (net_.error[0]) snprintf(text, sizeof(text), "%.40s. Try again on your phone.", net_.error);
+  else snprintf(text, sizeof(text), "Join this network on your phone; the page opens by itself.");
+  if (strcmp(text, statusText_) != 0) {
+    memcpy(statusText_, text, sizeof(text));
+    ctx.invalidate(status_);
+  }
+  if (isVisible()) ctx.invalidate(card_.inset(-glassOutset(ctx.theme())));
+}
+
+void SettingsApp::SetupScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, card_, t.m.radiusCard);
+  const char *labels[3] = {"Wi-Fi", "Password", "Page"};
+  const char *values[3] = {info_.up ? info_.ssid : "\xe2\x80\xa6", info_.up ? info_.password : "\xe2\x80\xa6",
+                           info_.up ? info_.address : "\xe2\x80\xa6"};
+  const Font *fonts[3] = {t.font.title, t.font.headline, t.font.title};
+  for (int i = 0; i < 3; ++i) {
+    c.drawTextIn(*t.font.caption, labels[i], labels_[i], p.textMuted);
+    c.drawTextIn(*fonts[i], values[i], values_[i], i == 1 ? p.accent : p.text);
+  }
+  const bool problem = net_.error[0] != '\0';
+  c.drawWrapped(*t.font.body, statusText_, status_, problem ? p.danger : p.textMuted, 3, Align::Center);
+  cancel_.draw(c, t);
+}
+
+bool SettingsApp::SetupScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (cancel_.handle(e, ctx)) {
+    ctx.pop();  // onHide closes the access point
+    return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ display

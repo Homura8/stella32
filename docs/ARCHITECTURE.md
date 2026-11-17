@@ -90,6 +90,20 @@ or display I/O.
   size and time limits, verifies certificates (core CA bundle on ESP32), and
   streams the body through a bounded SAX parser (`net/json.*`, ~0.5 KiB, depth
   10): no response is ever held in RAM.
+- **Phone setup** (`net/setup_portal.*`, `SetupServer` in the HAL): from
+  *Settings > Wi-Fi > Phone* the device scans once, then opens a WPA2 access
+  point ("Stella-Setup", a random 8-character password shown only on the
+  device screen) with a captive DNS and a tiny web server, so a phone opens
+  the setup page by itself. The page lists the networks found and takes a name
+  and password; the portable `SetupPortal` validates and bounds the form (32 /
+  63 bytes), escapes everything it echoes, and asks `WifiManager` to join. The
+  server is polled from the Wi-Fi job (every 25 ms while open). It closes on
+  success, on *Cancel* or leaving the screen, and after 10 minutes. A wrong
+  password leaves it open with the reason on the page and on the device. The
+  page is plain HTTP over the protected access point (at most two clients);
+  the temporary password lives only in `WifiManager` (mutex-guarded, wiped on
+  close), never in a topic or a log. Only the thin `Esp32SetupServer` (web
+  server, DNS, access point) lives in the port.
 - **Freshness** (`service/data_status.h`): every data service keeps its last
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
@@ -236,9 +250,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,423,087 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 74,052 B; 253,628 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,442,133 B flash, 87,676 B static RAM |
+| Program (flash) | 1,462,747 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 78,684 B; 248,996 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,481,941 B flash, 92,300 B static RAM |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |

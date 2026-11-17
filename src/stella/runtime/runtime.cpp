@@ -81,7 +81,7 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
     supervisorRestarts_ = record.restarts;
   }
 
-  wifi_.configure(board.wifi, board.storage, &jobs_, config.wifiSsid, config.wifiPassword);
+  wifi_.configure(board.wifi, board.storage, &jobs_, config.wifiSsid, config.wifiPassword, board.setup);
   if (wifi_.available()) jobs_.add(wifi_, millis());
   http_.configure(board.http, &networkResource_);
   jobs_.setWakeSignal(&serviceWake_);

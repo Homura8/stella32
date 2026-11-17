@@ -101,5 +101,21 @@ int SimHttp::get(const char *url, uint32_t, size_t maxBodyBytes, HttpSink &sink)
   return 404;
 }
 
+std::string SimSetupServer::request(bool post, const char *path, const std::string &body, int *status) {
+  if (!up || !handler_) return "";
+  char page[3584];
+  SetupRequest req;
+  req.post = post;
+  req.path = path;
+  req.body = body.c_str();
+  req.bodyLen = body.size();
+  SetupResponse resp;
+  resp.body = page;
+  resp.capacity = sizeof(page);
+  handler_->handleSetup(req, resp);
+  if (status) *status = resp.status;
+  return std::string(page, resp.length);
+}
+
 }  // namespace host
 }  // namespace stella

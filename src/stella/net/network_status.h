@@ -27,6 +27,7 @@ struct NetworkStatus {
   bool present = false;    // the board has a network interface
   bool connected = false;  // has an IP address
   bool timeSynced = false;
+  bool setup = false;      // phone setup (access point) is open or starting
   WifiState state = WifiState::Unavailable;
   int8_t rssi = 0;
   char ssid[33] = {0};
@@ -48,6 +49,15 @@ inline int signalBars(int8_t rssi) {
   return rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
 }
 
+// What a person needs to join the setup access point. Held only while setup is
+// open and never published to a topic (the password is a temporary secret).
+struct SetupInfo {
+  bool up = false;  // the access point and page are ready
+  char ssid[20] = {0};
+  char password[12] = {0};
+  char address[16] = {0};
+};
+
 class NetworkControl {
  public:
   virtual ~NetworkControl() = default;
@@ -57,6 +67,11 @@ class NetworkControl {
   virtual void requestScan() = 0;
   virtual void join(const char *ssid, const char *password) = 0;
   virtual void forget() = 0;
+  // Phone setup: open the access point and web page, or close them. The
+  // result shows in NetworkStatus (setup, state, error) and setupInfo().
+  virtual void beginSetup() = 0;
+  virtual void cancelSetup() = 0;
+  virtual bool setupInfo(SetupInfo &out) const = 0;  // false while not open
 };
 
 }  // namespace stella

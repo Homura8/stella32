@@ -3,9 +3,11 @@
 // is compiled into the sketch (Arduino builds library sources separately).
 // Requires Arduino-ESP32 3.x.
 #include <Arduino.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
+#include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_attr.h>
@@ -17,6 +19,7 @@
 #include "../../core/log.h"
 #include "../../core/text.h"
 #include "../../hal/hal.h"
+#include "../../net/setup_portal.h"
 #include "../../runtime/runtime.h"
 
 namespace stella {
@@ -133,6 +136,7 @@ class Esp32WifiDriver : public WifiDriver {
     }
   }
   int8_t rssi() override { return (int8_t)WiFi.RSSI(); }
+  uint32_t random32() override { return esp_random(); }  // hardware RNG (strong while the radio is on)
   void address(char *out, size_t capacity) override { copyText(out, capacity, WiFi.localIP().toString().c_str()); }
   bool startScan() override { return WiFi.scanNetworks(/*async=*/true, /*hidden=*/false) >= -1; }
   int scanResults(WifiNetwork *out, int capacity) override {
@@ -159,6 +163,98 @@ class Esp32WifiDriver : public WifiDriver {
 
  private:
   bool attempting_ = false;
+};
+
+// Phone setup: a WPA2 access point, a captive DNS (every name resolves to the
+// device, so a phone opens the page by itself) and a tiny web server. All
+// meaning lives in the portable SetupPortal; this only moves bytes. Runs on
+// the service thread (poll() is called about every 25 ms while setup is open).
+class Esp32SetupServer : public SetupServer {
+ public:
+  bool begin(const char *apSsid, const char *apPassword, SetupHandler &handler) override {
+    handler_ = &handler;
+    WiFi.mode(WIFI_AP_STA);  // keep the station side alive for scanning and joining
+    if (!WiFi.softAP(apSsid, apPassword, /*channel=*/1, /*ssid_hidden=*/0, /*max_connection=*/2)) {
+      WiFi.mode(WIFI_STA);
+      return false;
+    }
+    dns_.start(53, "*", WiFi.softAPIP());
+    web_.onNotFound([this]() { serve(); });
+    web_.begin();
+    running_ = true;
+    return true;
+  }
+  void poll() override {
+    if (!running_) return;
+    dns_.processNextRequest();
+    web_.handleClient();
+  }
+  void end() override {
+    if (!running_) return;
+    web_.stop();
+    dns_.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    running_ = false;
+    handler_ = nullptr;
+  }
+  void address(char *out, size_t capacity) override { copyText(out, capacity, WiFi.softAPIP().toString().c_str()); }
+
+ private:
+  // Re-encodes one form value (the web server has already decoded it).
+  static size_t encode(char *dst, size_t cap, const String &value) {
+    static const char kHex[] = "0123456789ABCDEF";
+    size_t n = 0;
+    for (size_t i = 0; i < value.length() && n + 4 < cap; ++i) {
+      const unsigned char c = (unsigned char)value[i];
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+        dst[n++] = (char)c;
+      } else {
+        dst[n++] = '%';
+        dst[n++] = kHex[c >> 4];
+        dst[n++] = kHex[c & 15];
+      }
+    }
+    dst[n] = '\0';
+    return n;
+  }
+
+  void serve() {
+    if (!handler_) return;
+    SetupRequest request;
+    request.post = web_.method() == HTTP_POST;
+    const String uri = web_.uri();
+    request.path = uri.c_str();
+    char body[512];
+    size_t n = 0;
+    body[0] = '\0';
+    if (request.post) {
+      for (int i = 0; i < web_.args() && n + 8 < sizeof(body); ++i) {
+        if (i) body[n++] = '&';
+        n += encode(body + n, sizeof(body) - n, web_.argName(i));
+        body[n++] = '=';
+        n += encode(body + n, sizeof(body) - n, web_.arg(i));
+        body[n] = '\0';
+      }
+    }
+    request.body = body;
+    request.bodyLen = n;
+    SetupResponse response;
+    response.body = page_;
+    response.capacity = sizeof(page_);
+    handler_->handleSetup(request, response);
+    page_[response.length < sizeof(page_) ? response.length : sizeof(page_) - 1] = '\0';
+    web_.sendHeader("Cache-Control", "no-store");
+    web_.send(response.status, response.contentType, page_);
+    volatile char *v = body;  // the form held the Wi-Fi password
+    for (size_t i = 0; i < sizeof(body); ++i) v[i] = 0;
+  }
+
+  WebServer web_{80};
+  DNSServer dns_;
+  SetupHandler *handler_ = nullptr;
+  bool running_ = false;
+  char page_[SetupPortal::kPageBytes];
 };
 
 // HTTPS GET with certificate verification against the core's built-in CA

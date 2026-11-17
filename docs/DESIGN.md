@@ -144,6 +144,10 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   delete clears.
 - **Text field:** glass pill, accent caret; secrets show bullets with a
   *Show/Hide* toggle.
+- **Phone setup:** one glass card of three labelled rows (Wi-Fi name in
+  `title`, the temporary password in `headline` and the accent, the page
+  address in `title`), a centred status line in `body` (the error in
+  `danger`), and a Cancel button.
 - **Wi-Fi:** signal shown as 0-4 arcs (`icons::wifiBars`); the status bar
   icon is muted when connected, accent while joining, soft pink on failure.
 - **Alert:** a soft veil over the whole screen and a near-opaque glass card:

@@ -16,9 +16,9 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.4.0, bedside clock |
+| Version | 0.5.0, phone Wi-Fi setup |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 107 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 114 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -26,8 +26,9 @@ Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *bedside* mode
 that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
 API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Settings**
 (Wi-Fi, display, appearance, time, about) and **Touch test** (calibration aid).
-Wi-Fi is set up on the device itself: scan, pick a network, type the password
-on the on-screen keyboard. Alarms and timers ring through a system alert over
+Wi-Fi is set up on the device itself (scan, pick a network, type the password
+on the on-screen keyboard) or from a phone (*Settings > Wi-Fi > Phone*: join
+"Stella-Setup" and a web page takes the network and password). Alarms and timers ring through a system alert over
 whatever app is open, with a soft chime on a speaker plugged into the CYD's
 *SPEAK* connector.
 
@@ -95,7 +96,7 @@ In the Arduino IDE: add this repository as a library, open
 
 ## Hardware checklist (first CYD flash)
 
-1. Boot log shows `Stella 0.4.0 on ESP32-2432S028R (CYD), 320x240 compact`;
+1. Boot log shows `Stella 0.5.0 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
@@ -127,21 +128,27 @@ In the Arduino IDE: add this repository as a library, open
    Wi-Fi has fetched it) and "06:45 · in 8 h 15 min" when an alarm is set;
    any tap returns to the Clock. Is it dim enough for a dark room, are the
    stars visible, and does the black background still flicker?
-9. *Lists*: on Settings > Time (time zones), Settings > About, the Wi-Fi
+9. *Phone setup*: *Settings > Wi-Fi > Phone* shows "Stella-Setup", a password
+   and 192.168.4.1. Join it from a phone: the setup page should open by
+   itself (otherwise open the address). The page lists nearby networks; enter
+   a password and Connect. Try a wrong password first: the page and the screen
+   say why and it stays open; the right one closes setup and the device
+   connects. Cancel and the back button close it; so does waiting 10 minutes.
+10. *Lists*: on Settings > Time (time zones), Settings > About, the Wi-Fi
    network list and the weather places, the up/down buttons at the right edge
    scroll by a page; the rail shows where you are.
-10. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
+11. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
-11. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
+12. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
-12. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
+13. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
    sleeping screen; *Again* restarts it. An alarm set for the next minute
    rings, *Snooze* brings it back nine minutes later, and a one-off alarm
    switches itself off. With a small speaker on the *SPEAK* connector the
    chime is audible but gentle (`STELLA_CYD_TONE_DUTY` adjusts it).
-13. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+14. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-14. Leave it running overnight; no `restarting` line in the log and the
+15. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

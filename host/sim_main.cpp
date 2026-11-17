@@ -13,6 +13,7 @@
 
 #include "sim_session.h"
 #include "stella/app/text_entry.h"
+#include "stella/ui/layout.h"
 
 using namespace stella;
 using namespace stella::host;
@@ -92,6 +93,22 @@ void capture(int width, int height, const std::string &root) {
       fresh.tap(key.centerX(), key.centerY());
     }
     saveFresh(12, "password");
+
+    // Phone setup: the access point's name, password and address.
+    fresh.os.goHome();
+    fresh.os.launch("settings", "wifi");
+    fresh.run(600);
+    {
+      const Theme &ft = fresh.os.theme();
+      Rect fr[3];
+      layout::column(fresh.os.contentRect().inset(ft.m.margin, ft.m.gapS),
+                     {layout::px(ft.m.row + ft.dp(4)), layout::px(ft.m.control - ft.dp(8)), layout::flex()}, ft.m.gapS, fr);
+      Rect fh[3];
+      layout::row(fr[1], {layout::flex(), layout::px(ft.dp(64)), layout::px(ft.dp(64))}, ft.m.gapS, fh);
+      fresh.tap(fh[1].centerX(), fh[1].centerY());
+      fresh.run(3000);
+    }
+    saveFresh(22, "phone-setup");
 
     // Alarms, the alarm editor, a running timer and the alert it raises.
     s.os.launch("alarms");

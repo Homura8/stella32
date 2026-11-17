@@ -46,12 +46,38 @@ class SettingsApp : public App {
     static void submitPassword(const char *text, void *self, AppContext &ctx);
     SettingsApp &app_;
     Rect statusCard_, statusText_, statusIcon_, header_, listCard_;
-    Button forget_, scan_;
+    Button forget_, scan_, phone_;
     ListView list_;
     NetworkStatus net_;
     WifiScan networks_;
     char headline_[48] = {0}, detail_[48] = {0};
     char joining_[33] = {0};
+  };
+
+  // Wi-Fi setup from a phone: the device opens a protected access point
+  // ("Stella-Setup") and a web page; this screen shows the name, the
+  // temporary password and the address, and how it is going. It closes itself
+  // when the phone's join succeeds.
+  class SetupScreen : public Screen {
+   public:
+    explicit SetupScreen(SettingsApp &app) : app_(app) {}
+    const char *title() const override { return "Phone setup"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void onHide(AppContext &ctx) override;
+    uint32_t onTick(AppContext &ctx) override;
+    void refresh(AppContext &ctx);
+
+   private:
+    SettingsApp &app_;
+    Rect card_, labels_[3], values_[3], status_;
+    Button cancel_;
+    SetupInfo info_;
+    NetworkStatus net_;
+    char statusText_[72] = {0};
+    bool sawSetup_ = false;
   };
 
   // One glass card of labelled rows: brightness, night dimming, idle
@@ -153,6 +179,7 @@ class SettingsApp : public App {
 
   MainScreen main_;
   WifiScreen wifi_;
+  SetupScreen setup_;
   TextEntryScreen password_;
   DisplayScreen display_;
   CalibrateScreen calibrate_;

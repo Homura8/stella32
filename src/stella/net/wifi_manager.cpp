@@ -15,6 +15,11 @@ constexpr const char *kTag = "wifi";
 constexpr const char *kNamespace = "wifi";
 constexpr const char *kKey = "creds";
 
+void wipe(char *p, size_t n) {
+  volatile char *v = p;
+  for (size_t i = 0; i < n; ++i) v[i] = 0;
+}
+
 // Clears credentials in a way the optimiser may not elide.
 void wipe(WifiCredentials &c) {
   volatile unsigned char *p = reinterpret_cast<volatile unsigned char *>(&c);
@@ -24,8 +29,9 @@ void wipe(WifiCredentials &c) {
 }  // namespace
 
 void WifiManager::configure(WifiDriver *driver, KeyValueStore *store, JobScheduler *jobs, const char *fallbackSsid,
-                            const char *fallbackPassword) {
+                            const char *fallbackPassword, SetupServer *setup) {
   driver_ = driver;
+  server_ = setup;
   store_ = store;
   jobs_ = jobs;
   current_ = NetworkStatus{};
@@ -72,10 +78,39 @@ void WifiManager::forget() {
   if (jobs_) jobs_->requestRun(*this);
 }
 
+void WifiManager::beginSetup() {
+  {
+    osal::LockGuard<osal::Mutex> g(mailbox_);
+    command_ = Command::Setup;
+  }
+  if (jobs_) jobs_->requestRun(*this);
+}
+
+void WifiManager::cancelSetup() {
+  {
+    osal::LockGuard<osal::Mutex> g(mailbox_);
+    command_ = Command::CancelSetup;
+  }
+  if (jobs_) jobs_->requestRun(*this);
+}
+
+bool WifiManager::setupInfo(SetupInfo &out) const {
+  osal::LockGuard<osal::Mutex> g(setupLock_);
+  out = setupInfo_;
+  return setupInfo_.up;
+}
+
+// Called by the portal inside poll(): the same thread as run().
+void WifiManager::setupJoin(const char *ssid, const char *password) {
+  setupJoining_ = true;
+  join(ssid, password);
+}
+
 JobPolicy WifiManager::policy() const {
   JobPolicy p;
-  // Poll quickly while something is in progress, slowly when settled.
-  p.intervalMs = (connecting_ || scanning_) ? 250 : 5000;
+  // Poll quickly while something is in progress, slowly when settled; the
+  // setup web page is served from here, so it needs a short interval.
+  p.intervalMs = setup_ == SetupPhase::Open ? 25 : (connecting_ || scanning_ || setup_ != SetupPhase::Off) ? 250 : 5000;
   p.retryMs = 5000;
   p.maxBackoffMs = kMaxBackoffMs;
   return p;
@@ -129,9 +164,48 @@ void WifiManager::pollScan() {
   scan_.publish(result);
 }
 
+// The access point password: random each time, from an alphabet without
+// look-alike characters. It is shown on the device screen only.
+void WifiManager::startSetupServer(uint32_t now) {
+  static const char kAlphabet[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  SetupInfo info;
+  copyText(info.ssid, sizeof(info.ssid), kSetupSsid);
+  for (int i = 0; i < 8; ++i) info.password[i] = kAlphabet[driver_->random32() % (sizeof(kAlphabet) - 1)];
+  info.password[8] = '\0';
+  if (!server_ || !server_->begin(info.ssid, info.password, portal_)) {
+    wipe(info.password, sizeof(info.password));
+    copyText(current_.error, sizeof(current_.error), "Couldn't start setup");
+    setup_ = SetupPhase::Off;
+    current_.setup = false;
+    LOGW(kTag, "setup access point could not start");
+    return;
+  }
+  server_->address(info.address, sizeof(info.address));
+  info.up = true;
+  {
+    osal::LockGuard<osal::Mutex> g(setupLock_);
+    setupInfo_ = info;
+  }
+  wipe(info.password, sizeof(info.password));
+  setup_ = SetupPhase::Open;
+  setupStartMs_ = now;
+  current_.error[0] = '\0';
+  LOGI(kTag, "setup access point open");
+}
+
+void WifiManager::endSetup() {
+  if (setup_ == SetupPhase::Open && server_) server_->end();
+  setup_ = SetupPhase::Off;
+  setupJoining_ = false;
+  current_.setup = false;
+  osal::LockGuard<osal::Mutex> g(setupLock_);
+  wipe(setupInfo_.password, sizeof(setupInfo_.password));
+  setupInfo_ = SetupInfo{};
+}
+
 void WifiManager::publish() {
   const NetworkStatus old = status_.get();
-  const bool changed = old.state != current_.state || old.connected != current_.connected ||
+  const bool changed = old.state != current_.state || old.setup != current_.setup || old.connected != current_.connected ||
                        old.timeSynced != current_.timeSynced || strcmp(old.ssid, current_.ssid) != 0 ||
                        strcmp(old.ip, current_.ip) != 0 || strcmp(old.error, current_.error) != 0 ||
                        signalBars(old.rssi) != signalBars(current_.rssi);
@@ -169,6 +243,17 @@ JobResult WifiManager::run(uint32_t now) {
     current_.state = WifiState::NotConfigured;
     current_.timeSynced = syncStarted_;
     LOGI(kTag, "saved network forgotten");
+  } else if (command == Command::Setup) {
+    if (setup_ == SetupPhase::Off && server_) {
+      setup_ = SetupPhase::Scanning;  // look around first: the page lists what it finds
+      current_.setup = true;
+      current_.error[0] = '\0';
+      scanRequested_.store(true);
+    } else if (!server_) {
+      copyText(current_.error, sizeof(current_.error), "Setup isn't available here");
+    }
+  } else if (command == Command::CancelSetup) {
+    if (setup_ != SetupPhase::Off) endSetup();
   } else if (command == Command::Join) {
     creds_ = incoming;
     if (!saveRecord(store_, kNamespace, kKey, WifiCredentials::kVersion, &creds_, sizeof(creds_))) {
@@ -190,6 +275,15 @@ JobResult WifiManager::run(uint32_t now) {
   }
   if (scanning_) pollScan();
 
+  if (setup_ == SetupPhase::Scanning && !scanning_ && !scanRequested_.load()) startSetupServer(now);
+  if (setup_ == SetupPhase::Open) {
+    server_->poll();  // may call setupJoin() through the portal
+    if (elapsedMs(now, setupStartMs_) >= kSetupTimeoutMs) {
+      LOGI(kTag, "setup timed out");
+      endSetup();
+    }
+  }
+
   if (creds_.ssid[0]) {
     const WifiLink link = driver_->link();
     if (link == WifiLink::Connected) {
@@ -198,6 +292,7 @@ JobResult WifiManager::run(uint32_t now) {
         backoffMs_ = 5000;
       }
       connecting_ = false;
+      if (setupJoining_) endSetup();  // joined from the phone: done
       current_.connected = true;
       current_.state = WifiState::Connected;
       current_.error[0] = '\0';
@@ -220,6 +315,7 @@ JobResult WifiManager::run(uint32_t now) {
                  creds_.ssid);
         driver_->disconnect();
         connecting_ = false;
+        setupJoining_ = false;  // the page shows the error; the access point stays open
         current_.state = WifiState::Disconnected;
         nextAttemptMs_ = now + backoffMs_;
         backoffMs_ = backoffMs_ * 2 > kMaxBackoffMs ? kMaxBackoffMs : backoffMs_ * 2;

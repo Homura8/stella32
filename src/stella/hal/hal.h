@@ -112,6 +112,7 @@ struct Board {
   WifiDriver *wifi = nullptr;        // optional
   HttpClient *http = nullptr;        // optional (requires wifi)
   Sound *sound = nullptr;            // optional; alerts are silent without it
+  SetupServer *setup = nullptr;      // optional; phone-based Wi-Fi setup
 };
 
 }  // namespace stella

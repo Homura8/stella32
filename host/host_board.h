@@ -160,6 +160,37 @@ class SimHttp : public HttpClient {
   int get(const char *url, uint32_t timeoutMs, size_t maxBodyBytes, HttpSink &sink) override;
 };
 
+// The phone-setup access point: tests play the phone with request().
+class SimSetupServer : public SetupServer {
+ public:
+  bool failToStart = false;
+  bool up = false;
+  std::string ssid, password;
+  int polls = 0, starts = 0;
+
+  bool begin(const char *apSsid, const char *apPassword, SetupHandler &h) override {
+    if (failToStart) return false;
+    up = true;
+    ++starts;
+    ssid = apSsid;
+    password = apPassword;
+    handler_ = &h;
+    return true;
+  }
+  void poll() override { ++polls; }
+  void end() override {
+    up = false;
+    handler_ = nullptr;
+  }
+  void address(char *out, size_t capacity) override { snprintf(out, capacity, "192.168.4.1"); }
+
+  // What a phone gets for a request ("" if the access point is down).
+  std::string request(bool post, const char *path, const std::string &body = "", int *status = nullptr);
+
+ private:
+  SetupHandler *handler_ = nullptr;
+};
+
 // Records the tone sequence so tests can check alert chimes.
 class SimSound : public Sound {
  public:
@@ -186,8 +217,9 @@ struct SimDevice {
   SimWifi wifi;
   SimHttp http;
   SimSound sound;
+  SimSetupServer setup;
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound}; }
+  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup}; }
 };
 
 }  // namespace host

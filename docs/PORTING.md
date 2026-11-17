@@ -26,6 +26,11 @@ apps and the runtime do not change.
 5. **Sound (optional).** Implement `stella::Sound::tone(hz)` (non-blocking;
    0 = silence) for a buzzer or speaker; `CydSound` drives the CYD's speaker
    pin with LEDC PWM. Without it, alerts are silent but still shown.
+   **Phone setup (optional).** Implement `stella::SetupServer` (`begin` opens a
+   protected access point and a web server on port 80 plus a catch-all DNS and
+   hands each request to the `SetupHandler`; `poll`, `end`, `address`) and put
+   it in `Board::setup`; `Esp32SetupServer` is the Arduino-ESP32 version. Without
+   it, *Settings > Wi-Fi > Phone* says setup isn't available.
 6. **Sketch.** Copy `examples/CYD/` to `examples/<Board>/` with its own
    `tft_setup.h` (if it uses TFT_eSPI) and `sketch.yaml` profile, and add a CI
    compile step.
