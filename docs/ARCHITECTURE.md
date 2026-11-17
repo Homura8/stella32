@@ -310,6 +310,21 @@ to 6 hours); an offer appears as "Update x.y.z" on Settings' About row
    minutes) or never draws a frame is therefore replaced by the old one by
    itself. A new update is refused until the last one is confirmed.
 
+**When the device resets mid-update** (reported on a real CYD: the download
+started and the device restarted at 0 %), nothing says why without a serial
+cable. So the update leaves a small note in retained RAM (`update_crumb`, next
+to the supervisor's restart record): *starting*, *downloading N %*,
+*finishing*. The next boot reports it once, and Settings > About > Last reset
+reads, for example, `Crash · update: downloading 34%` (or `Watchdog`,
+`Brownout`, ...). Every handled outcome clears the note, so it only appears
+after a real reset. The ESP32 slot also erases flash *as the image is written*
+(`OTA_WITH_SEQUENTIAL_WRITES`) instead of the whole slot before the first byte:
+one multi-second erase is the longest, most power-hungry operation of an
+update, and the prime suspect for a reset right at the start (the failed
+device reported *Watchdog* as its last reset, with plenty of heap and stack).
+Every fourth chunk written also yields one tick, so the idle task that feeds
+the task watchdog always gets to run, however fast the connection is.
+
 Every failure (unreachable server, bad manifest, damaged or oversize download,
 a flash write error, an invalid image) aborts the slot write and leaves the
 running firmware untouched. The code never writes over the running image: a
@@ -357,8 +372,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,466,187 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 83,060 B; 244,620 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
+| Program (flash) | 1,466,959 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 83,100 B; 244,580 B left for stacks and heap (the phone-setup server's four request slots are ~3 KB of it) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |

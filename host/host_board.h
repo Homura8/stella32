@@ -185,6 +185,7 @@ class SimFirmware : public FirmwareSlot {
   std::vector<uint8_t> image;
   bool begun = false, finished = false, aborted = false, signatureOk = true;
   int verifies = 0;
+  std::function<void(const SimFirmware &)> onEvent;  // tests: look around at each begin / write / finish
 
   bool available() override { return availableFlag; }
   bool requiresSignature() override { return keyed; }
@@ -194,15 +195,18 @@ class SimFirmware : public FirmwareSlot {
     image.clear();
     begun = true;
     finished = aborted = false;
+    if (onEvent) onEvent(*this);
     return true;
   }
   bool write(const uint8_t *data, size_t size) override {
     if (!begun) return false;
+    if (onEvent) onEvent(*this);
     if (failWriteAfter >= 0 && image.size() + size > (size_t)failWriteAfter) return false;
     image.insert(image.end(), data, data + size);
     return true;
   }
   bool finish() override {
+    if (onEvent) onEvent(*this);
     if (failFinish) return false;
     finished = true;
     return true;

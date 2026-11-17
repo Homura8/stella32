@@ -202,10 +202,22 @@ class Esp32Firmware : public FirmwareSlot {
     abort();
     part_ = target();
     if (!part_ || size > part_->size) return false;
-    open_ = esp_ota_begin(part_, size, &handle_) == ESP_OK;
+    // Erase as the image is written (sector by sector) instead of the whole
+    // slot up front: that is one long flash operation of several seconds, and
+    // the heaviest current draw of the whole update, before a byte arrives.
+    open_ = esp_ota_begin(part_, OTA_WITH_SEQUENTIAL_WRITES, &handle_) == ESP_OK;
+    writes_ = 0;
     return open_;
   }
-  bool write(const uint8_t *data, size_t size) override { return open_ && esp_ota_write(handle_, data, size) == ESP_OK; }
+  bool write(const uint8_t *data, size_t size) override {
+    if (!open_) return false;
+    const bool ok = esp_ota_write(handle_, data, size) == ESP_OK;
+    // Flash writes and erases hold the CPU; a download is a long run of them.
+    // Give the idle task (which feeds the task watchdog) a tick every few
+    // chunks so a fast connection can never starve it.
+    if ((++writes_ & 3) == 0) vTaskDelay(1);
+    return ok;
+  }
   bool finish() override {
     if (!open_) return false;
     open_ = false;
@@ -240,6 +252,7 @@ class Esp32Firmware : public FirmwareSlot {
   const esp_partition_t *part_ = nullptr;
   esp_ota_handle_t handle_ = 0;
   bool open_ = false;
+  uint32_t writes_ = 0;
 };
 
 // Phone setup: a WPA2 access point, a captive DNS (every name resolves to the

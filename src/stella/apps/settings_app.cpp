@@ -959,6 +959,7 @@ void SettingsApp::AboutScreen::refresh(AppContext &ctx) {
            (unsigned long)(s.memory.largestFreeBlock / 1024));
   snprintf(next[5], 40, "%lu KB", (unsigned long)(s.memory.minimumFreeHeap / 1024));
   snprintf(next[6], 40, "%s", resetName(s.resetCause));
+  if (s.resetNote[0]) snprintf(next[6], 40, "%s \xc2\xb7 %.24s", resetName(s.resetCause), s.resetNote);
   if (!s.network.present) snprintf(next[7], 40, "Not available");
   else if (s.network.connected) snprintf(next[7], 40, "%.24s %d dBm", s.network.ssid, s.network.rssi);
   else snprintf(next[7], 40, "Disconnected");

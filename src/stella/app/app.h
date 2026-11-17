@@ -172,6 +172,7 @@ struct SystemStatus {
   uint32_t uptimeMs = 0;
   MemoryStats memory;
   ResetCause resetCause = ResetCause::Unknown;
+  char resetNote[40] = {0};  // what the last run was doing when it reset, if known (an update)
   int16_t width = 0, height = 0;
   Density density = Density::Compact;
   NetworkStatus network;

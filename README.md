@@ -16,9 +16,9 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.7.0: screen transitions (on top of 0.6.1: daily update check, volume, Stopwatch, faster phone setup) |
+| Version | 0.7.1: update diagnostics and gentler flash writes (on top of 0.7.0 screen transitions, 0.6.1 daily update check, volume, Stopwatch, faster phone setup) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 157 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Host tests | 161 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.47 MB flash (74% of a 1.9 MB update slot), 83 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -158,7 +158,9 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     restart the About screen shows it and, a minute later, the `health` log
     says the update is confirmed. To test the rollback: install a build whose
     firmware hangs or resets at boot (never confirmed): the device returns to
-    the previous version by itself. With *Check daily* on (Settings > About >
+    the previous version by itself. If the device restarts during the
+    download, read Settings > About > Last reset (0.7.1 adds what it was
+    doing, e.g. `Crash · update: downloading 34%`) and the `Lowest free` heap. With *Check daily* on (Settings > About >
     Software update, on by default) the device also looks by itself two
     minutes after boot and then once a day: Settings' About row says
     "Update 0.6.2" without anything being installed.

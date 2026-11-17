@@ -85,6 +85,14 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
     }
     supervisorRestarts_ = record.restarts;
   }
+  {
+    // An update that was running when the device last reset: say so (About).
+    uint8_t stage = 0, percent = 0;
+    if (update_crumb::take(board.platform, stage, percent)) {
+      update_crumb::describe(stage, percent, resetNote_, sizeof(resetNote_));
+      LOGW(kTag, "the last run reset during %s", resetNote_);
+    }
+  }
 
   wifi_.configure(board.wifi, board.storage, &jobs_, config.wifiSsid, config.wifiPassword, board.setup);
   if (wifi_.available()) jobs_.add(wifi_, millis());
@@ -660,6 +668,7 @@ SystemStatus Runtime::status() const {
   s.uptimeMs = millis();
   s.memory = board_.platform->memory();
   s.resetCause = board_.platform->resetCause();
+  copyText(s.resetNote, sizeof(s.resetNote), resetNote_);
   s.width = screen_.w;
   s.height = screen_.h;
   s.density = theme_.density;
