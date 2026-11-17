@@ -99,6 +99,34 @@ TEST(power_dims_sleeps_and_wake_touch_is_consumed) {
   CHECK(strcmp(topApp(s), "clock") == 0);
 }
 
+// Regression (CYD): with the default 60 s dim, a tap on the dimmed (still
+// readable) screen was swallowed, so apps seemed to need several taps.
+TEST(tap_on_a_dimmed_screen_brightens_and_acts) {
+  SimSession s(320, 240);
+  SystemSettings p = s.os.settings();
+  p.dimAfterSec = 30;
+  s.os.applySettings(p);
+  s.run(31000);
+  CHECK(s.os.power() == PowerState::Dimmed);
+  const Point tile = launcherTile(s, 0);
+  s.tap(tile.x, tile.y);
+  CHECK(s.os.power() == PowerState::Active && s.dev.display.backlight() == p.brightness);
+  CHECK(strcmp(topApp(s), "clock") == 0);
+}
+
+// Regression (CYD): the press highlight costs a frame; if the finger lifts
+// during it, the gesture sees one sample. The tile must still open.
+TEST(tap_seen_once_across_a_slow_frame_still_launches) {
+  SimSession s(320, 240);
+  const Point tile = launcherTile(s, 0);
+  s.dev.touch.down(tile.x, tile.y);
+  s.os.step();                  // Press: the tile highlight is rendered
+  s.dev.platform.advance(150);  // ... slowly, and the finger lifts meanwhile
+  s.dev.touch.up();
+  s.run(200);
+  CHECK(strcmp(topApp(s), "clock") == 0);
+}
+
 TEST(toast_expires_and_repaints) {
   SimSession s(320, 240);
   s.os.toast("Hello");

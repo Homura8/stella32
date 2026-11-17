@@ -87,8 +87,9 @@ In the Arduino IDE: add this repository as a library, open
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
-4. Brightness slider, dim and screen-off timeouts work; the waking touch does
-   not activate anything.
+4. Brightness slider, dim and screen-off timeouts work; the touch that wakes a
+   dark screen does not activate anything, while a tap on a dimmed screen
+   brightens it and acts. Single quick taps open apps reliably.
 5. Settings survive a reset (written about 1.5 s after the last change).
 6. With `secrets.h`: the Wi-Fi icon turns from pink to muted, and the clock
    shows local time within a minute.
