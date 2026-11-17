@@ -113,6 +113,43 @@ class Sound {
   virtual void setVolume(uint8_t percent) { (void)percent; }
 };
 
+// An RGB status LED. Boards sharing a name are wired differently (which pin is
+// which colour, active-low or active-high), so the wiring is data: the board
+// offers pins that are safe to probe, Settings can find which is which by
+// asking the person what lit up, and the result is a setting.
+constexpr uint8_t kNoPin = 0xFF;
+struct LedWiring {
+  uint8_t pin[3] = {kNoPin, kNoPin, kNoPin};  // red, green, blue
+  bool inverted = true;                        // the LED lights when its pin is low
+  bool usable() const { return pin[0] != kNoPin || pin[1] != kNoPin || pin[2] != kNoPin; }
+};
+
+class Led {
+ public:
+  virtual ~Led() = default;
+  // Takes over the pins (releasing earlier ones). False if a pin is unusable.
+  virtual bool configure(const LedWiring &wiring) = 0;
+  // Each channel 0..255 (linear), as configured. Unwired channels are ignored.
+  virtual void set(uint8_t r, uint8_t g, uint8_t b) = 0;
+  // Pins that may safely be driven while looking for the LED (never the
+  // display, touch, speaker or storage pins). Returns how many.
+  virtual int candidatePins(uint8_t *out, int capacity) const = 0;
+  // Drives `pin` low (activeLow) or high and releases every other candidate to
+  // high impedance, where no LED can light; pin = kNoPin releases them all.
+  // Only for the "Find my LED" test: low lights an active-low LED, high an
+  // active-high one, and nothing else lights, so what the person sees is
+  // that one pin.
+  virtual void probe(uint8_t pin, bool activeLow) = 0;
+};
+
+// An ambient light sensor (an LDR on an ADC pin). Its raw value has no unit
+// and either polarity: the calibration (Settings) works that out.
+class LightSensor {
+ public:
+  virtual ~LightSensor() = default;
+  virtual uint16_t read() = 0;  // 0..4095, a few samples averaged
+};
+
 // Everything a board port provides, gathered for Runtime::begin().
 struct Board {
   Display *display = nullptr;
@@ -124,6 +161,8 @@ struct Board {
   Sound *sound = nullptr;            // optional; alerts are silent without it
   SetupServer *setup = nullptr;      // optional; phone-based Wi-Fi setup
   FirmwareSlot *firmware = nullptr;  // optional; over-the-air updates
+  Led *led = nullptr;                // optional; an RGB status LED
+  LightSensor *light = nullptr;      // optional; ambient light
 };
 
 }  // namespace stella

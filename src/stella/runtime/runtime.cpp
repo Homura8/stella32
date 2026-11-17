@@ -74,6 +74,9 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   applyTimezone(settings_.timezone);
   applyPanelTrim(true);
   applyVolume();
+  applyLed(true);
+  appliedCal_ = LightCalibration{settings_.lightDark, settings_.lightSelf, settings_.lightBright};
+  ambient_.configure(appliedCal_);
 
   size_t retainedSize = 0;
   void *retained = board.platform->retainedMemory(retainedSize);
@@ -208,6 +211,8 @@ uint32_t Runtime::step() {
   runWakes(now);
   updateAlert(millis());
   updatePreview(millis());
+  updateLight(millis());
+  updateLed(millis());
 
   if (tickArmed_ && reached(now, nextTickAt_)) {
     if (Screen *s = topScreen()) {
@@ -277,6 +282,8 @@ uint32_t Runtime::step() {
     if (alerts_[0].timeoutMs) wait = minWait(wait, remainingMs(now, alertShownAt_ + alerts_[0].timeoutMs));
   }
   if (previewStep_) wait = minWait(wait, remainingMs(now, previewAt_));
+  if (ledAnimating_ || ledProbing_) wait = minWait(wait, 33);  // a breathing LED needs a frame every so often
+  if (board_.light) wait = minWait(wait, remainingMs(now, nextLightAt_));
   if (transition_.active) wait = minWait(wait, 4);  // frames follow each other as fast as they render
   return wait;
 }
@@ -560,6 +567,8 @@ void Runtime::handleTopicEvent(uint16_t id) {
     if (topics_[i]->id() == id) topics_[i]->acknowledge();
   }
   if (id == topics::kNetwork && !topFullscreen()) invalidate(statusBarRect());
+  if (id == topics::kUpdate) noteUpdateForLed();
+  if (id == topics::kNetwork) noteNetworkForLed();
   for (size_t i = 0; i < appCount_; ++i) {
     if (!apps_[i].started) continue;
     callbackApp_ = apps_[i].app;
@@ -600,12 +609,18 @@ void Runtime::maybeIdleFace() {
 
 void Runtime::applyBrightness() {
   uint8_t level = settings_.brightness;
+  // In a dark room (once calibrated): a fraction of what the person chose.
+  if (settings_.autoBrightness && settings_.lightCalibrated() && board_.light) {
+    const int v = level * appliedScale_ / 255;
+    level = (uint8_t)(v < 16 ? 16 : v);
+  }
   // Bedside comfort: the night sky also caps the backlight.
   if (settings_.nightDim && timePhase_ == SkyPhase::Night) level = nightBrightness(level);
   if (power_ == PowerState::Dimmed) level = level / 2 < 16 ? 16 : level / 2;
   if (topFullscreen()) level = level / 3 < 16 ? 16 : level / 3;  // idle face: dim
   level = backlightDuty(level);  // perceived level -> PWM duty
   if (power_ == PowerState::Off) level = 0;
+  if (holdDuty_ >= 0) level = (uint8_t)holdDuty_;  // calibration: an exact backlight
   if (brightnessKnown_ && level == appliedBrightness_) return;
   board_.display->setBacklight(level);
   appliedBrightness_ = level;
@@ -654,6 +669,14 @@ void Runtime::applySettings(const SystemSettings &s) {
   applyPanelTrim(false);
   settingsDirty_ = true;
   settingsSaveAt_ = millis() + kSettingsDebounceMs;
+  applyLed(false);
+  const LightCalibration cal{settings_.lightDark, settings_.lightSelf, settings_.lightBright};
+  if (cal.dark != appliedCal_.dark || cal.self != appliedCal_.self || cal.bright != appliedCal_.bright) {
+    appliedCal_ = cal;
+    ambient_.configure(cal);
+    lightWarm_ = false;
+  }
+  if (!settings_.autoBrightness) appliedScale_ = 255;
   applyBrightness();
   applyVolume();
   updater_.setAutoCheck(settings_.autoUpdate);
@@ -669,6 +692,12 @@ SystemStatus Runtime::status() const {
   s.memory = board_.platform->memory();
   s.resetCause = board_.platform->resetCause();
   copyText(s.resetNote, sizeof(s.resetNote), resetNote_);
+  s.hasLed = board_.led != nullptr;
+  s.hasLight = board_.light != nullptr;
+  s.hasSound = board_.sound != nullptr;
+  s.ambient = settings_.autoBrightness && settings_.lightCalibrated() && board_.light && lightWarm_
+                  ? (int8_t)(ambient_.level() * 100.f + 0.5f)
+                  : (int8_t)-1;
   s.width = screen_.w;
   s.height = screen_.h;
   s.density = theme_.density;
@@ -1040,6 +1069,174 @@ void Runtime::updatePreview(uint32_t now) {
   previewAt_ = now + note.ms;
   previewStep_ = (uint8_t)(previewStep_ + 1);
   if (previewStep_ > kPreviewNotes) previewStep_ = 0;
+}
+
+// ------------------------------------------------------------------ status LED and ambient light
+
+void Runtime::applyLed(bool force) {
+  led_.configure(settings_.ledMode, settings_.ledLevel);
+  if (!board_.led) return;
+  LedWiring w;
+  for (int i = 0; i < 3; ++i) w.pin[i] = settings_.ledPin[i];
+  w.inverted = settings_.ledInverted;
+  if (!force && memcmp(w.pin, ledWiring_.pin, sizeof(w.pin)) == 0 && w.inverted == ledWiring_.inverted) return;
+  ledWiring_ = w;
+  board_.led->configure(w);  // an unusable wiring releases the pins
+  ledShownKnown_ = false;
+}
+
+void Runtime::updateLed(uint32_t now) {
+  if (!board_.led) return;
+  if (ledProbing_) {
+    if (!reached(now, ledProbeUntil_)) return;
+    ledProbe(kNoPin, true);  // forgotten: give the LED back
+  }
+  // The alert and the bedside glow follow the state of things, so they are set here.
+  LedRequest alert;
+  if (alertCount_) {
+    alert.pattern = LedPattern::Breathe;
+    alert.color = LedColor{255, 150, 40};  // warm amber
+    alert.periodMs = 1800;
+    alert.floor = 40;
+  }
+  led_.set(LedSource::Alert, alert);
+  LedRequest glow;
+  if (topFullscreen() && settings_.ledMode == 2) {
+    glow.pattern = LedPattern::Breathe;
+    glow.color = LedColor{36, 26, 64};  // a faint violet: this is a night light
+    glow.periodMs = 7000;
+    glow.floor = 90;
+  }
+  led_.set(LedSource::Glow, glow);
+  bool animating = false;
+  const LedColor c = led_.frame(now, animating);
+  ledAnimating_ = animating;
+  if (!ledShownKnown_ || c != ledShown_) {
+    board_.led->set(c.r, c.g, c.b);
+    ledShown_ = c;
+    ledShownKnown_ = true;
+  }
+}
+
+void Runtime::noteUpdateForLed() {
+  const UpdateStatus st = updateStatus_.get();
+  LedRequest r;
+  switch (st.state) {
+    case UpdateState::Downloading:
+      r.pattern = LedPattern::Breathe;
+      r.color = LedColor{70, 110, 255};  // blue while it works
+      r.periodMs = 1400;
+      r.floor = 30;
+      break;
+    case UpdateState::Ready:
+      r.pattern = LedPattern::Breathe;
+      r.color = LedColor{80, 220, 150};  // green: restart to use it
+      r.periodMs = 3000;
+      r.floor = 40;
+      break;
+    case UpdateState::Failed:
+      if (lastUpdateState_ != UpdateState::Failed) {
+        r.pattern = LedPattern::Steady;
+        r.color = LedColor{255, 60, 80};
+        r.untilMs = millis() + 1500;
+      }
+      break;
+    default: break;
+  }
+  lastUpdateState_ = st.state;
+  led_.set(LedSource::Update, r);
+}
+
+void Runtime::noteNetworkForLed() {
+  const NetworkStatus net = network_.get();
+  const App *fg = foreground();
+  const bool inSettings = fg && strcmp(fg->info().id, "settings") == 0;
+  if (net.setup != lastSetup_) {
+    LedRequest r;
+    if (net.setup) {
+      r.pattern = LedPattern::Breathe;
+      r.color = LedColor{170, 120, 255};  // the setup access point is open
+      r.periodMs = 2400;
+      r.floor = 30;
+    }
+    led_.set(LedSource::Wifi, r);
+  } else if (inSettings && lastWifiState_ == WifiState::Connecting &&
+             (net.state == WifiState::Connected || net.state == WifiState::Disconnected)) {
+    // A join the person started in Settings: say how it went.
+    LedRequest r;
+    r.pattern = LedPattern::Steady;
+    r.color = net.state == WifiState::Connected ? LedColor{80, 220, 150} : LedColor{255, 60, 80};
+    r.untilMs = millis() + (net.state == WifiState::Connected ? 1200 : 1500);
+    led_.set(LedSource::Wifi, r);
+  }
+  lastSetup_ = net.setup;
+  lastWifiState_ = net.state;
+}
+
+void Runtime::flashLed(uint8_t r, uint8_t g, uint8_t b, uint16_t ms) {
+  LedRequest req;
+  req.pattern = LedPattern::Steady;
+  req.color = LedColor{r, g, b};
+  req.untilMs = millis() + (ms ? ms : 1);
+  led_.set(LedSource::Flash, req);
+}
+
+int Runtime::ledCandidates(uint8_t *out, int capacity) {
+  return board_.led ? board_.led->candidatePins(out, capacity) : 0;
+}
+
+void Runtime::ledProbe(uint8_t pin, bool activeLow) {
+  if (!board_.led) return;
+  if (pin == kNoPin) {
+    if (!ledProbing_) return;
+    board_.led->probe(kNoPin, activeLow);
+    ledProbing_ = false;
+    applyLed(true);  // take the pins back with the saved wiring
+    return;
+  }
+  ledProbing_ = true;
+  ledProbeUntil_ = millis() + 10000;  // never leave an LED lit by mistake
+  board_.led->probe(pin, activeLow);
+}
+
+uint16_t Runtime::lightReading() { return board_.light ? board_.light->read() : 0; }
+
+void Runtime::holdBacklight(int duty) {
+  holdDuty_ = duty < 0 ? -1 : duty > 255 ? 255 : duty;
+  holdUntil_ = millis() + 30000;
+  if (board_.display) applyBrightness();
+}
+
+// Four times a second: read the sensor, work out the room's light with the
+// screen's own glow taken out, and move the brightness a little toward it.
+void Runtime::updateLight(uint32_t now) {
+  if (!board_.light) return;
+  if (holdDuty_ >= 0 && reached(now, holdUntil_)) {
+    holdDuty_ = -1;
+    if (board_.display) applyBrightness();
+  }
+  if (!reached(now, nextLightAt_)) return;
+  nextLightAt_ = now + 250;
+  if (!settings_.autoBrightness || !settings_.lightCalibrated()) {
+    if (appliedScale_ != 255) {
+      appliedScale_ = 255;
+      if (board_.display) applyBrightness();
+    }
+    return;
+  }
+  ambient_.sample(board_.light->read(), appliedBrightness_);
+  if (holdDuty_ >= 0) return;  // a calibration is measuring: the screen is not ours to dim
+  const uint8_t target = ambient_.scale();
+  if (!lightWarm_) {
+    lightWarm_ = true;
+    appliedScale_ = target;  // the first reading: start where the room is
+    if (board_.display) applyBrightness();
+    return;
+  }
+  const int diff = (int)target - (int)appliedScale_;
+  if (diff > -6 && diff < 6) return;  // a small change is not worth a visible step
+  appliedScale_ = (uint8_t)((int)appliedScale_ + (diff > 0 ? (diff < 8 ? diff : 8) : (diff > -8 ? diff : -8)));
+  if (board_.display) applyBrightness();
 }
 
 void Runtime::applyVolume() {

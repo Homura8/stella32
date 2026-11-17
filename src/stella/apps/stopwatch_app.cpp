@@ -79,6 +79,7 @@ void StopwatchApp::lap(AppContext &ctx) {
   const uint32_t total = elapsed(ctx.millis());
   if (lapCount_ && total <= laps_[lapCount_ - 1]) return;  // the same instant
   laps_[lapCount_++] = total;
+  ctx.flashLed(180, 190, 255, 120);  // a brief blink on the board's LED, if there is one
   if (screen_.isVisible()) screen_.refresh(ctx);
 }
 

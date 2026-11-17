@@ -31,6 +31,13 @@ apps and the runtime do not change.
    hands each request to the `SetupHandler`; `poll`, `end`, `address`) and put
    it in `Board::setup`; `Esp32SetupServer` is the Arduino-ESP32 version. Without
    it, *Settings > Wi-Fi > Phone* says setup isn't available.
+   **Status LED and light sensor (optional).** `stella::Led` (`configure` a
+   wiring, `set` a colour, `candidatePins` that are safe to probe, `probe`) and
+   `stella::LightSensor::read()` go in `Board::led` / `Board::light`; `CydLed`
+   (LEDC PWM) and `CydLight` (an ADC pin) are the CYD's. The board sketch gives
+   the common wiring as `config.defaults.ledPin[]`/`ledInverted`; *Find my LED*
+   corrects it on the device. A board without them just hides nothing: the
+   Sound & light rows say "No LED" / "No sensor".
    **Updates (optional).** Implement `stella::FirmwareSlot` (the other app slot:
    `available`, `capacity`, `begin`/`write`/`finish`/`abort`, and `requiresSignature`
    plus `verify` for the optional ECDSA P-256 signature) and `Platform::updatePending()`/`confirmUpdate()`

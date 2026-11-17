@@ -14,6 +14,8 @@
 #include <stdint.h>
 
 #include "../app/app.h"
+#include "ambient.h"
+#include "led_engine.h"
 #include "../gfx/renderer.h"
 #include "../input/gesture.h"
 #include "../net/http_service.h"
@@ -25,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.7.1"
+#define STELLA_VERSION "0.8.0"
 #endif
 
 namespace stella {
@@ -147,6 +149,12 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   }
   bool showAlert(const Alert &alert) override;
   void previewChime() override;
+  void flashLed(uint8_t r, uint8_t g, uint8_t b, uint16_t ms) override;
+  int ledCandidates(uint8_t *out, int capacity) override;
+  void ledProbe(uint8_t pin, bool activeLow) override;
+  uint16_t lightReading() override;
+  uint8_t backlightNow() const override { return appliedBrightness_; }
+  void holdBacklight(int duty) override;
   void dismissAlert(uint16_t tag) override;
   void scheduleWake(uint32_t delayMs) override;
   void setNextAlarm(int64_t epochSeconds) override;
@@ -195,6 +203,12 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void closeAlert(int action);
   void updateAlert(uint32_t now);
   void updatePreview(uint32_t now);
+  // Status LED and ambient light.
+  void applyLed(bool force);
+  void updateLed(uint32_t now);
+  void updateLight(uint32_t now);
+  void noteUpdateForLed();
+  void noteNetworkForLed();
   // Screen transitions: the outgoing screen slides out while the new one slides in.
   void beginTransition(Screen *from, int direction);
   void updateTransition(uint32_t now);
@@ -283,6 +297,20 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     uint32_t startMs = 0;
     bool active = false;
   } transition_;
+  LedEngine led_;
+  Ambient ambient_;
+  LedWiring ledWiring_;
+  LedColor ledShown_;
+  bool ledShownKnown_ = false, ledAnimating_ = false, ledProbing_ = false;
+  uint32_t ledProbeUntil_ = 0;
+  UpdateState lastUpdateState_ = UpdateState::Unavailable;
+  WifiState lastWifiState_ = WifiState::NotConfigured;
+  bool lastSetup_ = false;
+  uint32_t nextLightAt_ = 0, holdUntil_ = 0;
+  uint8_t appliedScale_ = 255;  // the ambient fraction of the brightness in use, slewed
+  bool lightWarm_ = false;
+  LightCalibration appliedCal_;
+  int holdDuty_ = -1;
   char resetNote_[40] = {0};
   bool transitionsSlow_ = false;  // a frame took too long: slide no more this boot
   uint8_t previewStep_ = 0;  // 0 = no preview playing; else 1 + the note being played

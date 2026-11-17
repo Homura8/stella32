@@ -45,6 +45,14 @@ struct Profile {
   static constexpr uint8_t kFrameRtna = 0x1A;  // FRMCTR1 (0xB1): 73 Hz
   static constexpr int kRenderRows = 20;  // 320 x 20 x 2 B = 12.5 KiB chunk buffer
   static constexpr uint8_t kSpeaker = 26;  // "SPEAK" connector, through the on-board amplifier
+  // The LDR (ambient light), on an input-only ADC1 pin (ADC1 works with Wi-Fi on).
+  static constexpr uint8_t kLdr = 34;
+  // The back RGB LED is red 4, green 16, blue 17, active-low on the board this
+  // was written for; other CYD makers differ, so these are only the *default*
+  // wiring (CYD.ino) and the pins that "Find my LED" may probe. Nothing else
+  // is ever driven: the display, touch, SD, speaker and backlight pins are
+  // not in this list.
+  static constexpr uint8_t kLedCandidates[3] = {4, 16, 17};
 };
 
 #if defined(TFT_BL)
@@ -193,6 +201,80 @@ class CydSound : public Sound {
   uint8_t volume_ = 60;
 };
 
+// The back RGB LED through LEDC PWM (smooth fades), wired however the board
+// maker did: the wiring is data (LedWiring), found on the device by
+// Settings > Sound & light > Find my LED.
+class CydLed : public Led {
+ public:
+  bool configure(const LedWiring &w) override {
+    release();
+    wiring_ = w;
+    bool ok = true;
+    for (int i = 0; i < 3; ++i) {
+      const uint8_t pin = w.pin[i];
+      if (pin == kNoPin) continue;
+      if (!candidate(pin) || !ledcAttach(pin, 5000, 8)) {
+        ok = false;
+        continue;
+      }
+      attached_[i] = true;
+      write(i, 0);
+    }
+    return ok;
+  }
+  void set(uint8_t r, uint8_t g, uint8_t b) override {
+    write(0, r);
+    write(1, g);
+    write(2, b);
+  }
+  int candidatePins(uint8_t *out, int capacity) const override {
+    int n = 0;
+    for (uint8_t p : Profile::kLedCandidates)
+      if (n < capacity) out[n++] = p;
+    return n;
+  }
+  void probe(uint8_t pin, bool activeLow) override {
+    release();  // plain GPIO for the test
+    for (uint8_t p : Profile::kLedCandidates) {
+      if (p == pin) {
+        pinMode(p, OUTPUT);
+        digitalWrite(p, activeLow ? LOW : HIGH);
+      } else {
+        pinMode(p, INPUT);  // high impedance: an LED on it cannot light
+      }
+    }
+  }
+
+ private:
+  static bool candidate(uint8_t pin) {
+    for (uint8_t p : Profile::kLedCandidates)
+      if (p == pin) return true;
+    return false;
+  }
+  void release() {
+    for (int i = 0; i < 3; ++i) {
+      if (attached_[i]) ledcDetach(wiring_.pin[i]);
+      attached_[i] = false;
+    }
+  }
+  void write(int i, uint8_t v) {
+    if (attached_[i]) ledcWrite(wiring_.pin[i], wiring_.inverted ? 255 - v : v);
+  }
+  LedWiring wiring_;
+  bool attached_[3] = {false, false, false};
+};
+
+// The LDR beside the screen: a few ADC samples averaged. What the number means
+// (and which way round it goes) is learned by the calibration.
+class CydLight : public LightSensor {
+ public:
+  uint16_t read() override {
+    uint32_t sum = 0;
+    for (int i = 0; i < 16; ++i) sum += analogRead(Profile::kLdr);
+    return (uint16_t)(sum / 16);
+  }
+};
+
 // Everything the runtime needs, ready to hand to Runtime::begin().
 class CydBoard {
  public:
@@ -203,7 +285,7 @@ class CydBoard {
     sound_.begin();
   }
   Board board() {
-    return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_};
+    return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_, &led_, &light_};
   }
   // The ECDSA P-256 public key (PEM) that update manifests must be signed with.
   void setUpdateKey(const char *pem) { firmware_.setPublicKey(pem); }
@@ -223,6 +305,8 @@ class CydBoard {
   esp32::Esp32WifiDriver wifi_;
   esp32::Esp32HttpClient http_;
   CydSound sound_;
+  CydLed led_;
+  CydLight light_;
   esp32::Esp32SetupServer setup_;
   esp32::Esp32Firmware firmware_;
   Color buffer_[Profile::kWidth * Profile::kRenderRows];

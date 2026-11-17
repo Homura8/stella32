@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../core/deadline.h"
 #include "../core/text.h"
 #include "../ui/layout.h"
 #include "../ui/materials.h"
@@ -116,7 +117,7 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
     const char *detail;
   } rows[kRows] = {{"Wi-Fi", icons::wifi, 2, wifi_},
                    {"Display", icons::sun, 3, nullptr},
-                   {"Sound", icons::bell, 1, sound_},
+                   {"Sound & light", icons::bell, 1, sound_},
                    {"Appearance", icons::appearance, 1, appearance_},
                    {"Time", icons::clock, 2, time_},
                    {"About", icons::info, 0, about_}};
@@ -144,50 +145,447 @@ bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   return false;
 }
 
-// ------------------------------------------------------------------ sound
+// ------------------------------------------------------------------ sound and light
+
+namespace {
+int cardRowHeight(const Theme &t, int available, int rows);
+const char *const kLedModeLabels[] = {"Off", "Alerts", "Glow"};
+}  // namespace
 
 void SettingsApp::SoundScreen::layout(const Rect &content, const Theme &t) {
   const Rect area = content.inset(t.m.margin, t.m.gapS);
-  const int rowH = t.m.control + t.dp(4);
-  card_ = Rect(area.x, area.y, area.w, rowH + 2 * t.dp(4));
+  const int rowH = cardRowHeight(t, area.h, kRows);
+  card_ = Rect(area.x, area.y, area.w, kRows * rowH + 2 * t.dp(4));
   const Rect inner = card_.inset(t.m.padding, t.dp(4));
-  Rect parts[2];
-  row(inner, {px(t.dp(96)), flex()}, t.m.gapM, parts);
-  label_ = parts[0];
-  volume_.bounds = parts[1];
-  note_ = Rect(area.x, card_.bottom() + t.m.gapM, area.w, area.bottom() - card_.bottom() - t.m.gapM);
+  Rect control[kRows];
+  for (int i = 0; i < kRows; ++i) {
+    rows_[i] = Rect(inner.x, inner.y + i * rowH, inner.w, rowH);
+    Rect parts[2];
+    row(rows_[i], {px(t.dp(96)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+    control[i] = parts[1].inset(0, (rowH - t.m.control) / 2 > 0 ? (rowH - t.m.control) / 2 : 0);
+  }
+  volume_.bounds = control[0];
+  ledMode_.bounds = control[1].inset(0, t.dp(2));
+  ledLevel_.bounds = control[2];
+  findLed_.bounds = Rect(card_.x, rows_[3].y, card_.w, rows_[3].h);
+  findLed_.title = "Find my LED";
+  findLed_.chevron = true;
+  autoBrightness_.bounds = rows_[4];
+  lightSensor_.bounds = Rect(card_.x, rows_[5].y, card_.w, rows_[5].h);
+  lightSensor_.title = "Light sensor";
+  lightSensor_.chevron = true;
 }
 
 void SettingsApp::SoundScreen::onShow(AppContext &ctx) {
+  const SystemSettings &s = ctx.settings();
+  const SystemStatus st = ctx.status();
   volume_.minimum = 0;
   volume_.maximum = 100;
-  volume_.value = ctx.settings().volume;
+  volume_.value = s.volume;
+  ledMode_.labels = kLedModeLabels;
+  ledMode_.count = 3;
+  ledMode_.selected = s.ledMode;
+  ledLevel_.minimum = 5;
+  ledLevel_.maximum = 100;
+  ledLevel_.value = s.ledLevel;
+  autoBrightness_.on = s.autoBrightness;
+  snprintf(ledDetail_, sizeof(ledDetail_), "%s",
+           !st.hasLed ? "No LED" : (s.ledPin[0] != 255 || s.ledPin[1] != 255 || s.ledPin[2] != 255) ? "Set" : "Not set");
+  snprintf(lightDetail_, sizeof(lightDetail_), "%s", !st.hasLight ? "No sensor" : s.lightCalibrated() ? "Calibrated" : "Not set");
+  findLed_.detail = ledDetail_;
+  lightSensor_.detail = lightDetail_;
   changed_ = false;
 }
 
 void SettingsApp::SoundScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
   paintGlass(c, t, card_, t.m.radiusCard);
-  c.drawTextIn(*t.font.body, "Volume", label_, t.color.text);
+  static const char *const kLabels[kRows] = {"Volume", "LED", "LED level", nullptr, "Auto dim", nullptr};
+  for (int i = 0; i < kRows; ++i) {
+    if (kLabels[i]) c.drawTextIn(*t.font.body, kLabels[i], labels_[i], p.text);
+    if (i < kRows - 1) paintHairline(c, t, rows_[i].x, rows_[i].bottom() - 1, rows_[i].w);
+  }
   volume_.draw(c, t);
-  c.drawWrapped(*t.font.caption,
-                "For alarms and timers on a speaker plugged into the SPEAK connector. Let go of the slider to hear it.",
-                note_.inset(t.dp(4), t.dp(2)), t.color.textMuted, 4, Align::Center);
+  ledMode_.draw(c, t);
+  ledLevel_.draw(c, t);
+  findLed_.draw(c, t);
+  autoBrightness_.draw(c, t);
+  lightSensor_.draw(c, t);
 }
 
 bool SettingsApp::SoundScreen::onEvent(const Event &e, AppContext &ctx) {
+  SystemSettings s = ctx.settings();
   if (volume_.handle(e, ctx, ctx.theme())) {
-    SystemSettings s = ctx.settings();
     s.volume = (uint8_t)volume_.value;
     ctx.applySettings(s);
     changed_ = true;
     return true;
   }
   if (volume_.dragging) return true;
+  if (ledLevel_.handle(e, ctx, ctx.theme())) {
+    s.ledLevel = (uint8_t)ledLevel_.value;
+    ctx.applySettings(s);
+    changed_ = true;
+    return true;
+  }
+  if (ledLevel_.dragging) return true;
   if (e.type == EventType::Release && changed_) {
     changed_ = false;
-    ctx.previewChime();
+    ctx.previewChime();                  // the volume, if that is what moved
+    ctx.flashLed(255, 255, 255, 600);    // the LED level, if that is what moved
+  }
+  if (ledMode_.handle(e, ctx)) {
+    s.ledMode = ledMode_.selected;
+    ctx.applySettings(s);
+    if (s.ledMode) ctx.flashLed(255, 255, 255, 600);
+    return true;
+  }
+  if (autoBrightness_.handle(e, ctx)) {
+    if (autoBrightness_.on && (!ctx.status().hasLight || !s.lightCalibrated())) {
+      autoBrightness_.on = false;
+      ctx.invalidate(autoBrightness_.bounds);
+      ctx.toast(ctx.status().hasLight ? "Calibrate the light sensor first" : "This board has no light sensor");
+      return true;
+    }
+    s.autoBrightness = autoBrightness_.on;
+    ctx.applySettings(s);
+    return true;
+  }
+  if (findLed_.handle(e, ctx)) {
+    if (ctx.status().hasLed) ctx.push(app_.ledFind_);
+    else ctx.toast("This board has no LED");
+    return true;
+  }
+  if (lightSensor_.handle(e, ctx)) {
+    if (ctx.status().hasLight) ctx.push(app_.light_);
+    else ctx.toast("This board has no light sensor");
+    return true;
   }
   return false;
+}
+
+// ------------------------------------------------------------------ find my LED
+
+namespace {
+void arrangeButtons(Button *buttons, int count, const Rect &rowRect, int gap) {
+  if (count <= 0) return;
+  const int w = (rowRect.w - gap * (count - 1)) / count;
+  for (int i = 0; i < count; ++i) buttons[i].bounds = Rect(rowRect.x + i * (w + gap), rowRect.y, i == count - 1 ? rowRect.right() - (rowRect.x + i * (w + gap)) : w, rowRect.h);
+}
+}  // namespace
+
+void SettingsApp::LedFindScreen::layout(const Rect &content, const Theme &t) {
+  Rect r[2];
+  column(content.inset(t.m.margin, t.m.gapS), {flex(), px(t.m.control)}, t.m.gapM, r);
+  body_ = r[0];
+  arrangeButtons(buttons_, buttonCount_ ? buttonCount_ : 1, r[1], t.m.gapS);
+  buttonRow_ = r[1];
+  buttonGap_ = t.m.gapS;
+}
+
+void SettingsApp::LedFindScreen::setPhase(Phase p, AppContext &ctx) {
+  phase_ = p;
+  switch (p) {
+    case Phase::Intro:
+      snprintf(text_, sizeof(text_),
+               "Look at the back of the board. I'll light each pin the LED might be on, one at a time. Tell me what colour you see. About 15 seconds.");
+      buttons_[0].label = "Start";
+      buttons_[0].style = ButtonStyle::Accent;
+      buttonCount_ = 1;
+      break;
+    case Phase::Asking:
+      snprintf(text_, sizeof(text_), "Pin %d of %d: what colour is lit?", index_ + 1, pinCount_);
+      buttons_[0].label = "Red";
+      buttons_[1].label = "Green";
+      buttons_[2].label = "Blue";
+      buttons_[3].label = "None";
+      for (int i = 0; i < 4; ++i) buttons_[i].style = ButtonStyle::Glass;
+      buttonCount_ = 4;
+      break;
+    case Phase::Found: {
+      static const char *const kNames[3] = {"red", "green", "blue"};
+      char list[80] = "";
+      for (int i = 0; i < 3; ++i) {
+        if (found_.pin[i] == kNoPin) continue;
+        char one[24];
+        snprintf(one, sizeof(one), "%s%s %u", list[0] ? ", " : "", kNames[i], (unsigned)found_.pin[i]);
+        strncat(list, one, sizeof(list) - strlen(list) - 1);
+      }
+      snprintf(text_, sizeof(text_), "Found it: %s. It lights when the pin is %s.", list, found_.inverted ? "low" : "high");
+      buttons_[0].label = "Save";
+      buttons_[0].style = ButtonStyle::Accent;
+      buttons_[1].label = "Try again";
+      buttons_[1].style = ButtonStyle::Glass;
+      buttonCount_ = 2;
+      break;
+    }
+    case Phase::NotFound:
+      snprintf(text_, sizeof(text_),
+               "No light seen. This board may have no RGB LED, or it is on pins I don't try (I only touch pins that cannot hurt the display or touch).");
+      buttons_[0].label = "Try again";
+      buttons_[0].style = ButtonStyle::Glass;
+      buttonCount_ = 1;
+      break;
+  }
+  if (buttonRow_.w) arrangeButtons(buttons_, buttonCount_, buttonRow_, buttonGap_);
+  ctx.invalidate(ctx.contentRect());
+}
+
+void SettingsApp::LedFindScreen::onShow(AppContext &ctx) {
+  found_ = LedWiring{};
+  setPhase(Phase::Intro, ctx);
+}
+
+void SettingsApp::LedFindScreen::onHide(AppContext &ctx) { ctx.ledProbe(kNoPin, true); }
+
+void SettingsApp::LedFindScreen::probe(AppContext &ctx) {
+  ctx.ledProbe(pins_[index_], activeLow_);
+  setPhase(Phase::Asking, ctx);
+}
+
+void SettingsApp::LedFindScreen::answer(int colour, AppContext &ctx) {
+  auto advance = [&]() {
+    ++index_;
+    activeLow_ = polarityKnown_ ? found_.inverted : true;
+    if (index_ >= pinCount_) {
+      ctx.ledProbe(kNoPin, true);
+      setPhase(found_.usable() ? Phase::Found : Phase::NotFound, ctx);
+    } else {
+      probe(ctx);
+    }
+  };
+  if (colour >= 0) {
+    found_.pin[colour] = pins_[index_];
+    if (!polarityKnown_) {
+      polarityKnown_ = true;
+      found_.inverted = activeLow_;
+    }
+    advance();
+  } else if (!polarityKnown_ && activeLow_) {
+    activeLow_ = false;  // nothing when driven low: maybe it lights when high
+    probe(ctx);
+  } else {
+    advance();
+  }
+}
+
+void SettingsApp::LedFindScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, body_, t.m.radiusCard);
+  c.drawWrapped(*t.font.body, text_, body_.inset(t.m.padding, t.m.padding), t.color.text, 7, Align::Center);
+  for (int i = 0; i < buttonCount_; ++i) buttons_[i].draw(c, t);
+}
+
+bool SettingsApp::LedFindScreen::onEvent(const Event &e, AppContext &ctx) {
+  for (int i = 0; i < buttonCount_; ++i) {
+    if (!buttons_[i].handle(e, ctx)) continue;
+    switch (phase_) {
+      case Phase::Intro:
+      case Phase::NotFound:
+        pinCount_ = ctx.ledCandidates(pins_, sizeof(pins_));
+        index_ = 0;
+        activeLow_ = true;
+        polarityKnown_ = false;
+        found_ = LedWiring{};
+        if (pinCount_ == 0) setPhase(Phase::NotFound, ctx);
+        else probe(ctx);
+        break;
+      case Phase::Asking: answer(i < 3 ? i : -1, ctx); break;
+      case Phase::Found:
+        if (i == 0) {
+          SystemSettings s = ctx.settings();
+          for (int k = 0; k < 3; ++k) s.ledPin[k] = found_.pin[k];
+          s.ledInverted = found_.inverted;
+          if (s.ledMode == 0) s.ledMode = 1;
+          ctx.applySettings(s);
+          ctx.flashLed(255, 255, 255, 700);
+          ctx.toast("LED saved");
+          ctx.pop();
+        } else {
+          setPhase(Phase::Intro, ctx);
+        }
+        break;
+    }
+    return true;
+  }
+  return false;
+}
+
+// ------------------------------------------------------------------ light sensor
+
+void SettingsApp::LightCalibrateScreen::layout(const Rect &content, const Theme &t) {
+  Rect r[2];
+  column(content.inset(t.m.margin, t.m.gapS), {flex(), px(t.m.control)}, t.m.gapM, r);
+  body_ = r[0];
+  buttonRow_ = r[1];
+  buttonGap_ = t.m.gapS;
+  arrangeButtons(buttons_, buttonCount_ ? buttonCount_ : 1, r[1], t.m.gapS);
+  bar_ = Rect(body_.x + t.m.padding, body_.bottom() - t.m.padding - t.dp(6), body_.w - 2 * t.m.padding, t.dp(6));
+}
+
+void SettingsApp::LightCalibrateScreen::setPhase(Phase p, AppContext &ctx) {
+  phase_ = p;
+  buttonCount_ = 1;
+  buttons_[0].style = ButtonStyle::Accent;
+  switch (p) {
+    case Phase::Intro:
+      snprintf(text_, sizeof(text_),
+               "Put the clock where it will live, in its case. Turn the room lights off, or cover the sensor, then tap Start. The screen goes dark for about 6 seconds.");
+      buttons_[0].label = "Start";
+      break;
+    case Phase::MeasuringDark:
+      snprintf(text_, sizeof(text_), "Measuring in the dark. Keep it dark and still.");
+      buttons_[0].label = "Working";
+      buttons_[0].enabled = false;
+      break;
+    case Phase::AskBright:
+      snprintf(text_, sizeof(text_), "Now turn the lights on as bright as you'd normally have them by day, then tap Measure.");
+      buttons_[0].label = "Measure";
+      buttons_[0].enabled = true;
+      break;
+    case Phase::MeasuringBright:
+      snprintf(text_, sizeof(text_), "Measuring in the light. Keep it lit and still.");
+      buttons_[0].label = "Working";
+      buttons_[0].enabled = false;
+      break;
+    case Phase::Done:
+      snprintf(text_, sizeof(text_), "Done. The screen will now dim in a dark room and brighten in the light. Auto dim is on.");
+      buttons_[0].label = "Close";
+      buttons_[0].enabled = true;
+      break;
+    case Phase::Failed:
+      snprintf(text_, sizeof(text_),
+               "The sensor barely changed between dark and light. Is it covered by the case, or was the room not bright enough? Try again.");
+      buttons_[0].label = "Try again";
+      buttons_[0].style = ButtonStyle::Glass;
+      buttons_[0].enabled = true;
+      break;
+  }
+  if (buttonRow_.w) arrangeButtons(buttons_, buttonCount_, buttonRow_, buttonGap_);
+  ctx.invalidate(ctx.contentRect());
+}
+
+void SettingsApp::LightCalibrateScreen::onShow(AppContext &ctx) { setPhase(Phase::Intro, ctx); }
+
+void SettingsApp::LightCalibrateScreen::onHide(AppContext &ctx) { ctx.holdBacklight(-1); }
+
+// Each measurement: hold the backlight at a duty, wait for the sensor and the
+// eye to settle, then average readings for a while.
+uint32_t SettingsApp::LightCalibrateScreen::onTick(AppContext &ctx) {
+  if (phase_ != Phase::MeasuringDark && phase_ != Phase::MeasuringBright) return kNoTick;
+  constexpr uint32_t kSettleMs = 700, kSampleMs = 600, kSampleEvery = 50;
+  const uint32_t now = ctx.millis();
+  const uint32_t t = elapsedMs(now, stepStart_);
+  if (t >= kSettleMs && reached(now, nextSample_)) {
+    sum_ += ctx.lightReading();
+    ++samples_;
+    nextSample_ = now + kSampleEvery;
+  }
+  // Progress, for the bar: the whole run is 5 measurements.
+  const int done = phase_ == Phase::MeasuringDark ? step_ : kDarkSteps;
+  const int whole = (done * (kSettleMs + kSampleMs) + (t < kSettleMs + kSampleMs ? t : kSettleMs + kSampleMs)) * 100 /
+                    ((kDarkSteps + 1) * (kSettleMs + kSampleMs));
+  if (whole != progress_) {
+    progress_ = whole;
+    ctx.invalidate(bar_.inset(-2));
+  }
+  if (t < kSettleMs + kSampleMs) return kSampleEvery / 2;
+  const float mean = samples_ ? (float)sum_ / samples_ : 0.f;
+  sum_ = 0;
+  samples_ = 0;
+  if (phase_ == Phase::MeasuringDark) {
+    static const int kDuties[kDarkSteps] = {0, 64, 160, 255};
+    duty_[step_] = (float)kDuties[step_];
+    reading_[step_] = mean;
+    if (++step_ < kDarkSteps) {
+      ctx.holdBacklight(kDuties[step_]);
+      stepStart_ = ctx.millis();
+      nextSample_ = stepStart_ + kSettleMs;
+      return kSampleEvery;
+    }
+    ctx.holdBacklight(-1);
+    setPhase(Phase::AskBright, ctx);
+    return kNoTick;
+  }
+  brightRaw_ = mean;
+  ctx.holdBacklight(-1);
+  finish(ctx);
+  return kNoTick;
+}
+
+void SettingsApp::LightCalibrateScreen::finish(AppContext &ctx) {
+  // Least squares: reading = dark + self * (duty / 255).
+  float mx = 0, my = 0;
+  for (int i = 0; i < kDarkSteps; ++i) {
+    mx += duty_[i] / 255.f;
+    my += reading_[i];
+  }
+  mx /= kDarkSteps;
+  my /= kDarkSteps;
+  float sxx = 0, sxy = 0;
+  for (int i = 0; i < kDarkSteps; ++i) {
+    const float dx = duty_[i] / 255.f - mx;
+    sxx += dx * dx;
+    sxy += dx * (reading_[i] - my);
+  }
+  const float self = sxx > 0 ? sxy / sxx : 0.f;
+  const float dark = my - self * mx;
+  const float bright = brightRaw_ - self * (kBrightDuty / 255.f);  // with the screen's own light taken out
+  const float range = bright > dark ? bright - dark : dark - bright;
+  const bool sane = dark >= 0 && dark <= 4095 && bright >= 0 && bright <= 4095 && range >= (float)kMinLightRange;
+  if (!sane) {
+    setPhase(Phase::Failed, ctx);
+    return;
+  }
+  SystemSettings s = ctx.settings();
+  s.lightDark = (uint16_t)(dark + 0.5f);
+  s.lightBright = (uint16_t)(bright + 0.5f);
+  s.lightSelf = (int16_t)(self < -32000 ? -32000 : self > 32000 ? 32000 : self + (self < 0 ? -0.5f : 0.5f));
+  s.autoBrightness = true;
+  ctx.applySettings(s);
+  setPhase(Phase::Done, ctx);
+}
+
+void SettingsApp::LightCalibrateScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, body_, t.m.radiusCard);
+  c.drawWrapped(*t.font.body, text_, body_.inset(t.m.padding, t.m.padding), t.color.text, 7, Align::Center);
+  if (phase_ == Phase::MeasuringDark || phase_ == Phase::MeasuringBright) {
+    c.fillRoundRect(bar_, bar_.h / 2, t.color.line, (uint8_t)(t.color.lineAlpha * 2));
+    const int w = bar_.w * progress_ / 100;
+    if (w > 0) c.fillRoundRect(Rect(bar_.x, bar_.y, w > bar_.h ? w : bar_.h, bar_.h), bar_.h / 2, t.color.accent);
+  }
+  for (int i = 0; i < buttonCount_; ++i) buttons_[i].draw(c, t);
+}
+
+bool SettingsApp::LightCalibrateScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (!buttons_[0].handle(e, ctx)) return false;
+  switch (phase_) {
+    case Phase::Intro:
+    case Phase::Failed:
+      step_ = 0;
+      sum_ = 0;
+      samples_ = 0;
+      progress_ = 0;
+      setPhase(Phase::MeasuringDark, ctx);
+      ctx.holdBacklight(0);
+      stepStart_ = ctx.millis();
+      nextSample_ = stepStart_ + 700;
+      ctx.requestTick();
+      break;
+    case Phase::AskBright:
+      sum_ = 0;
+      samples_ = 0;
+      progress_ = kDarkSteps * 100 / (kDarkSteps + 1);
+      setPhase(Phase::MeasuringBright, ctx);
+      ctx.holdBacklight(kBrightDuty);
+      stepStart_ = ctx.millis();
+      nextSample_ = stepStart_ + 700;
+      ctx.requestTick();
+      break;
+    case Phase::Done: ctx.pop(); break;
+    default: break;
+  }
+  return true;
 }
 
 // ------------------------------------------------------------------ wi-fi

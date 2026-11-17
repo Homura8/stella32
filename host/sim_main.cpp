@@ -236,6 +236,33 @@ void capture(int width, int height, const std::string &root) {
       save(25, "update-ready");
     }
 
+    // Sound & light and its two helpers: asking which colour the LED is, and
+    // the light sensor's calibration waiting for the room light.
+    s.os.launch("settings");
+    while (s.os.topScreen() != &s.settings.root()) s.os.pop();
+    {
+      const Point soundRow = s.settingsRow(2);
+      s.tap(soundRow.x, soundRow.y);
+      const Rect soundArea = sc.inset(st.m.margin, st.m.gapS);
+      const int soundWant = st.m.control + st.dp(4), soundFit = (soundArea.h - 2 * st.dp(4)) / 6, soundMin = st.dp(32);
+      const int rowH = soundWant <= soundFit ? soundWant : soundFit < soundMin ? soundMin : soundFit;
+      auto soundCell = [&](int i) { return Rect(soundArea.x, soundArea.y + st.dp(4) + i * rowH, soundArea.w, rowH); };
+      const Rect bottom(soundArea.x, soundArea.bottom() - st.m.control, soundArea.w, st.m.control);
+      tapRect(s, soundCell(3));  // Find my LED
+      tapRect(s, bottom);        // Start (one wide button)
+      s.run(300);
+      save(28, "find-led");
+      s.os.pop();
+      tapRect(s, soundCell(5));  // Light sensor
+      tapRect(s, bottom);        // Start
+      s.dev.light.ambient = 0.f;
+      s.run(7200);
+      save(29, "light-sensor");
+      s.os.pop();
+      s.run(100);
+      s.os.pop();
+    }
+
     // A screen sliding in (animations on): the frame a little way into Home > Settings.
     s.os.launch("settings");
     while (s.os.topScreen() != &s.settings.root()) s.os.pop();  // earlier scenes left screens on its stack

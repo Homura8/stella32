@@ -75,6 +75,13 @@ void setup() {
   // (light 86 %, dark 74 %); white level and warmth are starting points.
   // The panel's VCOM and frame rate stay at the TFT_eSPI ILI9341_2 values
   // most CYD projects use.
+  // The back RGB LED: red 4, green 16, blue 17, active-low is the common
+  // wiring. Other makers differ: Settings > Sound & light > Find my LED
+  // finds the right one on the device.
+  config.defaults.ledPin[0] = 4;
+  config.defaults.ledPin[1] = 16;
+  config.defaults.ledPin[2] = 17;
+  config.defaults.ledInverted = true;
   config.defaults.colorTone = stella::ColorTone::Rich;
   config.defaults.contrastLight = 86;
   config.defaults.contrastDark = 74;

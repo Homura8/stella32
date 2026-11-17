@@ -42,6 +42,14 @@ void SystemSettings::sanitize() {
   if (skyPin > 4) skyPin = 0;
   if (bedside > 2) bedside = 1;
   if (volume > 100) volume = 100;
+  if (ledMode > 2) ledMode = 1;
+  if (ledLevel < 5) ledLevel = 5;
+  if (ledLevel > 100) ledLevel = 100;
+  for (uint8_t &pin : ledPin)
+    if (pin > 39 && pin != 255) pin = 255;  // not a GPIO
+  if (lightDark > 4095) lightDark = 4095;
+  if (lightBright > 4095) lightBright = 4095;
+  if (!lightCalibrated()) autoBrightness = false;
   // A correction outside these bounds is a failed calibration: undo it.
   if (touchScaleX < 819 || touchScaleX > 1280 || touchScaleY < 819 || touchScaleY > 1280 || touchOffsetX < -60 ||
       touchOffsetX > 60 || touchOffsetY < -60 || touchOffsetY > 60) {
@@ -123,6 +131,28 @@ struct SettingsV5 {
   uint8_t panelRefreshHz;
   uint8_t skyPin;
   int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+};
+
+// Frozen layout of version 8 (0.7.0). Never edit.
+struct SettingsV8 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  uint8_t bedside;
+  ColorTone colorTone;
+  uint8_t contrastLight, contrastDark, whiteLevel, warmth;
+  bool dither;
+  int8_t panelVcom;
+  uint8_t panelRefreshHz;
+  uint8_t skyPin;
+  int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+  uint8_t volume;
+  bool autoUpdate;
+  bool animations;
 };
 
 // Frozen layout of version 7 (0.6.1). Never edit.
@@ -334,6 +364,37 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.volume = v7.volume;
       loaded.autoUpdate = v7.autoUpdate;
       if (migrated) *migrated = true;  // animations keeps its default
+    }
+  } else if (s == RecordStatus::OldVersion && found == 8) {
+    SettingsV8 v8;
+    s = loadRecord(store, kNamespace, kKey, 8, &v8, sizeof(v8));
+    if (s == RecordStatus::Ok) {
+      loaded = out;  // the LED and light fields keep the board's defaults
+      loaded.appearance = v8.appearance;
+      loaded.brightness = v8.brightness;
+      loaded.dimAfterSec = v8.dimAfterSec;
+      loaded.sleepAfterSec = v8.sleepAfterSec;
+      loaded.clock24h = v8.clock24h;
+      memcpy(loaded.timezone, v8.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v8.nightDim;
+      loaded.bedside = v8.bedside;
+      loaded.colorTone = v8.colorTone;
+      loaded.contrastLight = v8.contrastLight;
+      loaded.contrastDark = v8.contrastDark;
+      loaded.whiteLevel = v8.whiteLevel;
+      loaded.warmth = v8.warmth;
+      loaded.dither = v8.dither;
+      loaded.panelVcom = v8.panelVcom;
+      loaded.panelRefreshHz = v8.panelRefreshHz;
+      loaded.skyPin = v8.skyPin;
+      loaded.touchScaleX = v8.touchScaleX;
+      loaded.touchOffsetX = v8.touchOffsetX;
+      loaded.touchScaleY = v8.touchScaleY;
+      loaded.touchOffsetY = v8.touchOffsetY;
+      loaded.volume = v8.volume;
+      loaded.autoUpdate = v8.autoUpdate;
+      loaded.animations = v8.animations;
+      if (migrated) *migrated = true;
     }
   }
   if (s == RecordStatus::Ok) {

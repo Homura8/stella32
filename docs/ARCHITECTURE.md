@@ -149,6 +149,45 @@ Apps that ring tell the shell when with `AppContext::setNextAlarm(epoch)`;
 time's wall-clock components in the configured zone (daylight saving
 included).
 
+## Status LED and ambient light
+
+Two optional HAL devices (`Board::led`, `Board::light`). Both are data-driven
+because boards of the same name differ.
+
+**LED** (`runtime/led_engine.*`, `Led` in `hal/hal.h`): several things may want
+it at once, so each is a *source* with a pattern (off, steady, breathe, blink)
+and the most important active one wins: alert > app flash > update > Wi-Fi >
+bedside glow. The runtime feeds the sources: an alert breathes amber until
+answered; an update breathes blue while it downloads, green when it waits for
+the restart, and flashes red if it fails; phone setup breathes violet, and a
+join started in Settings flashes green or red; apps call `flashLed()` (the
+Stopwatch blinks on a lap); in glow mode the bedside face has a faint breathing
+violet light. `ledMode` is Off / Alerts and progress / Glow and `ledLevel` caps
+the brightness. The glow is opt-in because a light in a dark bedroom is a
+choice. The wiring (which pin is red, green and blue, active-low or not) is
+the `ledPin[3]`/`ledInverted` settings: the board's sketch gives the common
+default, and *Settings > Sound & light > Find my LED* finds the real one. An LED
+cannot be sensed, so the person is asked: the board offers the pins that are
+safe to drive (`Led::candidatePins`, never display, touch, speaker or storage
+pins), the screen drives one at a time (low, then high, with every other
+candidate left floating so nothing else can light) and asks which colour
+appeared. A probe ends by itself after 10 s and the normal LED comes back.
+
+**Ambient light** (`runtime/ambient.*`, `LightSensor`): an LDR beside a
+backlit screen, in a case of any colour, has no useful absolute value.
+*Settings > Sound & light > Light sensor* measures it in its place: with the
+room dark it reads the sensor at four exact backlight levels (the runtime's
+`holdBacklight`) and fits `reading = dark + self * duty/255`, so the screen's
+own glow becomes a known term; then in normal room light it reads once more
+and subtracts the screen's glow to get `bright`. Afterwards a reading is
+corrected for the backlight that was lit, placed between dark (0) and bright
+(1) and smoothed; the sign of (bright - dark) is the polarity, so any wiring and
+case colour work. The user's brightness is multiplied by `0.12 + 0.88 * level^0.6`
+(most of the dimming is between dark and a dim room), moved in steps of at most
+8/255 a quarter second and only when it differs by 6 or more, so it glides and
+does not hunt. A calibration whose two ends are less than 60 counts apart is
+rejected (covered sensor), and auto dim cannot be switched on without one.
+
 ## Alerts
 
 `AppContext::showAlert()` puts a modal glass card over everything (status bar
