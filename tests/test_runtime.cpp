@@ -239,3 +239,22 @@ TEST(every_screen_renders_at_every_size) {
     }
   }
 }
+
+TEST(home_header_fits_in_both_clock_styles_at_every_size) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  for (const auto &sz : sizes) {
+    for (bool h24 : {true, false}) {
+      SimSession s(sz[0], sz[1], kMorningEpoch);
+      SystemSettings st = s.os.settings();
+      st.clock24h = h24;
+      s.os.applySettings(st);
+      s.run(300);
+      const std::vector<Color> incremental = s.dev.display.framebuffer();
+      s.os.invalidateAll();
+      s.run(20);
+      CHECK(incremental == s.dev.display.framebuffer());
+      // The first tile starts below the header, whatever the clock style.
+      CHECK(s.launcher.tileBounds(0).y > s.os.contentRect().y + s.os.theme().font.hometime->ascent);
+    }
+  }
+}

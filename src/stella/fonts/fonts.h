@@ -14,6 +14,7 @@ struct FontSet {
   const Font *headline;  // large greetings / values
   const Font *display;   // big numerals only: " 0123456789:-APM°"
   const Font *bedside;   // the largest numerals, " 0123456789:", for the bedside clock
+  const Font *hometime;  // the time in Home's header: " 0123456789:-APM°"
 };
 
 extern const FontSet kCompact;  // ~320x240 panels

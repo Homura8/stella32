@@ -30,6 +30,9 @@ ROLES = {
     # The bedside clock's numerals: as large as "88:88" plus AM/PM still fits
     # the display width (see ClockApp::BedsideScreen).
     "bedside":  ("baloo-2-700.woff",   {"compact": 96, "regular": 144}, " 0123456789:"),
+    # The time in Home's header: clearly bigger than a headline, far smaller than
+    # the display numerals. Digits, colon, AM/PM and the "--:--" of an unknown time.
+    "hometime": ("baloo-2-700.woff",   {"compact": 44, "regular": 60}, CLOCK),
 }
 DENSITIES = ("compact", "regular")
 

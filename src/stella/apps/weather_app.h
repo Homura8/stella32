@@ -99,11 +99,14 @@ class WeatherApp : public App {
 
    private:
     void describeFreshness(AppContext &ctx, char *out, size_t capacity) const;
+    void updateSun(AppContext &ctx);
     WeatherApp &app_;
     Rect hero_, icon_, temp_, condition_, place_, chips_[3], days_[WeatherReport::kDays], status_;
     int dayCards_ = 3;
     WeatherSnapshot snap_;
     char statusText_[48] = {0};
+    char sunRise_[8] = {0}, sunSet_[8] = {0};  // "6:04" and "8:41"; empty when unknown
+    uint8_t sunKind_ = 0;                       // 0 normal, 1 the Sun stays up, 2 it stays down
     char dayNames_[WeatherReport::kDays][8] = {};
     bool placePressed_ = false;
   };
