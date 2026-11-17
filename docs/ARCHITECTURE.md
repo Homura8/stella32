@@ -24,15 +24,16 @@ input, rendering, background work, storage, power and supervision.
  runtime/     Runtime: navigation, shell, power, settings, supervision, event loop
  app/         App / Screen / AppContext contract, system settings
  ui/          Theme (Celestia Glow tokens), materials, icons, layout DSL, widgets
+ net/         WifiManager (Wi-Fi service), HttpService, streaming JSON parser
  service/     Topic<T>, JobScheduler, SharedResource lease, Supervisor, DataStatus
  storage/     Versioned, checksummed records over KeyValueStore
  input/       Events, gesture recognizer, touch calibration
  gfx/ fonts/  Canvas (anti-aliased primitives, text), dirty-rect Renderer, fonts
- hal/         Display, TouchInput, Platform, KeyValueStore interfaces
+ hal/         Display, TouchInput, Platform, KeyValueStore, WifiDriver, HttpClient
  osal/        Mutex, RecursiveMutex, Signal, threads (FreeRTOS | std)
  core/        Geometry, colour, wrap-safe time, fixed containers, text, logging
  ───────────────────────────────────────────────────────────────────────────
- port/esp32/  Arduino-ESP32: Platform, NVS store, Wi-Fi job      (device only)
+ port/esp32/  Arduino-ESP32: Platform, NVS, Wi-Fi + HTTPS drivers (device only)
  boards/cyd/  ESP32-2432S028R display + touch drivers, profile   (device only)
  host/        Simulated board, screenshot simulator              (host only)
 ```
@@ -46,7 +47,7 @@ code does not allocate on the heap. CI runs it on every change.
 | Thread | Runs | Supervised |
 | --- | --- | --- |
 | UI (Arduino `loopTask`) | `Runtime::run()`: input, app callbacks, rendering, settings persistence | yes, by the service thread (3 min) |
-| Service (`stella-svc`) | `JobScheduler`: background jobs (Wi-Fi today; HTTP services next) | yes, by the UI thread (10 min) |
+| Service (`stella-svc`) | `JobScheduler`: Wi-Fi, weather and any app's jobs; TLS runs here (16 KiB stack) | yes, by the UI thread (10 min) |
 
 - **Apps run only on the UI thread.** No locks are needed in app code.
 - **Jobs publish, apps read.** A job publishes a copy of its result to a
@@ -57,6 +58,12 @@ code does not allocate on the heap. CI runs it on every change.
   afford) use `SharedResource`: Primary clients wait, Optional clients never
   start while a Primary waits. A busy lease is `JobResult::Deferred`, never a
   failure.
+- **Apps own their services.** `App::onInstall(ServiceHost&)` registers an
+  app's jobs and topics at boot (the Weather app adds its fetcher this way);
+  `AppContext::requestJob()` asks for an immediate run ("refresh").
+- **Background apps cannot repaint.** The runtime ignores `invalidate()` from
+  any app other than the foreground one; `Screen::isVisible()` lets screens
+  skip work while hidden.
 - **Retry policy** is declarative (`JobPolicy`): interval, exponential retry
   backoff with a cap, deferral delay, and "needs network" gating. Reconnecting
   or a manual refresh clears backoff.
@@ -66,6 +73,22 @@ code does not allocate on the heap. CI runs it on every change.
 
 Lock ordering: resource lease → data locks. No lock is held across flash, network
 or display I/O.
+
+## Networking
+
+- **Wi-Fi** is an OS service (`net/wifi_manager.*`): saved credentials (a
+  versioned record, wiped from RAM after use), reconnection with backoff
+  (5 s doubling to 2 min), non-blocking scans, SNTP once connected, and two
+  topics (`NetworkStatus`, `WifiScan`). Apps control it through
+  `AppContext::network()`; the board supplies a small `WifiDriver`.
+- **HTTP** (`net/http_service.*`): jobs call `HttpService::getJson(url,
+  handler)`. It takes the shared TLS lease (busy = `Deferred`), enforces
+  size and time limits, verifies certificates (core CA bundle on ESP32), and
+  streams the body through a bounded SAX parser (`net/json.*`, ~0.5 KiB, depth
+  10): no response is ever held in RAM.
+- **Freshness** (`service/data_status.h`): every data service keeps its last
+  good value and says *why* it might be old (Weather: "Offline · from 12 min
+  ago").
 
 ## Rendering
 
@@ -81,6 +104,19 @@ pixel it covers; translucent glass blends over the backdrop drawn first.
 
 Invariant (tested): any sequence of incremental frames produces the same pixels
 as a full redraw. Idle screens render nothing.
+
+Performance work (host benchmark `stella_bench`, relative numbers):
+- RGB565 blending on packed pixels with 5-bit alpha (one multiply per pixel,
+  verified exactly against a per-channel reference).
+- Anti-aliasing maths only in rounded corners; straight runs are plain fills.
+- Shadows painted only outside cards (as CSS `box-shadow`), not under glass.
+- Sky: fixed-point gradient, washes sampled every 8 px on a screen-anchored
+  grid and interpolated, shift-only ordered dithering.
+- Result: a full 320x240 frame costs about half of 0.1.0; the sky about 40%,
+  a glass card about 15%.
+- Optional DMA (`Display::writePixelsAsync`): with a second chunk buffer the
+  next chunk is drawn while the previous one is transferred (tested with a
+  display double that reads buffers late).
 
 ## UI model
 
@@ -125,19 +161,19 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,093,729 B of 3 MB (huge_app partition) |
-| Static RAM (globals) | 65,260 B; 262,420 B left for stacks and heap |
-| Render chunk buffer | 12,800 B (320 x 20 px) |
-| Fonts (both densities, flash) | ~96 KB |
+| Program (flash) | 1,327,663 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of the growth |
+| Static RAM (globals) | 69,860 B; 257,820 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,347,009 B flash, 83,500 B static RAM |
+| Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
+| Service thread stack | 16 KiB (TLS handshakes) |
+| Fonts (both densities, flash) | ~98 KB |
 
 ## Roadmap
 
 Near-term work this foundation is designed for:
 
-1. Wi-Fi provisioning (setup access point and web page) instead of `secrets.h`.
-2. An HTTP(S) service layer: bounded body readers, the TLS lease, `DataStatus`
-   freshness, and topics, ported from Celestia Nightstand's proven code.
-3. DMA display transfer with double chunk buffers.
-4. Screen transitions and gentle animations, opt-in and frame-budgeted.
-5. More boards (e.g. 3.5" 480x320 panels, capacitive touch) and an ESP-IDF port.
-6. OTA updates with rollback.
+1. Screen transitions and gentle animations, opt-in and frame-budgeted.
+2. Notifications and an alarm/timer app on the clock.
+3. A setup access point + web page as an alternative Wi-Fi onboarding path.
+4. More boards (e.g. 3.5" 480x320 panels, capacitive touch) and an ESP-IDF port.
+5. OTA updates with rollback.

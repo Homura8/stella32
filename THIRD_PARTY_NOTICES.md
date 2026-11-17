@@ -24,6 +24,12 @@ headline, display) rather than by the reserved font names.
   and checksummed records adapt ideas from Celestia Nightstand, the owner's
   own project.
 
+## Weather data
+
+The Weather app fetches forecasts from [Open-Meteo](https://open-meteo.com/)
+at run time. Open-Meteo data is licensed under CC BY 4.0; the app credits
+"Open-Meteo" on screen. No data is bundled.
+
 ## Build-time dependencies (not bundled)
 
 Arduino-ESP32 (Espressif, LGPL-2.1/Apache-2.0 components), TFT_eSPI (Bodmer,

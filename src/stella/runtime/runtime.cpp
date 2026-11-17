@@ -182,6 +182,19 @@ uint32_t Runtime::step() {
 
   updatePower(now);
 
+  uiStackFree_.store(board_.platform->stackHeadroom());
+  if (reached(now, nextHealthLog_)) {
+    // One line a minute for long-running (overnight) validation on hardware.
+    nextHealthLog_ = now + 60000;
+    const MemoryStats m = board_.platform->memory();
+    const NetworkStatus net = network_.get();
+    LOGI(kTag, "health up=%lus heap=%lu min=%lu block=%lu stack ui=%lu svc=%lu frame=%lums wifi=%d drops=%lu",
+         (unsigned long)(now / 1000), (unsigned long)m.freeHeap, (unsigned long)m.minimumFreeHeap,
+         (unsigned long)m.largestFreeBlock, (unsigned long)uiStackFree_.load(),
+         (unsigned long)serviceStackFree_.load(), (unsigned long)lastFrameMs_, (int)net.state,
+         (unsigned long)events_.dropped());
+  }
+
   if (settingsDirty_ && reached(now, settingsSaveAt_)) {
     settingsDirty_ = false;
     if (board_.storage && !saveSettings(board_.storage, settings_)) LOGW(kTag, "settings could not be saved");
@@ -517,6 +530,8 @@ SystemStatus Runtime::status() const {
   s.supervisorRestarts = supervisorRestarts_;
   s.framesRendered = frames_;
   s.lastFrameMs = lastFrameMs_;
+  s.uiStackFree = uiStackFree_.load();
+  s.serviceStackFree = serviceStackFree_.load();
   return s;
 }
 
@@ -556,6 +571,7 @@ void Runtime::serviceMain(void *self) {
   while (!rt.stopping_.load()) {
     rt.supervisor_.beat(rt.serviceWatch_, rt.millis());
     const uint32_t wait = rt.jobs_.runDue(clockThunk, self);
+    rt.serviceStackFree_.store(rt.board_.platform->stackHeadroom());
     const uint32_t now = rt.millis();
     rt.supervisor_.beat(rt.serviceWatch_, now);
     rt.superviseThreads(now);

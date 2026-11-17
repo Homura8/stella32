@@ -66,6 +66,7 @@ class Esp32Platform : public Platform {
     size = 64;
     return retainedBlock();
   }
+  uint32_t stackHeadroom() const override { return (uint32_t)uxTaskGetStackHighWaterMark(nullptr); }
 
  private:
   const char *name_;

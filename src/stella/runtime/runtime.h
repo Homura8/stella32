@@ -40,7 +40,9 @@ struct RuntimeConfig {
   uint32_t uiStallLimitMs = 3u * 60u * 1000u;
   uint32_t serviceStallLimitMs = 10u * 60u * 1000u;
   bool supervise = true;           // restart on a stalled thread
-  uint32_t serviceStackBytes = 8192;
+  // TLS handshakes (mbedTLS) run on this stack; 16 KiB is what Celestia
+  // Nightstand's network task used successfully on the CYD.
+  uint32_t serviceStackBytes = 16384;
   int8_t serviceCore = 0;
   // false: no service thread; the host calls Runtime::serviceStep() itself
   // (deterministic simulation). Firmware always uses the thread.
@@ -204,8 +206,10 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   int uiWatch_ = -1, serviceWatch_ = -1;
   std::atomic<bool> restartRequested_{false};
   std::atomic<bool> stopping_{false}, serviceExited_{false};
+  std::atomic<uint32_t> uiStackFree_{0}, serviceStackFree_{0};
   osal::Signal serviceWake_;
   uint32_t frames_ = 0, lastFrameMs_ = 0, supervisorRestarts_ = 0;
+  uint32_t nextHealthLog_ = 0;
   Renderer::Stats lastStats_;
 };
 

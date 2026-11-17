@@ -242,7 +242,8 @@ void WeatherApp::MainScreen::describeFreshness(AppContext &ctx, char *out, size_
   else if (minutes < 60) snprintf(age, sizeof(age), "%lu min ago", (unsigned long)minutes);
   else snprintf(age, sizeof(age), "%lu h ago", (unsigned long)(minutes / 60));
   if (s.freshness(ctx.millis(), WeatherService::kFreshForMs) == Freshness::Fresh) {
-    snprintf(out, capacity, "Updated %s", age);
+    // Open-Meteo data is CC BY 4.0: attribution is required.
+    snprintf(out, capacity, "Updated %s \xc2\xb7 Open-Meteo", age);
   } else if (!net.connected) {
     snprintf(out, capacity, "Offline \xc2\xb7 from %s", age);
   } else {

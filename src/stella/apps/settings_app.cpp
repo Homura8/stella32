@@ -489,6 +489,14 @@ void SettingsApp::AboutScreen::refresh(AppContext &ctx) {
   if (!s.network.present) snprintf(next[7], 40, "Not available");
   else if (s.network.connected) snprintf(next[7], 40, "%.24s %d dBm", s.network.ssid, s.network.rssi);
   else snprintf(next[7], 40, "Disconnected");
+  // Last frame's render time (not a frame count: that would change on every
+  // repaint of this very screen and keep it redrawing).
+  snprintf(next[8], 40, "%lu ms to render", (unsigned long)s.lastFrameMs);
+  if (s.uiStackFree || s.serviceStackFree)
+    snprintf(next[9], 40, "ui %lu B \xc2\xb7 svc %lu B", (unsigned long)s.uiStackFree,
+             (unsigned long)s.serviceStackFree);
+  else
+    snprintf(next[9], 40, "Not measured");
   if (memcmp(next, values_, sizeof(next)) != 0) {
     memcpy(values_, next, sizeof(next));
     ctx.invalidate(list_.bounds);
@@ -502,8 +510,8 @@ uint32_t SettingsApp::AboutScreen::onTick(AppContext &ctx) {
 }
 
 void SettingsApp::AboutScreen::drawRow(Canvas &c, const Theme &t, int index, const Rect &r, bool, void *self) {
-  static const char *const kLabels[kRows] = {"Board",       "Software",     "Display",     "Uptime",
-                                             "Memory",      "Lowest free",  "Last reset",  "Network"};
+  static const char *const kLabels[kRows] = {"Board",      "Software",   "Display", "Uptime",  "Memory",
+                                             "Lowest free", "Last reset", "Network", "Frame",  "Stack free"};
   const AboutScreen &screen = *static_cast<const AboutScreen *>(self);
   Rect parts[2];
   row(r.inset(t.m.padding, 0), {px(t.dp(84)), flex()}, t.m.gapS, parts);

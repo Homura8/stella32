@@ -92,6 +92,16 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
 - **Toggle:** pill track (accent when on) with a soft knob.
 - **Slider:** thin track, accent fill, `surface` knob with an accent ring.
 - **Toast:** glass pill above the bottom edge, 2.2 s.
+- **Keyboard:** four rows sized from its bounds; letter keys are glass,
+  function keys `surface` chips, the action key is an accent pill (greyed
+  until the input is valid). One-shot shift, two symbol pages; long-press
+  delete clears.
+- **Text field:** glass pill, accent caret; secrets show bullets with a
+  *Show/Hide* toggle.
+- **Wi-Fi:** signal shown as 0-4 arcs (`icons::wifiBars`); the status bar
+  icon is muted when connected, accent while joining, soft pink on failure.
+- **Weather:** large display-font temperature, condition in `title`, three
+  (compact) or four (regular) glass forecast cards, a muted freshness line.
 
 ## Reviewing visual changes
 

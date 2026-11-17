@@ -65,6 +65,8 @@ class Platform {
   // A small block that survives a software restart (RTC memory on ESP32).
   // Contents are random after power-on; callers must validate them.
   virtual void *retainedMemory(size_t &size) = 0;
+  // Lowest free stack ever seen on the calling thread, in bytes (0 if unknown).
+  virtual uint32_t stackHeadroom() const { return 0; }
 };
 
 // Persistent key/value storage (NVS on ESP32). Namespaces and keys are limited

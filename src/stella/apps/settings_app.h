@@ -108,7 +108,7 @@ class SettingsApp : public App {
     uint32_t onTick(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 8;
+    static constexpr int kRows = 10;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     void refresh(AppContext &ctx);
     Rect card_;
