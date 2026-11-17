@@ -905,7 +905,7 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   bedside_.count = 3;
   bedside_.selected = s.bedside;
   const LocalTime now = ctx.localTime();
-  night_ = !now.valid || phaseForHour(now.hour) == SkyPhase::Night;
+  night_ = !now.valid || ctx.status().night;
   snprintf(calibrateDetail_, sizeof(calibrateDetail_), "%s \xc2\xb7 %u%%", toneName(s.colorTone),
            (unsigned)(ctx.theme().color.dark ? s.contrastDark : s.contrastLight));
   calibrate_.detail = calibrateDetail_;

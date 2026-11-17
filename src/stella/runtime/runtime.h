@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.10.0"
+#define STELLA_VERSION "0.11.0"
 #endif
 
 namespace stella {
@@ -146,6 +146,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   }
   bool showAlert(const Alert &alert) override;
   void previewChime() override;
+  void setSun(int64_t sunrise, int64_t sunset, uint8_t polar) override;
   void flashLed(uint8_t r, uint8_t g, uint8_t b, uint16_t ms) override;
   int ledCandidates(uint8_t *out, int capacity) override;
   void ledProbe(uint8_t pin, bool activeLow) override;
@@ -297,6 +298,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   uint8_t appliedScale_ = 255;  // the ambient fraction of the brightness in use, slewed
   bool lightWarm_ = false;
   bool whatsNewPending_ = false;
+  int64_t sunRise_ = 0, sunSet_ = 0;  // today's, from the Weather place; 0 = unknown
+  uint8_t sunPolar_ = 0;
   LightCalibration appliedCal_;
   int holdDuty_ = -1;
   char resetNote_[40] = {0};

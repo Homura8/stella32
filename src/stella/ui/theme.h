@@ -95,6 +95,12 @@ struct Theme {
 
 Density densityFor(int width, int height);
 SkyPhase phaseForHour(int hour);  // 5-8 dawn, 8-17 day, 17-20 dusk, else night
+// The same four phases from the real sun (today's sunrise and sunset, epoch
+// seconds): dawn from 45 min before sunrise to 75 min after it, day until an hour
+// before sunset, dusk until 45 min after sunset, then night. Used when the
+// Weather place gives the shell the sun's times (AppContext::setSun); the fixed
+// hours above are the fallback.
+SkyPhase phaseForSun(int64_t now, int64_t sunrise, int64_t sunset);
 bool resolveDark(Appearance appearance, SkyPhase phase);  // Auto: dark at dusk and night
 Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look = Look{});
 

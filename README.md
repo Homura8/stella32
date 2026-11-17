@@ -16,9 +16,9 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
+| Version | 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 198 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Host tests | 203 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.48 MB flash (75% of a 1.9 MB update slot), 84 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -202,7 +202,12 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     the list, which scrolls) or a long press on Home's time opens the editor:
     switch apps off, move them with the arrows; Settings always stays. A
     friend's CYD starts with every app visible.
-20. Leave it running overnight; no `restarting` line in the log and the
+20. *The sky*: it should now turn to dusk an hour before the real sunset where
+    you are, and to night 45 minutes after it (in summer that is well after
+    20:00), and the night dimming and bedside clock start with it. Check
+    Settings > About > Software on the day of a change; if the sky looks an
+    hour out, check Settings > Time (zone) and the Weather place.
+21. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

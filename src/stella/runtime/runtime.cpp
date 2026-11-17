@@ -347,7 +347,15 @@ void Runtime::formatTime(const LocalTime &t, char *out, size_t capacity) const {
 void Runtime::updateTheme(bool force) {
   const LocalTime lt = localTime();
   // Unknown time: assume night, the calmest palette for a bedside device.
-  timePhase_ = lt.valid ? phaseForHour(lt.hour) : SkyPhase::Night;
+  timePhase_ = SkyPhase::Night;
+  if (lt.valid) {
+    // The real sun when the Weather place has told us about today; else the hours.
+    const bool sunToday = sunRise_ > 0 && sunSet_ > sunRise_ && lt.epoch > sunRise_ - 18 * 3600 && lt.epoch < sunRise_ + 30 * 3600;
+    if (sunPolar_ == 1) timePhase_ = SkyPhase::Day;
+    else if (sunPolar_ == 2) timePhase_ = SkyPhase::Night;
+    else if (sunToday) timePhase_ = phaseForSun(lt.epoch, sunRise_, sunSet_);
+    else timePhase_ = phaseForHour(lt.hour);
+  }
   // The sky can be kept at one phase (Settings > Appearance).
   const SkyPhase phase = settings_.skyPin ? (SkyPhase)(settings_.skyPin - 1) : timePhase_;
   const bool dark = resolveDark(settings_.appearance, phase);
@@ -692,6 +700,7 @@ SystemStatus Runtime::status() const {
   s.hasLed = board_.led != nullptr;
   s.hasLight = board_.light != nullptr;
   s.hasSound = board_.sound != nullptr;
+  s.night = timePhase_ == SkyPhase::Night;
   s.ambient = settings_.autoBrightness && settings_.lightCalibrated() && board_.light && lightWarm_
                   ? (int8_t)(ambient_.level() * 100.f + 0.5f)
                   : (int8_t)-1;
@@ -992,6 +1001,14 @@ void Runtime::updateAlert(uint32_t now) {
     chimeAt_ = now + note.ms;
     chimeStep_ = (uint8_t)((chimeStep_ + 1) % kChimeNotes);
   }
+}
+
+void Runtime::setSun(int64_t sunrise, int64_t sunset, uint8_t polar) {
+  if (sunrise == sunRise_ && sunset == sunSet_ && polar == sunPolar_) return;
+  sunRise_ = sunrise;
+  sunSet_ = sunset;
+  sunPolar_ = polar > 2 ? 0 : polar;
+  if (started_) updateTheme(false);  // the sky may change now
 }
 
 void Runtime::previewChime() {

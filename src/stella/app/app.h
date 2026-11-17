@@ -181,6 +181,7 @@ struct SystemStatus {
   uint32_t lastFrameMs = 0;  // render time of the most recent frame
   uint32_t uiStackFree = 0, serviceStackFree = 0;  // lowest free stack seen, bytes
   bool hasLed = false, hasLight = false, hasSound = false;  // what this board has
+  bool night = false;      // it is night by the sky's clock (real sunset to sunrise when known), whatever sky is pinned
   int8_t ambient = -1;     // ambient light 0..100 % when the sensor is calibrated, else -1
   bool panelTrim = false;  // the display supports VCOM / refresh adjustment
   int64_t nextAlarm = 0;   // epoch seconds of the earliest app alarm, 0 = none (setNextAlarm)
@@ -250,6 +251,11 @@ class AppContext : public Invalidator {
   // Withdraw the calling app's alert with this tag (shown or queued) without
   // an onAlert() callback.
   virtual void dismissAlert(uint16_t tag) = 0;
+  // The Weather place's sun for today (epoch seconds), so the sky, the night
+  // dimming and the bedside face follow the real sunrise and sunset instead of
+  // fixed hours. `polar`: 0 normal, 1 the Sun stays up all day, 2 it stays down.
+  // sunrise = sunset = 0 with polar 0 means unknown (back to the fixed hours).
+  virtual void setSun(int64_t sunrise, int64_t sunset, uint8_t polar) = 0;
   // The calling app tells the shell when it will next ring (epoch seconds; 0 =
   // not at all). SystemStatus::nextAlarm is the earliest of all apps; the
   // bedside clock shows it.
