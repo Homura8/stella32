@@ -773,17 +773,18 @@ void Runtime::drawStatusBar(Canvas &c) {
   const Palette &p = t.color;
   const Rect bar = statusBarRect().inset(t.m.margin, 0);
 
-  char clock[12];
-  formatTime(localTime(), clock, sizeof(clock));
+  // Home shows the time large in its own header, so its status bar has none.
+  const bool back = canGoBack();
+  char clock[12] = "";
+  if (back) formatTime(localTime(), clock, sizeof(clock));
   const NetworkStatus net = network_.get();
   const int iconSize = t.dp(14);
-  const int rightW = Canvas::textWidth(*t.font.caption, clock) + (net.present ? iconSize + t.dp(6) : 0);
+  const int rightW = (clock[0] ? Canvas::textWidth(*t.font.caption, clock) + t.dp(6) : 0) + (net.present ? iconSize : 0);
   Rect parts[2];
   layout::row(bar, {layout::flex(), layout::px(rightW)}, t.m.gapM, parts);
 
   // Left: back affordance + title, or the Stella brand on the home screen.
   Rect left = parts[0];
-  const bool back = canGoBack();
   if (back) {
     const Rect box = layout::leading(left, iconSize);
     if (backPressed_) c.fillCircle(box.centerX(), box.centerY(), iconSize / 2 + t.dp(4), p.accent, 46);
@@ -794,8 +795,10 @@ void Runtime::drawStatusBar(Canvas &c) {
   left = Rect(left.x + iconSize + t.dp(6), left.y, left.w - iconSize - t.dp(6), left.h);
   const Screen *s = topScreen();
   const App *app = foreground();
-  const char *title = back ? (s && s->title() ? s->title() : app ? app->info().name : "") : "Stella";
-  c.drawTextIn(*t.font.title, title, left, back ? p.text : p.accent);
+  if (back) {
+    const char *title = s && s->title() ? s->title() : app ? app->info().name : "";
+    c.drawTextIn(*t.font.title, title, left, p.text);
+  }
 
   // Right: network indicator + clock.
   Rect right = parts[1];
@@ -805,10 +808,10 @@ void Runtime::drawStatusBar(Canvas &c) {
                             : net.state == WifiState::Connecting ? p.accent
                             : net.state == WifiState::Disconnected ? p.danger
                                                                    : blend(p.glass, p.textMuted, 120);
-    icons::wifi(c, layout::leading(right, iconSize), wifiColor);
-    right = Rect(right.x + iconSize + t.dp(6), right.y, right.w - iconSize - t.dp(6), right.h);
+    icons::wifi(c, layout::trailing(Rect(right.x, right.y, right.w - (clock[0] ? Canvas::textWidth(*t.font.caption, clock) + t.dp(6) : 0), right.h), iconSize), wifiColor);
+    right = Rect(right.right() - (clock[0] ? Canvas::textWidth(*t.font.caption, clock) : 0), right.y, clock[0] ? Canvas::textWidth(*t.font.caption, clock) : 0, right.h);
   }
-  c.drawTextIn(*t.font.caption, clock, right, p.textMuted, Align::Right);
+  if (clock[0]) c.drawTextIn(*t.font.caption, clock, right, p.textMuted, Align::Right);
 }
 
 void Runtime::drawToast(Canvas &c) {

@@ -28,10 +28,14 @@ int LauncherApp::HomeScreen::pageCount() const {
 
 void LauncherApp::HomeScreen::layout(const Rect &content, const Theme &t) {
   theme_ = t;
-  area_ = content.inset(t.m.margin, t.m.gapS);
+  area_ = content.inset(t.m.margin, 0);
   arrange();
 }
 
+// The header (the time, large, with the greeting and the date beside it), the
+// grid of apps, the page dots and, when Wi-Fi is not set up, a note: laid out
+// with the *same* space above, between and below, so nothing looks squeezed
+// against one edge.
 void LauncherApp::HomeScreen::arrange() {
   const Theme &t = theme_;
   columns_ = t.density == Density::Regular ? 5 : 4;
@@ -43,32 +47,54 @@ void LauncherApp::HomeScreen::arrange() {
   const int tileW = (area_.w - gap_ * (columns_ - 1)) / columns_;
   const int tileH = tileW;
   const bool paged = count > columns_ * rows_;
-  Rect parts[6];
-  column(area_,
-         {px(t.font.headline->lineHeight), px(t.font.caption->lineHeight), px(rows_ * tileH + (rows_ - 1) * gap_),
-          px(paged ? t.dp(10) : 0), flex(), px(rows_ == 1 ? t.m.row + t.dp(8) : 0)},
-         t.m.gapS, parts);
-  greeting_ = parts[0];
-  date_ = parts[1];
-  grid_ = parts[2];
-  dots_ = parts[3];
-  note_ = parts[5];
-  // With several pages, a pill of previous/next buttons sits beside the
-  // greeting; swiping still works too.
+  const int headerH = t.font.headline->lineHeight > t.font.body->lineHeight + t.font.caption->lineHeight
+                          ? t.font.headline->lineHeight
+                          : t.font.body->lineHeight + t.font.caption->lineHeight;
+  const int gridH = rows_ * tileH + (rows_ - 1) * gap_;
+  const int dotsH = paged ? t.dp(10) : 0;
+  const int noteH = rows_ == 1 ? t.m.row + t.dp(8) : 0;
+  const int used = headerH + gridH + (paged ? t.dp(4) + dotsH : 0) + noteH;
+  const int slots = noteH ? 4 : 3;  // gaps: above, between, [before the note], below
+  int space = (area_.h - used) / slots;
+  space = space < t.m.gapS ? t.m.gapS : space > t.dp(16) ? t.dp(16) : space;
+  int y = area_.y + space;
+  header_ = Rect(area_.x, y, area_.w, headerH);
+  y += headerH + space;
+  grid_ = Rect(area_.x, y, area_.w, gridH);
+  y += gridH;
   if (paged) {
-    const Rect header(area_.x, greeting_.y, area_.w, date_.bottom() - greeting_.y);
-    pager_ = trailing(header, t.dp(88));
+    dots_ = Rect(area_.x, y + t.dp(4), area_.w, dotsH);
+    y += t.dp(4) + dotsH;
+  } else {
+    dots_ = Rect();
+  }
+  note_ = noteH ? Rect(area_.x, y + space, area_.w, noteH) : Rect();
+  // With several pages, a pill of previous/next buttons sits at the right end
+  // of the header; swiping still works too.
+  Rect textArea = header_;
+  if (paged) {
+    pager_ = trailing(header_, t.dp(88));
     pager_ = center(pager_, pager_.w, t.m.control);
     Rect halves[2];
     row(pager_, {flex(), flex()}, 0, halves);
     prev_ = halves[0];
     next_ = halves[1];
-    const int textW = area_.w - pager_.w - t.m.gapM;
-    greeting_.w = textW;
-    date_.w = textW;
+    textArea.w = area_.w - pager_.w - t.m.gapM;
   } else {
     pager_ = prev_ = next_ = Rect();
   }
+  // The time (the widest it can be) on the left, the words right-aligned beside it.
+  const int timeW = Canvas::textWidth(*t.font.headline, "88:88 AM") < textArea.w / 2
+                        ? Canvas::textWidth(*t.font.headline, "88:88 AM")
+                        : textArea.w / 2;
+  Rect parts[2];
+  row(textArea, {px(timeW), flex()}, t.m.gapM, parts);
+  time_ = Rect(parts[0].x, header_.y, parts[0].w, headerH);
+  Rect lines[2];
+  column(center(parts[1], parts[1].w, t.font.body->lineHeight + t.font.caption->lineHeight),
+         {px(t.font.body->lineHeight), px(t.font.caption->lineHeight)}, 0, lines);
+  greeting_ = lines[0];
+  date_ = lines[1];
 }
 
 bool LauncherApp::HomeScreen::showPage(int page, AppContext &ctx) {
@@ -92,13 +118,19 @@ int LauncherApp::HomeScreen::tileAt(int x, int y) const {
 
 void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   const LocalTime now = ctx.localTime();
-  char greeting[sizeof(greetingText_)], date[sizeof(dateText_)];
+  char clock[sizeof(timeText_)], greeting[sizeof(greetingText_)], date[sizeof(dateText_)];
+  if (now.valid) ctx.formatTime(now, clock, sizeof(clock));
+  else snprintf(clock, sizeof(clock), "--:--");
   snprintf(greeting, sizeof(greeting), "%s", greetingFor(now));
   if (now.valid) {
-    snprintf(date, sizeof(date), "%s %d %s \xc2\xb7 %s", weekdayName(now.weekday), now.day, monthName(now.month),
+    snprintf(date, sizeof(date), "%.3s %d %.3s \xc2\xb7 %s", weekdayName(now.weekday), now.day, monthName(now.month),
              phaseName(ctx.theme().phase));
   } else {
     snprintf(date, sizeof(date), "Set the time in Settings");
+  }
+  if (strcmp(clock, timeText_) != 0) {
+    memcpy(timeText_, clock, sizeof(clock));
+    ctx.invalidate(time_);
   }
   if (strcmp(greeting, greetingText_) != 0) {
     memcpy(greetingText_, greeting, sizeof(greeting));
@@ -126,7 +158,7 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
     snprintf(text, sizeof(text), "%d%% lit \xc2\xb7 %s sky", (int)(moon.illumination * 100 + 0.5f),
              phaseName(ctx.theme().phase));
   } else {
-    snprintf(title, sizeof(title), "Stella");
+    snprintf(title, sizeof(title), "StellaOS");
     snprintf(text, sizeof(text), "Waiting for the time");
   }
   if (strcmp(title, noteTitle_) || strcmp(text, noteText_)) {
@@ -155,8 +187,9 @@ uint32_t LauncherApp::HomeScreen::onTick(AppContext &ctx) {
 
 void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
-  c.drawTextIn(*t.font.headline, greetingText_, greeting_, p.text);
-  c.drawTextIn(*t.font.caption, dateText_, date_, p.textMuted);
+  c.drawTextIn(*t.font.headline, timeText_, time_, p.text);
+  c.drawTextIn(*t.font.body, greetingText_, greeting_, p.text, Align::Right);
+  c.drawTextIn(*t.font.caption, dateText_, date_, p.textMuted, Align::Right);
 
   for (int slot = 0; slot < perPage(); ++slot) {
     const int index = page_ * perPage() + slot;
