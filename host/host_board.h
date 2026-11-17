@@ -79,6 +79,14 @@ class SimPlatform : public Platform {
     return retained_;
   }
 
+  bool updatePending() const override { return pending_; }
+  void confirmUpdate() override {
+    pending_ = false;
+    ++confirms_;
+  }
+  void setUpdatePending(bool pending) { pending_ = pending; }
+  int confirms() const { return confirms_; }
+
   void advance(uint32_t ms) { ms_.fetch_add(ms); }
   void setMillis(uint32_t ms) { ms_ = ms; }
   void setEpoch(int64_t epoch) {
@@ -95,6 +103,8 @@ class SimPlatform : public Platform {
   int64_t epochBase_ = 0;
   uint32_t epochAtMs_ = 0;
   std::atomic<int> restarts_{0};
+  bool pending_ = false;
+  int confirms_ = 0;
   alignas(8) unsigned char retained_[64] = {};
 };
 
@@ -152,12 +162,89 @@ class SimHttp : public HttpClient {
   struct Route {
     std::string match, body;
     int status;
+    size_t cutAfter = (size_t)-1;  // deliver this many bytes, then fail with a timeout
   };
   std::vector<Route> routes;
   int requests = 0;
   int failWith = 0;  // non-zero: every request returns this
   std::string lastUrl;
   int get(const char *url, uint32_t timeoutMs, size_t maxBodyBytes, HttpSink &sink) override;
+};
+
+// The other app slot: records the image written to it and can be told to fail
+// at each step. The "signature" check passes when r and s are all 0x5a.
+class SimFirmware : public FirmwareSlot {
+ public:
+  bool availableFlag = true, failBegin = false, failFinish = false;
+  bool keyed = true;  // a signing key is built in: signatures are required
+  int failWriteAfter = -1;  // fail the write that would pass this many bytes (-1: never)
+  size_t slotSize = 1u << 20;
+  std::vector<uint8_t> image;
+  bool begun = false, finished = false, aborted = false, signatureOk = true;
+  int verifies = 0;
+
+  bool available() override { return availableFlag; }
+  bool requiresSignature() override { return keyed; }
+  size_t capacity() override { return slotSize; }
+  bool begin(size_t size) override {
+    if (failBegin || size > slotSize) return false;
+    image.clear();
+    begun = true;
+    finished = aborted = false;
+    return true;
+  }
+  bool write(const uint8_t *data, size_t size) override {
+    if (!begun) return false;
+    if (failWriteAfter >= 0 && image.size() + size > (size_t)failWriteAfter) return false;
+    image.insert(image.end(), data, data + size);
+    return true;
+  }
+  bool finish() override {
+    if (failFinish) return false;
+    finished = true;
+    return true;
+  }
+  void abort() override {
+    aborted = true;
+    begun = false;
+  }
+  bool verify(const uint8_t[32], const uint8_t r[32], const uint8_t s[32]) override {
+    ++verifies;
+    for (int i = 0; i < 32; ++i)
+      if (r[i] != 0x5a || s[i] != 0x5a) return false;
+    return signatureOk;
+  }
+};
+
+// The phone-setup access point: tests play the phone with request().
+class SimSetupServer : public SetupServer {
+ public:
+  bool failToStart = false;
+  bool up = false;
+  std::string ssid, password;
+  int polls = 0, starts = 0;
+
+  bool begin(const char *apSsid, const char *apPassword, SetupHandler &h) override {
+    if (failToStart) return false;
+    up = true;
+    ++starts;
+    ssid = apSsid;
+    password = apPassword;
+    handler_ = &h;
+    return true;
+  }
+  void poll() override { ++polls; }
+  void end() override {
+    up = false;
+    handler_ = nullptr;
+  }
+  void address(char *out, size_t capacity) override { snprintf(out, capacity, "192.168.4.1"); }
+
+  // What a phone gets for a request ("" if the access point is down).
+  std::string request(bool post, const char *path, const std::string &body = "", int *status = nullptr);
+
+ private:
+  SetupHandler *handler_ = nullptr;
 };
 
 // Records the tone sequence so tests can check alert chimes.
@@ -186,8 +273,10 @@ struct SimDevice {
   SimWifi wifi;
   SimHttp http;
   SimSound sound;
+  SimSetupServer setup;
+  SimFirmware firmware;
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound}; }
+  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware}; }
 };
 
 }  // namespace host

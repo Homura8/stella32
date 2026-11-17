@@ -54,7 +54,7 @@ const char *resetName(ResetCause c) {
 
 }  // namespace
 
-SettingsApp::SettingsApp() : main_(*this), wifi_(*this), display_(*this) {}
+SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this), about_(*this) {}
 
 const AppInfo &SettingsApp::info() const {
   static const AppInfo kInfo{"settings", "Settings", icons::gear, 1, 0};
@@ -63,6 +63,9 @@ const AppInfo &SettingsApp::info() const {
 
 void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kNetwork || topicId == topics::kWifiScan) wifi_.refresh(ctx);
+  if (topicId == topics::kNetwork && setup_.isVisible()) setup_.refresh(ctx);
+  if ((topicId == topics::kUpdate || topicId == topics::kNetwork) && softwareUpdate_.isVisible())
+    softwareUpdate_.refresh(ctx);
 }
 
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
@@ -142,14 +145,18 @@ void SettingsApp::WifiScreen::layout(const Rect &content, const Theme &t) {
   forget_.label = "Forget";
   forget_.style = ButtonStyle::Quiet;
   header_ = r[1];
-  Rect h[2];
-  row(r[1], {flex(), px(t.dp(64))}, t.m.gapS, h);
-  scan_.bounds = h[1];
+  Rect h[3];
+  row(r[1], {flex(), px(t.dp(64)), px(t.dp(64))}, t.m.gapS, h);
+  phone_.bounds = h[1];
+  phone_.label = "Phone";
+  phone_.style = ButtonStyle::Quiet;
+  scan_.bounds = h[2];
   scan_.label = "Scan";
   scan_.style = ButtonStyle::Quiet;
   listCard_ = r[2];
   list_.bounds = r[2].inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(32);
+  list_.buttonWidth = t.dp(32);
 }
 
 void SettingsApp::WifiScreen::refresh(AppContext &ctx) {
@@ -221,6 +228,8 @@ void SettingsApp::WifiScreen::draw(Canvas &c, const Theme &t) {
   if (forget_.enabled) forget_.draw(c, t);
 
   c.drawTextIn(*t.font.caption, "Networks", header_.inset(t.dp(4), 0), p.textMuted);
+  phone_.enabled = net_.present;
+  phone_.draw(c, t);
   scan_.draw(c, t);
   paintGlass(c, t, listCard_, t.m.radiusCard);
   if (networks_.count == 0) {
@@ -251,6 +260,10 @@ bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
     ctx.network().requestScan();
     return true;
   }
+  if (phone_.enabled && phone_.handle(e, ctx)) {
+    ctx.push(app_.setup_);
+    return true;
+  }
   const int picked = list_.handle(e, ctx);
   if (picked < 0) return true;
   const WifiNetwork &n = networks_.networks[picked];
@@ -268,10 +281,105 @@ bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
   return true;
 }
 
+// ------------------------------------------------------------------ phone setup
+
+void SettingsApp::SetupScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int rows = t.font.title->lineHeight + t.font.headline->lineHeight + t.font.title->lineHeight + 2 * t.dp(4);
+  Rect r[3];
+  column(area, {px(rows + 2 * t.dp(8)), flex(), px(t.m.control)}, t.m.gapM, r);
+  card_ = r[0];
+  status_ = r[1];
+  cancel_.bounds = layout::center(r[2], t.dp(120), t.m.control);
+  cancel_.label = "Cancel";
+  Rect lines[3];
+  column(r[0].inset(t.m.padding, t.dp(8)),
+         {px(t.font.title->lineHeight), px(t.font.headline->lineHeight), px(t.font.title->lineHeight)}, t.dp(4), lines);
+  for (int i = 0; i < 3; ++i) {
+    Rect parts[2];
+    row(lines[i], {px(t.dp(78)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+    values_[i] = parts[1];
+  }
+}
+
+void SettingsApp::SetupScreen::onShow(AppContext &ctx) {
+  info_ = SetupInfo{};
+  sawSetup_ = false;
+  ctx.network().beginSetup();
+  refresh(ctx);
+}
+
+void SettingsApp::SetupScreen::onHide(AppContext &ctx) {
+  ctx.network().cancelSetup();
+  // The password is a temporary secret: do not leave a copy behind.
+  volatile char *p = info_.password;
+  for (size_t i = 0; i < sizeof(info_.password); ++i) p[i] = 0;
+  info_ = SetupInfo{};
+}
+
+uint32_t SettingsApp::SetupScreen::onTick(AppContext &ctx) {
+  refresh(ctx);
+  return 500;  // the access point comes up without a status change; check twice a second
+}
+
+void SettingsApp::SetupScreen::refresh(AppContext &ctx) {
+  net_ = ctx.network().status();
+  SetupInfo info;
+  if (ctx.network().setupInfo(info)) info_ = info;
+  else info_.up = false;
+  if (net_.setup) sawSetup_ = true;
+  if (sawSetup_ && !net_.setup) {
+    // Closed: it worked (we are connected), it timed out, or it was cancelled.
+    char message[48];
+    if (net_.connected) snprintf(message, sizeof(message), "Connected to %.28s", net_.ssid);
+    else snprintf(message, sizeof(message), "Setup closed");
+    ctx.toast(message);
+    ctx.pop();
+    return;
+  }
+  char text[sizeof(statusText_)];
+  if (net_.error[0] && !net_.setup) snprintf(text, sizeof(text), "%.60s", net_.error);
+  else if (!info_.up) snprintf(text, sizeof(text), "Looking for networks\xe2\x80\xa6");
+  else if (net_.state == WifiState::Connecting) snprintf(text, sizeof(text), "Connecting to %.32s\xe2\x80\xa6", net_.ssid);
+  else if (net_.error[0]) snprintf(text, sizeof(text), "%.40s. Try again on your phone.", net_.error);
+  else snprintf(text, sizeof(text), "Join this network on your phone; the page opens by itself.");
+  if (strcmp(text, statusText_) != 0) {
+    memcpy(statusText_, text, sizeof(text));
+    ctx.invalidate(status_);
+  }
+  if (isVisible()) ctx.invalidate(card_.inset(-glassOutset(ctx.theme())));
+}
+
+void SettingsApp::SetupScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, card_, t.m.radiusCard);
+  const char *labels[3] = {"Wi-Fi", "Password", "Page"};
+  const char *values[3] = {info_.up ? info_.ssid : "\xe2\x80\xa6", info_.up ? info_.password : "\xe2\x80\xa6",
+                           info_.up ? info_.address : "\xe2\x80\xa6"};
+  const Font *fonts[3] = {t.font.title, t.font.headline, t.font.title};
+  for (int i = 0; i < 3; ++i) {
+    c.drawTextIn(*t.font.caption, labels[i], labels_[i], p.textMuted);
+    c.drawTextIn(*fonts[i], values[i], values_[i], i == 1 ? p.accent : p.text);
+  }
+  const bool problem = net_.error[0] != '\0';
+  c.drawWrapped(*t.font.body, statusText_, status_, problem ? p.danger : p.textMuted, 3, Align::Center);
+  cancel_.draw(c, t);
+}
+
+bool SettingsApp::SetupScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (cancel_.handle(e, ctx)) {
+    ctx.pop();  // onHide closes the access point
+    return true;
+  }
+  return false;
+}
+
 // ------------------------------------------------------------------ display
 
 namespace {
 
+const char *const kBedsideLabels[] = {"Off", "Night", "Always"};
 const char *const kRefreshLabels[] = {"Default", "90 Hz", "100 Hz", "119 Hz"};
 const uint8_t kRefreshHz[] = {0, 90, 100, 119};
 const char *const kTabLabels[] = {"Tone", "Colour", "Panel"};
@@ -302,8 +410,9 @@ void SettingsApp::DisplayScreen::layout(const Rect &content, const Theme &t) {
     if (i == 1) nightDim_.bounds = rows_[i];
     if (i == 2) dim_.bounds = control.inset(0, t.dp(2));
     if (i == 3) off_.bounds = control.inset(0, t.dp(2));
+    if (i == 4) bedside_.bounds = control.inset(0, t.dp(2));
   }
-  calibrate_.bounds = Rect(card_.x, rows_[4].y, card_.w, rows_[4].h);
+  calibrate_.bounds = Rect(card_.x, rows_[5].y, card_.w, rows_[5].h);
   calibrate_.title = "Calibrate";
   calibrate_.icon = nullptr;
   calibrate_.chevron = true;
@@ -321,6 +430,9 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   off_.labels = kOffLabels;
   off_.count = 4;
   off_.selected = nearestIndex(kOffSeconds, 4, s.sleepAfterSec);
+  bedside_.labels = kBedsideLabels;
+  bedside_.count = 3;
+  bedside_.selected = s.bedside;
   const LocalTime now = ctx.localTime();
   night_ = !now.valid || phaseForHour(now.hour) == SkyPhase::Night;
   snprintf(calibrateDetail_, sizeof(calibrateDetail_), "%s \xc2\xb7 %u%%", toneName(s.colorTone),
@@ -331,7 +443,8 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
 void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
   paintGlass(c, t, card_, t.m.radiusCard);
-  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off"};
+  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off",
+                                                 "Bedside"};
   for (int i = 0; i < kRows - 1; ++i) {
     c.drawTextIn(*t.font.body, kLabels[i], labels_[i], p.text);
     paintHairline(c, t, rows_[i].x, rows_[i].bottom() - 1, rows_[i].w);
@@ -345,6 +458,7 @@ void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   nightDim_.draw(c, t);
   dim_.draw(c, t);
   off_.draw(c, t);
+  bedside_.draw(c, t);
   calibrate_.draw(c, t);
 }
 
@@ -369,6 +483,11 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
   }
   if (off_.handle(e, ctx)) {
     s.sleepAfterSec = kOffSeconds[off_.selected];
+    ctx.applySettings(s);
+    return true;
+  }
+  if (bedside_.handle(e, ctx)) {
+    s.bedside = bedside_.selected;
     ctx.applySettings(s);
     return true;
   }
@@ -686,6 +805,7 @@ void SettingsApp::TimeScreen::layout(const Rect &content, const Theme &t) {
   zoneCard_ = r[2];
   zones_.bounds = r[2].inset(t.dp(2), t.dp(4));
   zones_.rowHeight = t.dp(30);
+  zones_.buttonWidth = t.dp(32);
 }
 
 void SettingsApp::TimeScreen::onShow(AppContext &ctx) {
@@ -743,9 +863,14 @@ bool SettingsApp::TimeScreen::onEvent(const Event &e, AppContext &ctx) {
 // ------------------------------------------------------------------ about
 
 void SettingsApp::AboutScreen::layout(const Rect &content, const Theme &t) {
-  card_ = content.inset(t.m.margin, t.m.gapS);
+  Rect r[2];
+  column(content.inset(t.m.margin, t.m.gapS), {flex(), px(t.m.control)}, t.m.gapS, r);
+  card_ = r[0];
+  update_.bounds = layout::center(r[1], t.dp(190), t.m.control);
+  update_.label = "Software update";
   list_.bounds = card_.inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(24);
+  list_.buttonWidth = t.dp(32);
   list_.count = kRows;
 }
 
@@ -799,10 +924,137 @@ void SettingsApp::AboutScreen::drawRow(Canvas &c, const Theme &t, int index, con
 void SettingsApp::AboutScreen::draw(Canvas &c, const Theme &t) {
   paintGlass(c, t, card_, t.m.radiusCard);
   list_.draw(c, t, drawRow, this);
+  update_.draw(c, t);
 }
 
 bool SettingsApp::AboutScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (update_.handle(e, ctx)) {
+    ctx.push(app_.softwareUpdate_);
+    return true;
+  }
   list_.handle(e, ctx);
+  return true;
+}
+
+// ------------------------------------------------------------------ software update
+
+void SettingsApp::UpdateScreen::layout(const Rect &content, const Theme &t) {
+  const int lh = t.font.body->lineHeight;
+  const int bar = t.dp(6);
+  Rect r[3];
+  column(content.inset(t.m.margin, t.m.gapS), {px(2 * lh + bar + t.dp(6) + 2 * t.m.padding), flex(), px(t.m.control)},
+         t.m.gapM, r);
+  card_ = r[0];
+  Rect inner[3];
+  column(r[0].inset(t.m.padding, t.m.padding), {px(lh), px(lh), px(bar)}, t.dp(3), inner);
+  rows_[0] = inner[0];
+  rows_[1] = inner[1];
+  bar_ = inner[2];
+  status_ = r[1];
+  action_.bounds = layout::center(r[2], t.dp(200), t.m.control);
+}
+
+void SettingsApp::UpdateScreen::onShow(AppContext &ctx) { refresh(ctx); }
+
+void SettingsApp::UpdateScreen::refresh(AppContext &ctx) {
+  st_ = ctx.update().status();
+  const NetworkStatus net = ctx.network().status();
+  snprintf(installed_, sizeof(installed_), "Stella %s", ctx.status().version);
+  if (st_.version[0] && (st_.state == UpdateState::Available || st_.state == UpdateState::Downloading ||
+                         st_.state == UpdateState::Ready || st_.state == UpdateState::UpToDate))
+    snprintf(offered_, sizeof(offered_), "%s \xc2\xb7 %lu.%lu MB", st_.version, (unsigned long)(st_.size / 1048576),
+             (unsigned long)(st_.size % 1048576 * 10 / 1048576));
+  else
+    snprintf(offered_, sizeof(offered_), "\xe2\x80\x94");
+  const char *label = "Check for updates";
+  bool enabled = true;
+  char text[sizeof(statusText_)];
+  switch (st_.state) {
+    case UpdateState::Unavailable:
+      snprintf(text, sizeof(text), "%.60s", st_.error[0] ? st_.error : "Updates are not set up");
+      enabled = false;
+      break;
+    case UpdateState::Idle:
+      snprintf(text, sizeof(text), net.connected ? "Looks for a newer version of Stella." : "Connect to Wi-Fi to check for updates.");
+      enabled = net.connected;
+      break;
+    case UpdateState::Checking:
+      snprintf(text, sizeof(text), "Looking for updates\xe2\x80\xa6");
+      label = "Checking";
+      enabled = false;
+      break;
+    case UpdateState::UpToDate:
+      snprintf(text, sizeof(text), "You have the latest version.");
+      label = "Check again";
+      break;
+    case UpdateState::Available:
+      snprintf(text, sizeof(text), "Version %.12s is ready. It is checked before it is installed; the device restarts to use it.",
+               st_.version);
+      label = "Install";
+      break;
+    case UpdateState::Downloading:
+      snprintf(text, sizeof(text), "Downloading and checking\xe2\x80\xa6 %u%%", (unsigned)st_.percent);
+      label = "Installing";
+      enabled = false;
+      break;
+    case UpdateState::Ready:
+      snprintf(text, sizeof(text), "Installed. Restart to run it; if it doesn't run well, the previous version returns.");
+      label = "Restart now";
+      break;
+    default:
+      snprintf(text, sizeof(text), "%.70s", st_.error[0] ? st_.error : "Something went wrong");
+      label = "Try again";
+      enabled = net.connected;
+      break;
+  }
+  action_.label = label;
+  action_.enabled = enabled;
+  action_.style = st_.state == UpdateState::Available || st_.state == UpdateState::Ready ? ButtonStyle::Accent
+                                                                                          : ButtonStyle::Glass;
+  memcpy(statusText_, text, sizeof(text));
+  if (isVisible()) ctx.invalidate(ctx.contentRect());
+}
+
+void SettingsApp::UpdateScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, card_, t.m.radiusCard);
+  const char *labels[2] = {"Installed", "Available"};
+  const char *values[2] = {installed_, offered_};
+  for (int i = 0; i < 2; ++i) {
+    Rect parts[2];
+    row(rows_[i], {px(t.dp(80)), flex()}, t.m.gapS, parts);
+    c.drawTextIn(*t.font.caption, labels[i], parts[0], p.textMuted);
+    c.drawTextIn(*t.font.body, values[i], parts[1], p.text, Align::Right);
+  }
+  // Progress (only while it moves).
+  c.fillRoundRect(bar_, bar_.h / 2, p.line, (uint8_t)(p.lineAlpha * 2));
+  if (st_.state == UpdateState::Downloading || st_.state == UpdateState::Ready) {
+    const int w = bar_.w * (st_.state == UpdateState::Ready ? 100 : st_.percent) / 100;
+    if (w > 0) c.fillRoundRect(Rect(bar_.x, bar_.y, w > bar_.h ? w : bar_.h, bar_.h), bar_.h / 2, p.accent);
+  }
+  c.drawWrapped(*t.font.body, statusText_, status_.inset(t.dp(4), t.dp(2)),
+                st_.state == UpdateState::Failed ? p.danger : p.textMuted, 4, Align::Center);
+  action_.draw(c, t);
+}
+
+bool SettingsApp::UpdateScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (!action_.handle(e, ctx)) return false;
+  switch (st_.state) {
+    case UpdateState::Idle:
+    case UpdateState::UpToDate:
+    case UpdateState::Failed:
+      ctx.update().check();
+      break;
+    case UpdateState::Available:
+      ctx.update().install();
+      break;
+    case UpdateState::Ready:
+      ctx.toast("Restarting\xe2\x80\xa6");
+      ctx.restartDevice();
+      break;
+    default:
+      break;
+  }
   return true;
 }
 

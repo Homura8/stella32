@@ -1,0 +1,57 @@
+# Publishes the latest firmware for over-the-air updates on every merge to
+# main: the device's Settings > About > Software update looks for it here.
+#
+# One-time setup (repository owner): Settings > Pages > Build and deployment >
+# Source: "GitHub Actions". The device's built-in address is
+#   https://<owner>.github.io/<repo>/manifest.json
+# An update is offered when STELLA_VERSION (src/stella/runtime/runtime.h) is
+# higher than the version the device runs, so bump it when you want one.
+name: Publish update
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Build the firmware (two-slot layout, no secrets)
+        run: arduino-cli compile --profile cyd --output-dir out examples/CYD
+      - name: Write the manifest
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          VERSION=$(sed -n 's/^#define STELLA_VERSION "\(.*\)"$/\1/p' src/stella/runtime/runtime.h)
+          OWNER="${REPOSITORY%%/*}"
+          NAME="${REPOSITORY##*/}"
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          mkdir publish
+          cp out/CYD.ino.bin "publish/stella32-$VERSION.bin"
+          python3 tools/update_tool.py manifest \
+            --image "publish/stella32-$VERSION.bin" --version "$VERSION" \
+            --url "https://$OWNER_LOWER.github.io/$NAME/stella32-$VERSION.bin" \
+            --out publish/manifest.json
+          cat publish/manifest.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: publish
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -160,6 +160,14 @@ Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look) {
 
   Palette &c = t.color;
   c.dark = dark;
+  // The bedside clock is always dark and dim, whatever the mode: inks keep
+  // their level (gamma 1), the background deepens with the contrast.
+  const Toner xb = Toner::make(k, look, true);
+  c.bedBg = rgb(0, 0, 0);
+  c.bedClock = xb.ink(0xc8b3e4);
+  c.bedText = xb.ink(0xb3a8cc);
+  c.bedMuted = xb.ink(0x7a7094);
+  c.bedStar = xb.ink(0x544c72);
   const uint32_t(&sky)[4][3] = dark ? kDarkSky : kLightSky;
   // Light skies lean toward the phase's own tint so dawn, day, dusk and night
   // stay recognisable on panels that flatten pastels.

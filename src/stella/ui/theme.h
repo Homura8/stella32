@@ -63,6 +63,9 @@ struct Palette {
   Color surface;         // opaque soft chip (--white-soft)
   Color good, warn, danger;
   Color tints[4];        // icon bubbles: pink, lavender, sky, peach
+  // The bedside clock: a black field (the backlight is low, so black stays
+  // calm), a lilac clock, dimmer lines and faint stars.
+  Color bedBg, bedClock, bedText, bedMuted, bedStar;
 };
 
 struct Metrics {

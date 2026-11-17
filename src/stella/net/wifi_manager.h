@@ -14,6 +14,7 @@
 #include "../service/job_scheduler.h"
 #include "../service/topic.h"
 #include "network_status.h"
+#include "setup_portal.h"
 
 namespace stella {
 
@@ -23,17 +24,19 @@ struct WifiCredentials {
   char password[65] = {0};
 };
 
-class WifiManager : public Job, public NetworkControl {
+class WifiManager : public Job, public NetworkControl, public SetupControl {
  public:
   static constexpr uint32_t kConnectTimeoutMs = 20000;
   static constexpr uint32_t kMaxBackoffMs = 120000;
+  static constexpr uint32_t kSetupTimeoutMs = 10u * 60u * 1000u;  // the setup access point closes by itself
+  static constexpr const char *kSetupSsid = "Stella-Setup";
 
-  WifiManager(Topic<NetworkStatus> &status, Topic<WifiScan> &scan) : status_(status), scan_(scan) {}
+  WifiManager(Topic<NetworkStatus> &status, Topic<WifiScan> &scan) : status_(status), scan_(scan), portal_(*this) {}
 
   // Before the scheduler starts. `fallback*` (e.g. from secrets.h) are used
   // only when nothing is saved yet.
   void configure(WifiDriver *driver, KeyValueStore *store, JobScheduler *jobs, const char *fallbackSsid,
-                 const char *fallbackPassword);
+                 const char *fallbackPassword, SetupServer *setup = nullptr);
   bool available() const { return driver_ != nullptr; }
 
   // NetworkControl (any thread).
@@ -42,6 +45,14 @@ class WifiManager : public Job, public NetworkControl {
   void requestScan() override;
   void join(const char *ssid, const char *password) override;
   void forget() override;
+  void beginSetup() override;
+  void cancelSetup() override;
+  bool setupInfo(SetupInfo &out) const override;
+
+  // SetupControl (service thread, called by the portal).
+  WifiScan setupScan() const override { return scan_.get(); }
+  NetworkStatus setupStatus() const override { return status_.get(); }
+  void setupJoin(const char *ssid, const char *password) override;
 
   // Job (service thread).
   const char *name() const override { return "wifi"; }
@@ -49,8 +60,11 @@ class WifiManager : public Job, public NetworkControl {
   JobResult run(uint32_t nowMs) override;
 
  private:
-  enum class Command : uint8_t { None, Join, Forget };
+  enum class Command : uint8_t { None, Join, Forget, Setup, CancelSetup };
+  enum class SetupPhase : uint8_t { Off, Scanning, Open };
   void startConnect(uint32_t now);
+  void startSetupServer(uint32_t now);
+  void endSetup();
   void pollScan();
   void publish();
 
@@ -65,6 +79,8 @@ class WifiManager : public Job, public NetworkControl {
   Command command_ = Command::None;
   WifiCredentials pending_;
   std::atomic<bool> scanRequested_{false};
+  mutable osal::Mutex setupLock_;
+  SetupInfo setupInfo_;  // guarded by setupLock_
 
   // Service-thread state.
   WifiCredentials creds_;
@@ -72,6 +88,13 @@ class WifiManager : public Job, public NetworkControl {
   bool begun_ = false, connecting_ = false, scanning_ = false, syncStarted_ = false;
   uint32_t attemptMs_ = 0, nextAttemptMs_ = 0, backoffMs_ = 5000;
   uint16_t scanSequence_ = 0;
+
+  // Phone setup (service thread).
+  SetupServer *server_ = nullptr;
+  SetupPortal portal_;
+  SetupPhase setup_ = SetupPhase::Off;
+  bool setupJoining_ = false;  // a join started from the phone page is in progress
+  uint32_t setupStartMs_ = 0;
 };
 
 }  // namespace stella

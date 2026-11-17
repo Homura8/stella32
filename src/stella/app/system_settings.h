@@ -12,9 +12,9 @@ namespace stella {
 
 struct SystemSettings {
   // v2 added nightDim, v3 colorTone, v4 the display and touch calibration,
-  // v5 per-mode contrast, white level and warmth. Older records are migrated
-  // by loadSettings().
-  static constexpr uint16_t kVersion = 5;
+  // v5 per-mode contrast, white level and warmth, v6 the bedside clock. Older
+  // records are migrated by loadSettings().
+  static constexpr uint16_t kVersion = 6;
 
   Appearance appearance = Appearance::Auto;
   uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
@@ -23,6 +23,7 @@ struct SystemSettings {
   bool clock24h = true;
   char timezone[48] = "UTC0";    // POSIX TZ string
   bool nightDim = true;          // dim the backlight during the night phase
+  uint8_t bedside = 1;           // idle face after the dim: 0 off, 1 at night, 2 always
   ColorTone colorTone = ColorTone::Soft;  // palette strength for this panel
   // Display calibration (boards supply their own defaults; see CYD.ino).
   uint8_t contrastLight = 0;     // 0..100, see Look::contrast (light mode)

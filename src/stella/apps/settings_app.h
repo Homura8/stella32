@@ -46,12 +46,38 @@ class SettingsApp : public App {
     static void submitPassword(const char *text, void *self, AppContext &ctx);
     SettingsApp &app_;
     Rect statusCard_, statusText_, statusIcon_, header_, listCard_;
-    Button forget_, scan_;
+    Button forget_, scan_, phone_;
     ListView list_;
     NetworkStatus net_;
     WifiScan networks_;
     char headline_[48] = {0}, detail_[48] = {0};
     char joining_[33] = {0};
+  };
+
+  // Wi-Fi setup from a phone: the device opens a protected access point
+  // ("Stella-Setup") and a web page; this screen shows the name, the
+  // temporary password and the address, and how it is going. It closes itself
+  // when the phone's join succeeds.
+  class SetupScreen : public Screen {
+   public:
+    explicit SetupScreen(SettingsApp &app) : app_(app) {}
+    const char *title() const override { return "Phone setup"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void onHide(AppContext &ctx) override;
+    uint32_t onTick(AppContext &ctx) override;
+    void refresh(AppContext &ctx);
+
+   private:
+    SettingsApp &app_;
+    Rect card_, labels_[3], values_[3], status_;
+    Button cancel_;
+    SetupInfo info_;
+    NetworkStatus net_;
+    char statusText_[72] = {0};
+    bool sawSetup_ = false;
   };
 
   // One glass card of labelled rows: brightness, night dimming, idle
@@ -66,12 +92,12 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 5;
+    static constexpr int kRows = 6;
     SettingsApp &app_;
     Rect card_, rows_[kRows], labels_[kRows];
     Slider brightness_;
     Toggle nightDim_;
-    Segmented dim_, off_;
+    Segmented dim_, off_, bedside_;
     ListRow calibrate_;
     char calibrateDetail_[24] = {0};
     bool night_ = false;  // the night phase (by the clock) is on now
@@ -133,8 +159,28 @@ class SettingsApp : public App {
     int selected_ = 0;
   };
 
+  // Settings > About > Software update: check, install, restart. The update
+  // is signed and verified by the service (net/firmware_update.h); a new
+  // image that doesn't run healthily is replaced by the previous one.
+  class UpdateScreen : public Screen {
+   public:
+    const char *title() const override { return "Software update"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void refresh(AppContext &ctx);
+
+   private:
+    Rect card_, rows_[2], bar_, status_;
+    Button action_;
+    UpdateStatus st_;
+    char installed_[32] = {0}, offered_[40] = {0}, statusText_[128] = {0};
+  };
+
   class AboutScreen : public Screen {
    public:
+    explicit AboutScreen(SettingsApp &app) : app_(app) {}
     const char *title() const override { return "About"; }
     void layout(const Rect &content, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
@@ -146,18 +192,22 @@ class SettingsApp : public App {
     static constexpr int kRows = 10;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     void refresh(AppContext &ctx);
+    SettingsApp &app_;
     Rect card_;
     ListView list_;
+    Button update_;
     char values_[kRows][40] = {};
   };
 
   MainScreen main_;
   WifiScreen wifi_;
+  SetupScreen setup_;
   TextEntryScreen password_;
   DisplayScreen display_;
   CalibrateScreen calibrate_;
   AppearanceScreen appearance_;
   TimeScreen time_;
+  UpdateScreen softwareUpdate_;
   AboutScreen about_;
 };
 

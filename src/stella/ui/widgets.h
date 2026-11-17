@@ -80,6 +80,9 @@ struct ListRow {
 
 // Vertically scrolling list of fixed-height rows (drag to scroll, tap to pick).
 // Rows are drawn by a callback, so any row design works and nothing is copied.
+// With `buttonWidth` set, a list that overflows also shows up/down buttons and
+// a position rail in a strip at its right edge (dragging is hard on a
+// resistive panel); rows are then drawn and picked in the narrower `rows()`.
 struct ListView {
   using DrawRow = void (*)(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *context);
 
@@ -88,8 +91,15 @@ struct ListView {
   int count = 0;
   int offset = 0;     // scroll position in pixels
   int pressed = -1;   // row under the finger, -1 if none
+  int buttonWidth = 0;  // 0 = no buttons; else the strip's width (use t.dp(32))
 
   int maxOffset() const;
+  bool hasButtons() const { return buttonWidth > 0 && maxOffset() > 0; }
+  Rect rows() const;        // where rows are drawn and picked (bounds minus the button strip)
+  Rect upButton() const;    // the strip's top and bottom squares
+  Rect downButton() const;
+  int pageStep() const;     // pixels one button press scrolls (a view less one row)
+  void scrollBy(int pixels, Invalidator &inv);
   void scrollTo(int index);  // make row `index` visible
   void draw(Canvas &c, const Theme &t, DrawRow drawRow, void *context) const;
   // Returns the tapped row index, or -1.
@@ -97,6 +107,7 @@ struct ListView {
 
  private:
   int dragStartOffset_ = 0;
+  int pressedButton_ = -1;  // 0 up, 1 down
   bool dragging_ = false;
 };
 

@@ -224,29 +224,108 @@ void ListView::scrollTo(int index) {
   if (offset < 0) offset = 0;
 }
 
+Rect ListView::rows() const { return hasButtons() ? Rect(bounds.x, bounds.y, bounds.w - buttonWidth, bounds.h) : bounds; }
+Rect ListView::upButton() const { return Rect(bounds.right() - buttonWidth, bounds.y, buttonWidth, buttonWidth); }
+Rect ListView::downButton() const {
+  return Rect(bounds.right() - buttonWidth, bounds.bottom() - buttonWidth, buttonWidth, buttonWidth);
+}
+int ListView::pageStep() const {
+  const int rowsInView = rowHeight > 0 ? bounds.h / rowHeight : 1;
+  return (rowsInView > 1 ? rowsInView - 1 : 1) * rowHeight;
+}
+void ListView::scrollBy(int pixels, Invalidator &inv) {
+  int next = offset + pixels;
+  if (next > maxOffset()) next = maxOffset();
+  if (next < 0) next = 0;
+  if (next == offset) return;
+  offset = next;
+  inv.invalidate(bounds);
+}
+
 void ListView::draw(Canvas &c, const Theme &t, DrawRow drawRow, void *context) const {
   if (!c.visible(bounds) || rowHeight <= 0) return;
   const Rect previous = c.pushClip(bounds);
+  const Rect area = rows();
   const int first = offset / rowHeight;
   for (int i = first; i < count; ++i) {
-    const Rect row(bounds.x, bounds.y + i * rowHeight - offset, bounds.w, rowHeight);
+    const Rect row(area.x, area.y + i * rowHeight - offset, area.w, rowHeight);
     if (row.y >= bounds.bottom()) break;
     if (c.visible(row)) drawRow(c, t, i, row, i == pressed, context);
   }
-  // Scroll indicator, only when the list overflows.
-  if (maxOffset() > 0) {
+  const Palette &p = t.color;
+  if (hasButtons()) {
+    // Up and down buttons with the position rail between them.
+    const Rect up = upButton(), down = downButton();
+    const int icon = t.dp(14);
+    const Color faint = blend(p.glass, p.textMuted, 90);
+    if (pressedButton_ == 0) c.fillRoundRect(up.inset(t.dp(3)), (up.w - t.dp(6)) / 2, p.accent, 46);
+    if (pressedButton_ == 1) c.fillRoundRect(down.inset(t.dp(3)), (down.w - t.dp(6)) / 2, p.accent, 46);
+    icons::chevronUp(c, layout::center(up, icon, icon), offset > 0 ? p.accent : faint);
+    icons::chevronDown(c, layout::center(down, icon, icon), offset < maxOffset() ? p.accent : faint);
+    const int railTop = up.bottom() + t.dp(2), railH = down.y - t.dp(2) - railTop;
+    if (railH > t.dp(12)) {
+      const int cx = up.x + up.w / 2, w = t.dp(3) < 2 ? 2 : t.dp(3);
+      c.fillRoundRect(Rect(cx - w / 2, railTop, w, railH), w / 2, p.line, (uint8_t)(p.lineAlpha * 2));
+      int thumbH = (int)((long)railH * bounds.h / (count * rowHeight));
+      if (thumbH < t.dp(12)) thumbH = t.dp(12);
+      const int y = railTop + (railH - thumbH) * offset / maxOffset();
+      c.fillRoundRect(Rect(cx - w / 2, y, w, thumbH), w / 2, p.textMuted, 170);
+    }
+  } else if (maxOffset() > 0) {
+    // Scroll indicator, only when the list overflows and has no buttons.
     const int trackH = bounds.h - t.dp(8);
     const int thumbH = trackH * bounds.h / (count * rowHeight) > t.dp(16) ? trackH * bounds.h / (count * rowHeight) : t.dp(16);
     const int y = bounds.y + t.dp(4) + (trackH - thumbH) * offset / maxOffset();
-    c.fillRoundRect(Rect(bounds.right() - t.dp(4), y, t.dp(3), thumbH), t.dp(2), t.color.textMuted, 110);
+    c.fillRoundRect(Rect(bounds.right() - t.dp(4), y, t.dp(3), thumbH), t.dp(2), p.textMuted, 110);
   }
   c.restoreClip(previous);
 }
 
 int ListView::handle(const Event &e, Invalidator &inv) {
+  if (hasButtons()) {
+    const Rect up = upButton(), down = downButton();
+    switch (e.type) {
+      case EventType::Press:
+        pressedButton_ = up.contains(e.x, e.y) ? 0 : down.contains(e.x, e.y) ? 1 : -1;
+        if (pressedButton_ >= 0) {
+          inv.invalidate(bounds);
+          return -1;
+        }
+        break;
+      case EventType::Drag:
+        if (pressedButton_ >= 0) {
+          if (!(pressedButton_ == 0 ? up : down).contains(e.x, e.y)) {
+            pressedButton_ = -1;
+            inv.invalidate(bounds);
+          }
+          return -1;
+        }
+        break;
+      case EventType::Release:
+        if (pressedButton_ >= 0) {
+          pressedButton_ = -1;
+          inv.invalidate(bounds);
+          return -1;
+        }
+        break;
+      case EventType::Tap:
+        if (up.contains(e.x, e.y)) {
+          scrollBy(-pageStep(), inv);
+          return -1;
+        }
+        if (down.contains(e.x, e.y)) {
+          scrollBy(pageStep(), inv);
+          return -1;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  const Rect area = rows();
   switch (e.type) {
     case EventType::Press:
-      if (!bounds.contains(e.x, e.y)) return -1;
+      if (!area.contains(e.x, e.y)) return -1;
       dragStartOffset_ = offset;
       dragging_ = false;
       pressed = (e.y - bounds.y + offset) / rowHeight;
@@ -254,7 +333,7 @@ int ListView::handle(const Event &e, Invalidator &inv) {
       inv.invalidate(bounds);
       return -1;
     case EventType::Drag: {
-      if (!bounds.contains(e.startX, e.startY)) return -1;
+      if (!area.contains(e.startX, e.startY)) return -1;
       dragging_ = true;
       if (pressed >= 0) {
         pressed = -1;
@@ -277,7 +356,7 @@ int ListView::handle(const Event &e, Invalidator &inv) {
       dragging_ = false;
       return -1;
     case EventType::Tap: {
-      if (!bounds.contains(e.x, e.y)) return -1;
+      if (!area.contains(e.x, e.y)) return -1;
       const int index = (e.y - bounds.y + offset) / rowHeight;
       return index < count ? index : -1;
     }

@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.3.2"
+#define STELLA_VERSION "0.6.0"
 #endif
 
 namespace stella {
@@ -51,6 +51,9 @@ struct RuntimeConfig {
   const char *wifiSsid = nullptr;
   const char *wifiPassword = nullptr;
   Color *renderBuffer2 = nullptr;  // optional second chunk buffer for async displays
+  // HTTPS URL of the update manifest (see net/firmware_update.h); updates need
+  // this, a second app slot and a signing key built into Board::firmware.
+  const char *updateManifestUrl = nullptr;
 };
 
 enum class PowerState : uint8_t { Active, Dimmed, Off };
@@ -115,6 +118,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void invalidateAll() override { dirty_.addAll(); }
   uint32_t millis() const override;
   LocalTime localTime() const override;
+  LocalTime localTimeAt(int64_t epochSeconds) const override;
   void formatTime(const LocalTime &t, char *out, size_t capacity) const override;
   void requestTick() override {
     if (callbackApp_ && callbackApp_ != foreground()) return;
@@ -133,9 +137,16 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void applySettings(const SystemSettings &settings) override;
   SystemStatus status() const override;
   NetworkControl &network() override { return wifi_; }
+  UpdateControl &update() override { return updater_; }
+  void restartDevice() override {
+    restartPending_ = true;
+    restartAtMs_ = millis() + 900;
+  }
   bool showAlert(const Alert &alert) override;
   void dismissAlert(uint16_t tag) override;
   void scheduleWake(uint32_t delayMs) override;
+  void setNextAlarm(int64_t epochSeconds) override;
+  void setGlance(IconFn icon, const char *text) override;
   void requestJob(const Job &job) override { jobs_.requestRun(job); }
   RecordStatus loadAppRecord(const char *key, uint16_t version, void *data, size_t size) override;
   bool saveAppRecord(const char *key, uint16_t version, const void *data, size_t size) override;
@@ -149,6 +160,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     Screen *stack[kMaxDepth] = {};
     uint8_t depth = 0;
     bool started = false;
+    int64_t nextAlarm = 0;   // see AppContext::setNextAlarm
+    Glance glance;           // see AppContext::setGlance
     bool wakeArmed = false;  // onWake() due at wakeAt
     uint32_t wakeAt = 0;
   };
@@ -193,6 +206,14 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void pollTouch(uint32_t now);
   void updatePower(uint32_t now);
   void applyBrightness();
+  void maybeIdleFace();
+  // The rectangle the screen lays out in: the content area, or the whole
+  // display for a fullscreen screen.
+  Rect areaFor(const Screen *s) const { return s && s->fullscreen() ? screen_ : content_; }
+  bool topFullscreen() const {
+    const Screen *s = topScreen();
+    return s && s->fullscreen();
+  }
   void applyPanelTrim(bool force);
   void superviseThreads(uint32_t now);
   AppSlot *slot(int index) { return index >= 0 && (size_t)index < appCount_ ? &apps_[index] : nullptr; }
@@ -212,6 +233,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Topic<NetworkStatus> network_{topics::kNetwork};
   Topic<WifiScan> scan_{topics::kWifiScan};
   WifiManager wifi_{network_, scan_};
+  Topic<UpdateStatus> updateStatus_{topics::kUpdate};
+  UpdateService updater_{updateStatus_};
   HttpService http_;
   TopicBase *topics_[kMaxTopics] = {};
   size_t topicCount_ = 0;
@@ -247,6 +270,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Button alertButtons_[2];
   int lastMinute_ = -1;
   bool started_ = false, serviceRunning_ = false;
+  bool updateUnconfirmed_ = false, restartPending_ = false;
+  uint32_t confirmAtMs_ = 0, restartAtMs_ = 0;
   int uiWatch_ = -1, serviceWatch_ = -1;
   std::atomic<bool> restartRequested_{false};
   std::atomic<bool> stopping_{false}, serviceExited_{false};

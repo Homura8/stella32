@@ -40,6 +40,7 @@ void SystemSettings::sanitize() {
   if (panelVcom > 30) panelVcom = 30;
   if (panelRefreshHz != 0 && (panelRefreshHz < 60 || panelRefreshHz > 120)) panelRefreshHz = 0;
   if (skyPin > 4) skyPin = 0;
+  if (bedside > 2) bedside = 1;
   // A correction outside these bounds is a failed calibration: undo it.
   if (touchScaleX < 819 || touchScaleX > 1280 || touchScaleY < 819 || touchScaleY > 1280 || touchOffsetX < -60 ||
       touchOffsetX > 60 || touchOffsetY < -60 || touchOffsetY > 60) {
@@ -98,6 +99,24 @@ struct SettingsV4 {
   bool nightDim;
   ColorTone colorTone;
   uint8_t contrast;
+  bool dither;
+  int8_t panelVcom;
+  uint8_t panelRefreshHz;
+  uint8_t skyPin;
+  int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+};
+
+// Frozen layout of version 5 (0.3.2). Never edit.
+struct SettingsV5 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  ColorTone colorTone;
+  uint8_t contrastLight, contrastDark, whiteLevel, warmth;
   bool dither;
   int8_t panelVcom;
   uint8_t panelRefreshHz;
@@ -189,6 +208,33 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.touchScaleY = v4.touchScaleY;
       loaded.touchOffsetY = v4.touchOffsetY;
       if (migrated) *migrated = true;
+    }
+  } else if (s == RecordStatus::OldVersion && found == 5) {
+    SettingsV5 v5;
+    s = loadRecord(store, kNamespace, kKey, 5, &v5, sizeof(v5));
+    if (s == RecordStatus::Ok) {
+      loaded = out;
+      loaded.appearance = v5.appearance;
+      loaded.brightness = v5.brightness;
+      loaded.dimAfterSec = v5.dimAfterSec;
+      loaded.sleepAfterSec = v5.sleepAfterSec;
+      loaded.clock24h = v5.clock24h;
+      memcpy(loaded.timezone, v5.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v5.nightDim;
+      loaded.colorTone = v5.colorTone;
+      loaded.contrastLight = v5.contrastLight;
+      loaded.contrastDark = v5.contrastDark;
+      loaded.whiteLevel = v5.whiteLevel;
+      loaded.warmth = v5.warmth;
+      loaded.dither = v5.dither;
+      loaded.panelVcom = v5.panelVcom;
+      loaded.panelRefreshHz = v5.panelRefreshHz;
+      loaded.skyPin = v5.skyPin;
+      loaded.touchScaleX = v5.touchScaleX;
+      loaded.touchOffsetX = v5.touchOffsetX;
+      loaded.touchScaleY = v5.touchScaleY;
+      loaded.touchOffsetY = v5.touchOffsetY;
+      if (migrated) *migrated = true;  // bedside keeps the board's default
     }
   }
   if (s == RecordStatus::Ok) {

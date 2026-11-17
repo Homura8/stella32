@@ -90,9 +90,55 @@ or display I/O.
   size and time limits, verifies certificates (core CA bundle on ESP32), and
   streams the body through a bounded SAX parser (`net/json.*`, ~0.5 KiB, depth
   10): no response is ever held in RAM.
+- **Phone setup** (`net/setup_portal.*`, `SetupServer` in the HAL): from
+  *Settings > Wi-Fi > Phone* the device scans once, then opens a WPA2 access
+  point ("Stella-Setup", a random 8-character password shown only on the
+  device screen) with a captive DNS and a tiny web server, so a phone opens
+  the setup page by itself. The page lists the networks found and takes a name
+  and password; the portable `SetupPortal` validates and bounds the form (32 /
+  63 bytes), escapes everything it echoes, and asks `WifiManager` to join. The
+  server is polled from the Wi-Fi job (every 25 ms while open). It closes on
+  success, on *Cancel* or leaving the screen, and after 10 minutes. A wrong
+  password leaves it open with the reason on the page and on the device. The
+  page is plain HTTP over the protected access point (at most two clients);
+  the temporary password lives only in `WifiManager` (mutex-guarded, wiped on
+  close), never in a topic or a log. Only the thin `Esp32SetupServer` (web
+  server, DNS, access point) lives in the port.
 - **Freshness** (`service/data_status.h`): every data service keeps its last
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
+
+## Fullscreen screens and the idle face
+
+A `Screen` may be `fullscreen()`: the shell then draws no sky and no status bar
+under it (and offers no back or home gestures), `layout()` gets the whole
+display, `draw()` paints every pixel, and the backlight runs at a third of
+its level (never below the minimum). The screen handles its own events,
+including leaving. The bedside clock is one (after Celestia Nightstand's):
+a black field (`Palette::bedBg`, so nothing to dither), faint stars, a sleepy
+crescent moon and a ringed planet, the largest numerals that fit (the
+`bedside` font), the date, the weather and the next alarm.
+
+It animates calmly on a 16 s cycle (`bedsideFrameAt`): every 4 s some stars
+twinkle, the big sparkle swells, and the moon and planet shift a pixel; once
+per cycle the moon blinks. Only the spots that change are invalidated, so a
+frame costs a few thousand pixels.
+
+An app flagged `kAppIdleFace` offers such a face. After the idle dim, if the
+setting *Bedside* is *Night* (and it is night by the clock) or *Always*, and
+the time is known, the runtime calls `launch(id, "bedside")`, but only when
+Home or that app is in front, so nothing the user is doing is replaced. Any
+tap on the face leaves it (`pop()`), landing on the Clock.
+
+Apps may offer a short line for idle faces with `AppContext::setGlance(icon,
+text)`; the Weather app publishes "17° Partly cloudy" (and withdraws it when
+the data is over 3 hours old). It does this from `onWake`, because apps that
+were never opened receive no topic notifications.
+
+Apps that ring tell the shell when with `AppContext::setNextAlarm(epoch)`;
+`SystemStatus::nextAlarm` is the earliest. `localTimeAt(epoch)` gives that
+time's wall-clock components in the configured zone (daylight saving
+included).
 
 ## Alerts
 
@@ -192,6 +238,70 @@ the device and stored in the system settings (record v5):
   offset that the runtime applies to every touch before gestures. Implausible
   fits (over 20% scale or 60 px offset) are rejected.
 
+## Updates (over the air)
+
+`Settings > About > Software update` checks for, installs and restarts into a
+new firmware, with no USB cable and nothing to set up beyond one flash.
+Nothing runs by itself (`net/firmware_update.*`, `tools/update_tool.py`):
+
+1. **Publishing is automatic.** The `Publish update` workflow runs on every
+   merge to `main`: it builds the firmware and publishes it with a
+   `manifest.json` to GitHub Pages (one-time: repository *Settings > Pages >
+   Source: GitHub Actions*). The device's built-in address is
+   `https://homura8.github.io/stella32/manifest.json` (override with
+   `STELLA_UPDATE_URL` in `secrets.h`). An update is offered when
+   `STELLA_VERSION` is *higher* than the running version, so bump it when you
+   want one.
+2. The **manifest** (HTTPS JSON, no redirects) names `version`, the image `url`,
+   `size` and `sha256`. It is parsed by the bounded JSON parser and every field
+   is validated (HTTPS only, sizes, hex lengths, a real `a.b.c` version).
+3. The image streams into the **other** app slot while it is hashed. Size and
+   SHA-256 must match the manifest exactly (more or fewer bytes, or a cut
+   download, abort the install).
+4. Only then is the slot chosen for the next boot, **pending**: the bootloader
+   (rollback is enabled in Arduino-ESP32 3.3.12's SDK) returns to the previous
+   image at the next reset unless the new one is confirmed. The runtime
+   confirms after **one healthy minute** (`Runtime::step`); the sketch defers
+   the Arduino core's own immediate confirmation with `verifyRollbackLater()`.
+   A new image that crashes, hangs (the supervisor restarts it after 3
+   minutes) or never draws a frame is therefore replaced by the old one by
+   itself. A new update is refused until the last one is confirmed.
+
+Every failure (unreachable server, bad manifest, damaged or oversize download,
+a flash write error, an invalid image) aborts the slot write and leaves the
+running firmware untouched. The code never writes over the running image: a
+single-app layout (the `cyd-huge` profile) has no other slot, so updates report
+*unavailable* there.
+
+**The one-time setup** is a USB flash of the default build: it uses the
+two-slot layout (1.9 MB per slot; the firmware is 1.5 MB). Settings and the
+saved Wi-Fi network are kept: both layouts keep NVS at 0x9000.
+
+**What protects it, and what does not.** The download is HTTPS to the
+update host (certificate chain verified against the core's bundle) and must
+match the manifest's SHA-256 and size; the new image must also boot well to be
+kept. That does *not* protect against a compromised update host: whoever can
+publish to your GitHub Pages (or take over the GitHub account or its CI) could
+publish firmware your device would install. For a personal device that is a
+reasonable trade for zero setup. To close it, **optionally** sign updates:
+
+```bash
+pip install cryptography
+python3 tools/update_tool.py keygen --private update-key.pem --public update-public.pem  # private key: offline, never in git
+# put the printed STELLA_UPDATE_PUBLIC_KEY in examples/CYD/secrets.h and flash by USB once
+python3 tools/update_tool.py sign --key update-key.pem --image CYD.ino.bin --version 0.6.1 --url https://... --out manifest.json
+```
+
+With a public key built in, the manifest must carry an ECDSA P-256 signature
+(`sig_r`, `sig_s`) over SHA-256(`"stella-update-v1|<version>|<hex image
+sha256>"`) that verifies with it (mbedTLS); the *version* is signed, so an old
+signed image cannot be relabelled as new. Then even a compromised host cannot
+install anything, but you must sign and upload each release yourself (the
+workflow does not hold your private key).
+
+The manifest's strings are limited to 95 characters (the device's JSON value
+buffer). To go back to an older version, flash by USB.
+
 ## Persistence
 
 `KeyValueStore` (NVS on ESP32) holds records with a magic number, schema
@@ -204,12 +314,13 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,358,203 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 72,732 B; 254,948 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,377,425 B flash, 86,372 B static RAM |
+| Program (flash) | 1,476,211 B of a 1,966,080 B app slot (75%); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 79,788 B; 247,892 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,495,365 B flash, 93,412 B static RAM |
+| Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
-| Fonts (both densities, flash) | ~98 KB |
+| Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |
 
 ## Roadmap
 

@@ -94,10 +94,19 @@ change needs to break one, stop and ask the owner; then update this file.
     runtime drops background invalidations. Do not work around it.
 15. **Secrets.** Wi-Fi passwords and API keys live only in versioned records
     or `secrets.h`; wipe transient copies (see `WifiManager`, `TextEntryScreen`)
-    and never put them in logs, URLs that are logged, or topics.
+    and never put them in logs, URLs that are logged, or topics. The phone-setup
+    access point's temporary password is such a secret too: it stays inside
+    `WifiManager` and is shown on the setup screen only.
 16. **Generated files.** `src/stella/fonts/fonts_*.cpp` come from
     `tools/fontgen.py`; `docs/screenshots/` from `tools/screenshots.py`. Edit
     the generator, never the output.
+
+17. **Updates.** An update is installed only after its size and SHA-256 have
+    been checked (and, when a signing key is built in, its signature), and only
+    into the slot that is not running; a failure leaves the running firmware
+    untouched. Never add an unverified install path, never accept a version that
+    is not newer, and never confirm a pending image before it has run healthily
+    (see `docs/ARCHITECTURE.md`, Updates).
 
 ## 5. How to make common changes
 

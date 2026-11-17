@@ -101,6 +101,7 @@ saturation gain; dark skies only gain saturation.
 | `title` | Baloo 2 700 | 19 px | 24 px | screen titles, emphasis |
 | `headline` | Baloo 2 700 | 26 px | 34 px | greetings, big values |
 | `display` | Baloo 2 700 | 64 px | 88 px | clock digits only |
+| `bedside` | Baloo 2 700 | 96 px | 144 px | the bedside clock's digits only |
 
 Fonts are rasterised with 4-bit anti-aliasing by `tools/fontgen.py` from the
 site's own WOFF files.
@@ -128,6 +129,10 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   long-press anywhere on it for home). Network icon and time at the right, in `textMuted`.
 - **Glass card:** groups related rows; rows separated by hairlines.
 - **List row:** icon bubble, title, optional muted value, chevron.
+- **Scrolling list:** drag to scroll, and when it overflows a strip at the
+  right edge (32 dp wide) holds an up and a down button (each pages by a view
+  less one row; dimmed at the ends) with a thin position rail between them.
+  Rows are drawn and picked beside the strip; a list that fits has none.
 - **Segmented choice:** glass pill; the selected chip is an opaque `surface`
   chip with a hairline and accent text (the site's sky chooser).
 - **Toggle:** pill track (accent when on) with a soft knob.
@@ -139,6 +144,10 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   delete clears.
 - **Text field:** glass pill, accent caret; secrets show bullets with a
   *Show/Hide* toggle.
+- **Phone setup:** one glass card of three labelled rows (Wi-Fi name in
+  `title`, the temporary password in `headline` and the accent, the page
+  address in `title`), a centred status line in `body` (the error in
+  `danger`), and a Cancel button.
 - **Wi-Fi:** signal shown as 0-4 arcs (`icons::wifiBars`); the status bar
   icon is muted when connected, accent while joining, soft pink on failure.
 - **Alert:** a soft veil over the whole screen and a near-opaque glass card:
@@ -153,6 +162,17 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
 - **Home:** greeting, date, a grid of square app tiles. When the apps span
   several pages, a glass pill of ‹ › buttons sits beside the greeting
   (swiping also works; resistive panels make swipes hard).
+- **Bedside clock:** fullscreen on black (`bedBg`); a sleepy crescent moon
+  (top left), four-point sparkles (top right), ten faint stars at the edges
+  and a ringed planet, all in `bedStar`/`bedMuted`; the date on top in
+  `bedMuted`; the clock in the `bedside` font in `bedClock` (lilac), with a
+  thin rule and a small star under it; the weather ("[icon] 17° Partly
+  cloudy", `title`, `bedText`) and "[bell] 06:45 · in 8 h 15 min" (`body`,
+  `bedMuted`); "Tap anywhere to return" in `bedStar` at the bottom. No
+  chrome, no sky gradient. If "88:88" plus AM/PM does not fit the width (a
+  portrait panel) the smaller `display` numerals are used.
+  *Settings > Display > Bedside* (Off / Night / Always) chooses when it starts
+  by itself; the Clock's *Bedside* button starts it by hand.
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

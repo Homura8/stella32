@@ -36,6 +36,50 @@ class WifiDriver {
   virtual int scanResults(WifiNetwork *out, int capacity) = 0;
   // Start periodic SNTP; must not change the process time zone.
   virtual void startTimeSync() = 0;
+  // A random number for the temporary setup password. Boards with a hardware
+  // random generator must override this; the default is NOT secure.
+  virtual uint32_t random32() {
+    static uint32_t x = 2463534242u;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x;
+  }
+};
+
+// Phone-based Wi-Fi setup: the device opens its own protected access point and
+// a tiny web server on it (with a captive DNS so a phone opens the page by
+// itself). The server's job is only transport: the portable SetupHandler
+// decides what every request means.
+struct SetupRequest {
+  bool post = false;
+  const char *path = "/";
+  const char *body = "";  // application/x-www-form-urlencoded, NUL-terminated
+  size_t bodyLen = 0;
+};
+
+struct SetupResponse {
+  int status = 200;
+  const char *contentType = "text/html; charset=utf-8";
+  char *body = nullptr;  // supplied by the server, filled by the handler
+  size_t capacity = 0;
+  size_t length = 0;
+};
+
+class SetupHandler {
+ public:
+  virtual ~SetupHandler() = default;
+  virtual void handleSetup(const SetupRequest &request, SetupResponse &response) = 0;
+};
+
+class SetupServer {
+ public:
+  virtual ~SetupServer() = default;
+  // Starts the WPA2 access point and the server; requests go to `handler`.
+  virtual bool begin(const char *apSsid, const char *apPassword, SetupHandler &handler) = 0;
+  virtual void poll() = 0;  // serve pending requests (service thread, ~every 25 ms)
+  virtual void end() = 0;   // stop the server and the access point
+  virtual void address(char *out, size_t capacity) = 0;  // the access point's IPv4
 };
 
 // Receives a response body as it arrives. Return false to abort the transfer

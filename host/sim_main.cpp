@@ -13,6 +13,8 @@
 
 #include "sim_session.h"
 #include "stella/app/text_entry.h"
+#include "stella/core/sha256.h"
+#include "stella/ui/layout.h"
 
 using namespace stella;
 using namespace stella::host;
@@ -22,6 +24,25 @@ namespace {
 int failures = 0;
 
 void tapRect(SimSession &s, const Rect &r) { s.tap(r.centerX(), r.centerY()); }
+
+// A pretend update server: version 0.9.0, a 1.3 MB image (the simulated
+// firmware accepts the "signature" of all 0x5a bytes).
+void serveUpdate(SimSession &s) {
+  std::string image(1300000, 'x');
+  for (size_t i = 0; i < image.size(); ++i) image[i] = (char)((i * 2654435761u) >> 24);
+  uint8_t digest[32];
+  Sha256::hash(image.data(), image.size(), digest);
+  char hex[65];
+  toHex(digest, 32, hex);
+  std::string rs;
+  for (int i = 0; i < 32; ++i) rs += "5a";
+  const std::string manifest = std::string("{\"version\":\"0.9.0\",\"url\":\"https://updates.example/stella32.bin\",\"size\":") +
+                               std::to_string(image.size()) + ",\"sha256\":\"" + hex + "\",\"sig_r\":\"" + rs +
+                               "\",\"sig_s\":\"" + rs + "\"}";
+  s.dev.firmware.slotSize = 1966080;  // the 1.9 MB app slot of the OTA layout
+  s.dev.http.routes.insert(s.dev.http.routes.begin(), {"stella32.bin", image, 200});
+  s.dev.http.routes.insert(s.dev.http.routes.begin(), {"manifest.json", manifest, 200});
+}
 
 void shot(SimSession &s, const std::string &dir, const char *name) {
   const std::string path = dir + "/" + name + ".ppm";
@@ -93,6 +114,22 @@ void capture(int width, int height, const std::string &root) {
     }
     saveFresh(12, "password");
 
+    // Phone setup: the access point's name, password and address.
+    fresh.os.goHome();
+    fresh.os.launch("settings", "wifi");
+    fresh.run(600);
+    {
+      const Theme &ft = fresh.os.theme();
+      Rect fr[3];
+      layout::column(fresh.os.contentRect().inset(ft.m.margin, ft.m.gapS),
+                     {layout::px(ft.m.row + ft.dp(4)), layout::px(ft.m.control - ft.dp(8)), layout::flex()}, ft.m.gapS, fr);
+      Rect fh[3];
+      layout::row(fr[1], {layout::flex(), layout::px(ft.dp(64)), layout::px(ft.dp(64))}, ft.m.gapS, fh);
+      fresh.tap(fh[1].centerX(), fh[1].centerY());
+      fresh.run(3000);
+    }
+    saveFresh(22, "phone-setup");
+
     // Alarms, the alarm editor, a running timer and the alert it raises.
     s.os.launch("alarms");
     s.run(100);
@@ -133,9 +170,9 @@ void capture(int width, int height, const std::string &root) {
     const Point display = s.settingsRow(1);
     s.tap(display.x, display.y);
     const Rect area = sc.inset(st.m.margin, st.m.gapS);
-    const int want = st.m.control + st.dp(4), fit = (area.h - 2 * st.dp(4)) / 5;
+    const int want = st.m.control + st.dp(4), fit = (area.h - 2 * st.dp(4)) / 6;
     const int rowH = want <= fit ? want : fit < st.dp(32) ? st.dp(32) : fit;
-    s.tap(area.centerX(), area.y + st.dp(4) + 4 * rowH + rowH / 2);
+    s.tap(area.centerX(), area.y + st.dp(4) + 5 * rowH + rowH / 2);
     s.run(2500);
     save(17, "calibrate-tone");
     const int tabsW = area.w - st.dp(72) - st.m.gapM;
@@ -151,6 +188,39 @@ void capture(int width, int height, const std::string &root) {
     s.tap(area.right() - st.dp(52), area.bottom() - st.m.control / 2);
     s.run(100);
     save(20, "touch-calibrate");
+
+    // Software update: offered, then installed and waiting for a restart.
+    serveUpdate(s);
+    s.os.goHome();
+    s.os.launch("settings");
+    while (s.os.topScreen() != &s.settings.root()) s.os.pop();  // earlier scenes left screens on its stack
+    s.run(100);
+    {
+      const Point aboutRow = s.settingsRow(4);
+      s.tap(aboutRow.x, aboutRow.y);
+      Rect ar[2];
+      layout::column(sc.inset(st.m.margin, st.m.gapS), {layout::flex(), layout::px(st.m.control)}, st.m.gapS, ar);
+      save(23, "about-update");
+      tapRect(s, layout::center(ar[1], st.dp(190), st.m.control));
+      const int lh = st.font.body->lineHeight;
+      Rect ur[3];
+      layout::column(sc.inset(st.m.margin, st.m.gapS),
+                     {layout::px(2 * lh + st.dp(6) + st.dp(6) + 2 * st.m.padding), layout::flex(), layout::px(st.m.control)},
+                     st.m.gapM, ur);
+      const Rect action = layout::center(ur[2], st.dp(200), st.m.control);
+      tapRect(s, action);
+      s.run(3000);
+      save(24, "update-available");
+      tapRect(s, action);
+      s.run(9000);
+      save(25, "update-ready");
+    }
+
+    // The bedside clock, with the alarm set earlier.
+    s.os.goHome();
+    s.os.launch("clock", "bedside");
+    s.run(300);
+    save(21, "bedside");
   }
 }
 

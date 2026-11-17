@@ -13,6 +13,7 @@ struct FontSet {
   const Font *title;     // screen and card titles
   const Font *headline;  // large greetings / values
   const Font *display;   // big numerals only: " 0123456789:-APM°"
+  const Font *bedside;   // the largest numerals, " 0123456789:", for the bedside clock
 };
 
 extern const FontSet kCompact;  // ~320x240 panels

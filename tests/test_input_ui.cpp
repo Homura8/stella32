@@ -214,3 +214,44 @@ TEST(list_view_scrolls_and_picks) {
   list.scrollTo(0);
   CHECK_EQ(list.offset, 0);
 }
+
+TEST(list_view_buttons_page_and_the_strip_never_picks_a_row) {
+  Sink sink;
+  ListView list;
+  list.bounds = Rect(0, 100, 200, 100);
+  list.rowHeight = 25;
+  list.count = 10;
+  list.buttonWidth = 30;
+  CHECK(list.hasButtons());
+  CHECK(list.rows().w == 170 && list.upButton() == Rect(170, 100, 30, 30) && list.downButton() == Rect(170, 170, 30, 30));
+  CHECK_EQ(list.pageStep(), 75);  // a view of four rows, less one
+  // Down: press, release, tap (as the gesture recogniser delivers them).
+  list.handle(pointer(EventType::Press, 185, 185), sink);
+  const int before = sink.calls;
+  list.handle(pointer(EventType::Release, 185, 185), sink);
+  CHECK(sink.calls > before);  // the pressed highlight is repainted
+  CHECK_EQ(list.handle(pointer(EventType::Tap, 185, 185), sink), -1);
+  CHECK_EQ(list.offset, 75);
+  list.handle(pointer(EventType::Tap, 185, 185), sink);
+  CHECK_EQ(list.offset, 150);
+  list.handle(pointer(EventType::Tap, 185, 185), sink);
+  CHECK_EQ(list.offset, 150);  // clamped at the end
+  list.handle(pointer(EventType::Tap, 185, 115), sink);  // up
+  CHECK_EQ(list.offset, 75);
+  // The strip never picks a row, but the rows beside it do.
+  CHECK_EQ(list.handle(pointer(EventType::Tap, 185, 150), sink), -1);
+  CHECK_EQ(list.handle(pointer(EventType::Tap, 100, 105), sink), 3);  // (5 + 75) / 25
+  // A press on a button that slides off it is cancelled, and a drag that
+  // starts on the strip does not scroll the list.
+  list.handle(pointer(EventType::Press, 185, 185), sink);
+  list.handle(pointer(EventType::Drag, 50, 185, 185, 185), sink);
+  list.handle(pointer(EventType::Release, 50, 185, 185, 185), sink);
+  CHECK_EQ(list.offset, 75);
+  // A list that fits has no strip at all.
+  ListView small;
+  small.bounds = Rect(0, 0, 200, 100);
+  small.rowHeight = 25;
+  small.count = 3;
+  small.buttonWidth = 30;
+  CHECK(!small.hasButtons() && small.rows() == small.bounds);
+}

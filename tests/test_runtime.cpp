@@ -87,6 +87,7 @@ TEST(power_dims_sleeps_and_wake_touch_is_consumed) {
   SystemSettings p = s.os.settings();
   p.dimAfterSec = 30;
   p.sleepAfterSec = 60;
+  p.bedside = 0;  // this test is about the plain dim and wake
   s.os.applySettings(p);
   s.run(31000);
   CHECK(s.os.power() == PowerState::Dimmed && s.dev.display.backlight() < backlightDuty(p.brightness));
@@ -117,6 +118,7 @@ TEST(tap_on_a_dimmed_screen_brightens_and_acts) {
   SimSession s(320, 240);
   SystemSettings p = s.os.settings();
   p.dimAfterSec = 30;
+  p.bedside = 0;
   p.nightDim = false;  // compare with the plain brightness
   s.os.applySettings(p);
   s.run(31000);

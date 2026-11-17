@@ -108,6 +108,19 @@ forget), `TextEntryScreen` (text or password entry with the on-screen
 keyboard), `ctx.requestJob(job)` (refresh now), `ctx.requestTick()` (restart
 a screen's `onTick` after it returned `kNoTick`).
 
+## Idle faces and fullscreen screens
+
+A screen can cover the whole display: override `fullscreen()` to return true
+(no sky, status bar or back gesture under it; `layout()` gets the full display;
+`draw()` must paint every pixel, e.g. `c.fill(p.bedBg)` first) and handle
+leaving yourself (`ctx.pop()` on a tap). Flag the app `kAppIdleFace` and handle
+the route `"bedside"` in `onRoute()` to be started after the idle dim at night.
+The Clock app's `BedsideScreen` is the example. `ctx.setNextAlarm(epoch)` lets
+the shell and the bedside clock show when your app next rings, and
+`ctx.setGlance(icon, "17° Partly cloudy")` offers a one-line summary for the
+bedside clock (the Weather app does; publish it from `onWake`, since apps that
+were never opened get no topic notifications, and withdraw it when stale).
+
 ## Time-based work and alerts
 
 Things that must happen whether or not the app is open (an alarm, a timer)
@@ -151,5 +164,8 @@ are complete examples.
   skip work entirely.
 - Long work belongs in a `Job` on the service thread, publishing a
   `Topic<T>`; the app reads it in `onTopic`.
+- A scrolling `ListView` sets `buttonWidth = t.dp(32)` in `layout()` to get
+  up/down buttons and a rail when it overflows (resistive panels make drags
+  hard); draw and pick rows in `list.rows()`, not `list.bounds`.
 - Persist small app state with `ctx.saveAppRecord(key, version, &data, size)`.
 - Check the result at both densities: `python3 tools/screenshots.py`.

@@ -14,6 +14,7 @@
 #include "../gfx/canvas.h"
 #include "../hal/hal.h"
 #include "../input/event.h"
+#include "../net/firmware_update.h"
 #include "../net/http_service.h"
 #include "../net/network_status.h"
 #include "../service/job_scheduler.h"
@@ -54,6 +55,12 @@ class Screen {
     (void)ctx;
     return kNoTick;
   }
+  // A fullscreen screen covers the whole display: the shell draws no sky and
+  // no status bar (and no back or home gestures) under it, layout() gets the
+  // full display rectangle, draw() must paint every pixel, and the backlight
+  // runs low (it is for an idle face such as the bedside clock). The screen
+  // handles its own events, including leaving (usually: any tap -> pop()).
+  virtual bool fullscreen() const { return false; }
   // True between onShow and onHide (maintained by the runtime).
   bool isVisible() const { return visible_; }
   void setVisible(bool visible) { visible_ = visible; }  // runtime only
@@ -83,6 +90,10 @@ struct Alert {
 enum AppFlags : uint8_t {
   kAppHome = 1 << 0,    // the launcher; shown at boot and by "home"
   kAppHidden = 1 << 1,  // not listed in the launcher
+  // The app can present an idle face (a fullscreen screen, e.g. the bedside
+  // clock): after the idle dim, at night, the runtime calls
+  // launch(id, "bedside") when the Home screen or this app is in front.
+  kAppIdleFace = 1 << 2,
 };
 
 struct AppInfo {
@@ -147,6 +158,14 @@ struct LocalTime {
   int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, weekday = 0, yearDay = 0;
 };
 
+// A short line an app offers to idle faces (the bedside clock), e.g. the
+// current weather: "14\xc2\xb0 Overcast" with its icon.
+struct Glance {
+  IconFn icon = nullptr;
+  char text[32] = {0};
+  bool empty() const { return text[0] == '\0'; }
+};
+
 struct SystemStatus {
   const char *board = "";
   const char *version = "";
@@ -161,6 +180,8 @@ struct SystemStatus {
   uint32_t lastFrameMs = 0;  // render time of the most recent frame
   uint32_t uiStackFree = 0, serviceStackFree = 0;  // lowest free stack seen, bytes
   bool panelTrim = false;  // the display supports VCOM / refresh adjustment
+  int64_t nextAlarm = 0;   // epoch seconds of the earliest app alarm, 0 = none (setNextAlarm)
+  Glance glance;           // the first app's glance line (setGlance)
 };
 
 class AppContext : public Invalidator {
@@ -174,6 +195,8 @@ class AppContext : public Invalidator {
   // Time.
   virtual uint32_t millis() const = 0;
   virtual LocalTime localTime() const = 0;
+  // Local calendar time of any epoch (the configured time zone and DST).
+  virtual LocalTime localTimeAt(int64_t epochSeconds) const = 0;
   virtual void formatTime(const LocalTime &t, char *out, size_t capacity) const = 0;  // honours 12/24 h
   // Run the top screen's onTick() again soon (after it returned kNoTick).
   // Ignored for a background app.
@@ -196,12 +219,23 @@ class AppContext : public Invalidator {
   virtual void applySettings(const SystemSettings &settings) = 0;
   virtual SystemStatus status() const = 0;
   virtual NetworkControl &network() = 0;
+  // Over-the-air updates (Settings > About > Software update).
+  virtual UpdateControl &update() = 0;
+  // Restart the device shortly (after a short pause so the screen can say so).
+  virtual void restartDevice() = 0;
   // Show a system alert owned by the calling app; one with the same tag is
   // replaced. Alerts queue (a few) while another is showing. False if full.
   virtual bool showAlert(const Alert &alert) = 0;
   // Withdraw the calling app's alert with this tag (shown or queued) without
   // an onAlert() callback.
   virtual void dismissAlert(uint16_t tag) = 0;
+  // The calling app tells the shell when it will next ring (epoch seconds; 0 =
+  // not at all). SystemStatus::nextAlarm is the earliest of all apps; the
+  // bedside clock shows it.
+  virtual void setNextAlarm(int64_t epochSeconds) = 0;
+  // The calling app offers a short line for idle faces (nullptr or "" clears
+  // it). SystemStatus::glance is the first app that has one.
+  virtual void setGlance(IconFn icon, const char *text) = 0;
   // Run the calling app's onWake() after `delayMs` (sooner than it asked).
   // Each onWake() return value then sets the next wake, so an app with
   // several deadlines returns the nearest one.

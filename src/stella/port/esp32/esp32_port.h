@@ -3,20 +3,26 @@
 // is compiled into the sketch (Arduino builds library sources separately).
 // Requires Arduino-ESP32 3.x.
 #include <Arduino.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
+#include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_attr.h>
 #include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_timer.h>
+#include <mbedtls/pk.h>
 #include <time.h>
 
 #include "../../core/log.h"
 #include "../../core/text.h"
 #include "../../hal/hal.h"
+#include "../../net/firmware_update.h"
+#include "../../net/setup_portal.h"
 #include "../../runtime/runtime.h"
 
 namespace stella {
@@ -67,6 +73,16 @@ class Esp32Platform : public Platform {
     return retainedBlock();
   }
   uint32_t stackHeadroom() const override { return (uint32_t)uxTaskGetStackHighWaterMark(nullptr); }
+  // After an over-the-air update the bootloader runs the new image "pending
+  // verification" and returns to the old one at the next reset unless it is
+  // confirmed (the Arduino core's own confirmation is deferred by the
+  // sketch's verifyRollbackLater(); see examples/CYD/CYD.ino).
+  bool updatePending() const override {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    return running && esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY;
+  }
+  void confirmUpdate() override { esp_ota_mark_app_valid_cancel_rollback(); }
 
  private:
   const char *name_;
@@ -133,6 +149,7 @@ class Esp32WifiDriver : public WifiDriver {
     }
   }
   int8_t rssi() override { return (int8_t)WiFi.RSSI(); }
+  uint32_t random32() override { return esp_random(); }  // hardware RNG (strong while the radio is on)
   void address(char *out, size_t capacity) override { copyText(out, capacity, WiFi.localIP().toString().c_str()); }
   bool startScan() override { return WiFi.scanNetworks(/*async=*/true, /*hidden=*/false) >= -1; }
   int scanResults(WifiNetwork *out, int capacity) override {
@@ -159,6 +176,161 @@ class Esp32WifiDriver : public WifiDriver {
 
  private:
   bool attempting_ = false;
+};
+
+// The other app slot of an OTA partition layout (two app partitions). Never
+// writes over the running image: with a single-app layout (e.g. Huge APP, the `cyd-huge` profile)
+// there is no other slot and updates are reported unavailable. An optional
+// public key (PEM) makes the manifest's signature mandatory; it is checked
+// with mbedTLS (ECDSA P-256 over SHA-256).
+class Esp32Firmware : public FirmwareSlot {
+ public:
+  explicit Esp32Firmware(const char *publicKeyPem = nullptr) : pem_(publicKeyPem) {}
+  void setPublicKey(const char *pem) { pem_ = pem; }
+
+  bool available() override {
+    const esp_partition_t *p = target();
+    return p && p->size >= 256 * 1024;
+  }
+  bool requiresSignature() override { return pem_ && pem_[0]; }
+  size_t capacity() override {
+    const esp_partition_t *p = target();
+    return p ? p->size : 0;
+  }
+  bool begin(size_t size) override {
+    abort();
+    part_ = target();
+    if (!part_ || size > part_->size) return false;
+    open_ = esp_ota_begin(part_, size, &handle_) == ESP_OK;
+    return open_;
+  }
+  bool write(const uint8_t *data, size_t size) override { return open_ && esp_ota_write(handle_, data, size) == ESP_OK; }
+  bool finish() override {
+    if (!open_) return false;
+    open_ = false;
+    // esp_ota_end() validates the image (header, checksum); only then is it
+    // chosen for the next boot, and the bootloader treats it as pending.
+    if (esp_ota_end(handle_) != ESP_OK) return false;
+    return esp_ota_set_boot_partition(part_) == ESP_OK;
+  }
+  void abort() override {
+    if (open_) esp_ota_abort(handle_);
+    open_ = false;
+  }
+  bool verify(const uint8_t digest[32], const uint8_t r[32], const uint8_t s[32]) override {
+    if (!pem_ || !pem_[0]) return false;
+    uint8_t der[72];
+    const size_t derLength = UpdateService::encodeDerSignature(r, s, der);
+    mbedtls_pk_context key;
+    mbedtls_pk_init(&key);
+    bool ok = mbedtls_pk_parse_public_key(&key, reinterpret_cast<const unsigned char *>(pem_), strlen(pem_) + 1) == 0 &&
+              mbedtls_pk_can_do(&key, MBEDTLS_PK_ECDSA) && mbedtls_pk_get_bitlen(&key) == 256 &&
+              mbedtls_pk_verify(&key, MBEDTLS_MD_SHA256, digest, 32, der, derLength) == 0;
+    mbedtls_pk_free(&key);
+    return ok;
+  }
+
+ private:
+  static const esp_partition_t *target() {
+    const esp_partition_t *next = esp_ota_get_next_update_partition(nullptr);
+    return next && next != esp_ota_get_running_partition() ? next : nullptr;
+  }
+  const char *pem_;
+  const esp_partition_t *part_ = nullptr;
+  esp_ota_handle_t handle_ = 0;
+  bool open_ = false;
+};
+
+// Phone setup: a WPA2 access point, a captive DNS (every name resolves to the
+// device, so a phone opens the page by itself) and a tiny web server. All
+// meaning lives in the portable SetupPortal; this only moves bytes. Runs on
+// the service thread (poll() is called about every 25 ms while setup is open).
+class Esp32SetupServer : public SetupServer {
+ public:
+  bool begin(const char *apSsid, const char *apPassword, SetupHandler &handler) override {
+    handler_ = &handler;
+    WiFi.mode(WIFI_AP_STA);  // keep the station side alive for scanning and joining
+    if (!WiFi.softAP(apSsid, apPassword, /*channel=*/1, /*ssid_hidden=*/0, /*max_connection=*/2)) {
+      WiFi.mode(WIFI_STA);
+      return false;
+    }
+    dns_.start(53, "*", WiFi.softAPIP());
+    web_.onNotFound([this]() { serve(); });
+    web_.begin();
+    running_ = true;
+    return true;
+  }
+  void poll() override {
+    if (!running_) return;
+    dns_.processNextRequest();
+    web_.handleClient();
+  }
+  void end() override {
+    if (!running_) return;
+    web_.stop();
+    dns_.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    running_ = false;
+    handler_ = nullptr;
+  }
+  void address(char *out, size_t capacity) override { copyText(out, capacity, WiFi.softAPIP().toString().c_str()); }
+
+ private:
+  // Re-encodes one form value (the web server has already decoded it).
+  static size_t encode(char *dst, size_t cap, const String &value) {
+    static const char kHex[] = "0123456789ABCDEF";
+    size_t n = 0;
+    for (size_t i = 0; i < value.length() && n + 4 < cap; ++i) {
+      const unsigned char c = (unsigned char)value[i];
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+        dst[n++] = (char)c;
+      } else {
+        dst[n++] = '%';
+        dst[n++] = kHex[c >> 4];
+        dst[n++] = kHex[c & 15];
+      }
+    }
+    dst[n] = '\0';
+    return n;
+  }
+
+  void serve() {
+    if (!handler_) return;
+    SetupRequest request;
+    request.post = web_.method() == HTTP_POST;
+    const String uri = web_.uri();
+    request.path = uri.c_str();
+    char body[512];
+    size_t n = 0;
+    body[0] = '\0';
+    if (request.post) {
+      for (int i = 0; i < web_.args() && n + 8 < sizeof(body); ++i) {
+        if (i) body[n++] = '&';
+        n += encode(body + n, sizeof(body) - n, web_.argName(i));
+        body[n++] = '=';
+        n += encode(body + n, sizeof(body) - n, web_.arg(i));
+        body[n] = '\0';
+      }
+    }
+    request.body = body;
+    request.bodyLen = n;
+    SetupResponse response;
+    response.body = page_;
+    response.capacity = sizeof(page_);
+    handler_->handleSetup(request, response);
+    page_[response.length < sizeof(page_) ? response.length : sizeof(page_) - 1] = '\0';
+    web_.sendHeader("Cache-Control", "no-store");
+    web_.send(response.status, response.contentType, page_);
+    volatile char *v = body;  // the form held the Wi-Fi password
+    for (size_t i = 0; i < sizeof(body); ++i) v[i] = 0;
+  }
+
+  WebServer web_{80};
+  DNSServer dns_;
+  SetupHandler *handler_ = nullptr;
+  bool running_ = false;
+  char page_[SetupPortal::kPageBytes];
 };
 
 // HTTPS GET with certificate verification against the core's built-in CA

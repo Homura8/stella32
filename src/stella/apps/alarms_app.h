@@ -6,6 +6,7 @@
 // Alarms follow local wall-clock time, so they need the time to be known
 // (Wi-Fi + SNTP); the list says so when it is not.
 #include "../app/app.h"
+#include "common.h"  // describeWait
 
 namespace stella {
 namespace apps {
@@ -39,8 +40,6 @@ int minutesUntil(const AlarmEntry &alarm, const LocalTime &now);
 int nextAlarm(const AlarmBook &book, const LocalTime &now, int &minutes);
 // "Once", "Every day", "Weekdays", "Weekends" or "Mon, Wed, Fri".
 void describeDays(uint8_t days, char *out, size_t capacity);
-// "25 min", "9 h 5 min", "2 d 3 h".
-void describeWait(int minutes, char *out, size_t capacity);
 
 class AlarmsApp : public App {
  public:
@@ -115,6 +114,7 @@ class AlarmsApp : public App {
   };
 
   void save(AppContext &ctx);
+  void publishNext(AppContext &ctx);  // tell the shell when the next alarm rings
   void ring(const LocalTime &now, int hour, int minute, bool snoozed, AppContext &ctx);
   void formatAlarm(const AppContext &ctx, int hour, int minute, char *time, size_t timeCap, char *suffix,
                    size_t suffixCap) const;
