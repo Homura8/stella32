@@ -39,6 +39,9 @@ struct Profile {
   static constexpr uint8_t kRotation = 1;            // landscape, USB on the left
   static constexpr bool kInverted = true;            // this panel batch needs ILI9341 inversion
   static constexpr uint8_t kBacklight = 21;
+  // Backlight PWM. analogWrite()'s 1 kHz default can be seen as flicker;
+  // 20 kHz is far above it and still inaudible.
+  static constexpr uint32_t kBacklightHz = 20000;
   static constexpr uint8_t kTouchCs = 33, kTouchIrq = 36, kTouchSck = 25, kTouchMiso = 39, kTouchMosi = 32;
   static constexpr TouchCalibration kTouch{240, 3850, 220, 3850, false, false, false, 200};
   static constexpr int kRenderRows = 20;  // 320 x 20 x 2 B = 12.5 KiB chunk buffer
@@ -46,14 +49,16 @@ struct Profile {
 };
 
 #if defined(TFT_BL)
-static_assert(TFT_BL == Profile::kBacklight, "tft_setup.h and the CYD profile disagree on the backlight pin");
+#error "Do not define TFT_BL for the CYD: CydDisplay drives the backlight with high-frequency PWM"
 #endif
 
 class CydDisplay : public Display {
  public:
   void begin() {
     pinMode(Profile::kBacklight, OUTPUT);
-    analogWrite(Profile::kBacklight, 0);  // stay dark until the first frame
+    digitalWrite(Profile::kBacklight, LOW);  // stay dark until the first frame
+    pwm_ = ledcAttach(Profile::kBacklight, Profile::kBacklightHz, 8);
+    if (pwm_) ledcWrite(Profile::kBacklight, 0);
     tft_.init();
     tft_.setRotation(Profile::kRotation);
     tft_.invertDisplay(Profile::kInverted);
@@ -68,7 +73,10 @@ class CydDisplay : public Display {
   void writePixels(const Rect &area, const Color *pixels) override {
     tft_.pushImage(area.x, area.y, area.w, area.h, const_cast<uint16_t *>(pixels));
   }
-  void setBacklight(uint8_t level) override { analogWrite(Profile::kBacklight, level); }
+  void setBacklight(uint8_t level) override {
+    if (pwm_) ledcWrite(Profile::kBacklight, level);
+    else analogWrite(Profile::kBacklight, level);  // fallback: 1 kHz
+  }
 
   bool supportsAsync() const override { return dma_; }
   void writePixelsAsync(const Rect &area, Color *pixels) override {
@@ -100,6 +108,7 @@ class CydDisplay : public Display {
   TFT_eSPI tft_;
   bool dma_ = false;
   bool inTransaction_ = false;
+  bool pwm_ = false;
 };
 
 class CydTouch : public TouchInput {

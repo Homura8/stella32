@@ -66,6 +66,7 @@ class SettingsApp : public App {
     Rect card_, brightnessLabel_, dimLabel_, offLabel_;
     Slider brightness_;
     Segmented dim_, off_;
+    bool nightDim_ = false, night_ = false;  // the label says when night dimming applies
   };
 
   class AppearanceScreen : public Screen {
@@ -77,8 +78,8 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    Rect note_, nightCard_, skies_;
-    Segmented mode_;
+    Rect note_, toneLabel_, nightCard_, skies_;
+    Segmented mode_, tone_;
     Toggle nightDim_;
   };
 

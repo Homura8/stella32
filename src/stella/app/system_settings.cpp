@@ -1,5 +1,6 @@
 #include "system_settings.h"
 
+#include <math.h>
 #include <string.h>
 
 namespace stella {
@@ -30,6 +31,7 @@ void SystemSettings::sanitize() {
   if (sleepAfterSec > 7200) sleepAfterSec = 7200;
   timezone[sizeof(timezone) - 1] = '\0';
   if (!timezone[0]) strcpy(timezone, "UTC0");
+  if ((uint8_t)colorTone > (uint8_t)ColorTone::Vivid) colorTone = ColorTone::Rich;
 }
 
 const TimezonePreset *timezonePresets(int &count) {
@@ -48,7 +50,28 @@ struct SettingsV1 {
   char timezone[48];
 };
 
-uint8_t nightBrightness(uint8_t level) { return level < 40 ? level : 40; }
+// Frozen layout of version 2 (Stella 0.2.0 - 0.3.0). Never edit.
+struct SettingsV2 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+};
+
+uint8_t nightBrightness(uint8_t level) {
+  const int v = level * 45 / 100;
+  return (uint8_t)(v < 16 ? (level < 16 ? level : 16) : v);
+}
+
+uint8_t backlightDuty(uint8_t level) {
+  if (level == 0) return 0;
+  // Gamma 2.2 with a floor of 2: the dimmest step stays visible.
+  const float duty = 2.f + 253.f * powf(level / 255.f, 2.2f);
+  return (uint8_t)(duty > 255.f ? 255.f : duty + 0.5f);
+}
 
 RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migrated) {
   if (migrated) *migrated = false;
@@ -66,6 +89,20 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.sleepAfterSec = v1.sleepAfterSec;
       loaded.clock24h = v1.clock24h;
       memcpy(loaded.timezone, v1.timezone, sizeof(loaded.timezone));
+      if (migrated) *migrated = true;
+    }
+  } else if (s == RecordStatus::OldVersion && found == 2) {
+    SettingsV2 v2;
+    s = loadRecord(store, kNamespace, kKey, 2, &v2, sizeof(v2));
+    if (s == RecordStatus::Ok) {
+      loaded = SystemSettings{};
+      loaded.appearance = v2.appearance;
+      loaded.brightness = v2.brightness;
+      loaded.dimAfterSec = v2.dimAfterSec;
+      loaded.sleepAfterSec = v2.sleepAfterSec;
+      loaded.clock24h = v2.clock24h;
+      memcpy(loaded.timezone, v2.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v2.nightDim;
       if (migrated) *migrated = true;
     }
   }

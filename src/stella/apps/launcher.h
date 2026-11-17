@@ -28,13 +28,16 @@ class LauncherApp : public App {
     Rect tile(int slot) const;
     int tileAt(int x, int y) const;  // app index under a point on the current page, or -1
     void arrange();  // place tiles and the note for the current app count
+    bool showPage(int page, AppContext &ctx);
 
     FixedVector<const AppInfo *, 16> apps_;
     Theme theme_{};
     Rect area_, greeting_, date_, grid_, dots_, note_;
+    Rect pager_, prev_, next_;  // page buttons (resistive panels make swiping hard)
     int columns_ = 3, rows_ = 2, gap_ = 8, page_ = 0, pressed_ = -1;
     char greetingText_[32] = {0}, dateText_[48] = {0}, noteTitle_[32] = {0}, noteText_[48] = {0};
     bool setupNote_ = false, notePressed_ = false;  // note invites Wi-Fi setup
+    bool prevPressed_ = false, nextPressed_ = false;
   };
 
   HomeScreen home_;

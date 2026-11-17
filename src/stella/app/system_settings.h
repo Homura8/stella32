@@ -11,16 +11,18 @@
 namespace stella {
 
 struct SystemSettings {
-  // v2 added nightDim. Older records are migrated by loadSettings().
-  static constexpr uint16_t kVersion = 2;
+  // v2 added nightDim, v3 colorTone. Older records are migrated by
+  // loadSettings().
+  static constexpr uint16_t kVersion = 3;
 
   Appearance appearance = Appearance::Auto;
-  uint8_t brightness = 200;      // 16..255
+  uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
   uint16_t dimAfterSec = 60;     // 0 = never
   uint16_t sleepAfterSec = 0;    // backlight off; 0 = never
   bool clock24h = true;
   char timezone[48] = "UTC0";    // POSIX TZ string
-  bool nightDim = true;          // cap the backlight during the night phase
+  bool nightDim = true;          // dim the backlight during the night phase
+  ColorTone colorTone = ColorTone::Rich;  // palette strength for this panel
 
   // Clamp every field into its valid range (also used after loading).
   void sanitize();
@@ -33,8 +35,12 @@ struct TimezonePreset {
 // Small built-in list for the Settings app.
 const TimezonePreset *timezonePresets(int &count);
 
-// Brightness actually used for `level` when night dimming applies.
+// Perceived brightness actually used for `level` when night dimming applies:
+// a fraction of it, so the slider keeps working at night.
 uint8_t nightBrightness(uint8_t level);
+// Perceived level (0..255) -> backlight PWM duty (0..255). LEDs look far
+// brighter than their duty cycle, so a power curve makes the slider even.
+uint8_t backlightDuty(uint8_t level);
 
 // Loads and sanitizes; migrates older versions (the result is then Ok and the
 // caller should save it back).

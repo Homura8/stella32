@@ -287,8 +287,10 @@ void Runtime::updateTheme(bool force) {
   const SkyPhase phase = lt.valid ? phaseForHour(lt.hour) : SkyPhase::Night;
   const bool dark = resolveDark(settings_.appearance, phase);
   const Density density = densityFor(screen_.w, screen_.h);
-  if (!force && phase == theme_.phase && dark == theme_.color.dark && density == theme_.density) return;
-  theme_ = makeTheme(density, dark, phase);
+  if (!force && phase == theme_.phase && dark == theme_.color.dark && density == theme_.density &&
+      settings_.colorTone == theme_.tone)
+    return;
+  theme_ = makeTheme(density, dark, phase, settings_.colorTone);
   content_ = Rect(screen_.x, screen_.y + theme_.m.statusBar, screen_.w, screen_.h - theme_.m.statusBar);
   if (board_.display) applyBrightness();
   GestureConfig g;
@@ -511,7 +513,8 @@ void Runtime::applyBrightness() {
   uint8_t level = settings_.brightness;
   // Bedside comfort: the night sky also caps the backlight.
   if (settings_.nightDim && theme_.phase == SkyPhase::Night) level = nightBrightness(level);
-  if (power_ == PowerState::Dimmed) level = level / 4 < 12 ? 12 : level / 4;
+  if (power_ == PowerState::Dimmed) level = level / 2 < 16 ? 16 : level / 2;
+  level = backlightDuty(level);  // perceived level -> PWM duty
   if (power_ == PowerState::Off) level = 0;
   if (brightnessKnown_ && level == appliedBrightness_) return;
   board_.display->setBacklight(level);

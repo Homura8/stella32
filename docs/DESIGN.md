@@ -35,6 +35,21 @@ dithering so RGB565 never bands.
 Appearance `Auto` is light at dawn/day and dark ("starlit") at dusk/night;
 `Light` and `Dark` pin the mode while the sky still follows the phase.
 
+## Colour (panel tone)
+
+Small TN panels (like the CYD's) wash pastels out to white and flatten the
+sky phases. *Settings > Appearance > Colour* chooses how the palette is
+rendered (`ColorTone`, applied once in `makeTheme`):
+
+| Tone | Light skies | Saturation | Light depth (gamma) | Edges and shadows |
+| --- | --- | --- | --- | --- |
+| Soft | as designed | 1.0x | 1.0 | 1.0x |
+| Rich (default) | 30% toward the phase tint | 1.45x | 1.35 | 1.7x |
+| Vivid | 48% toward the phase tint | 1.9x | 1.7 | 2.4x |
+
+Text colours never change; accents get half the saturation gain; dark skies
+only gain saturation. Screenshots use the default (Rich).
+
 ## Materials
 
 | Token | Light | Dark | Use |
@@ -109,6 +124,9 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   12-hour mode, Monday-first day chips (accent when on) and Delete/Save.
 - **Timer:** display-font countdown over a thin accent progress track, a
   muted "Ends at ..." line, preset chips and Reset / +1 min / Start.
+- **Home:** greeting, date, a grid of square app tiles. When the apps span
+  several pages, a glass pill of ‹ › buttons sits beside the greeting
+  (swiping also works; resistive panels make swipes hard).
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

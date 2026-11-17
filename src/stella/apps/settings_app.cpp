@@ -15,6 +15,7 @@ using namespace layout;
 namespace {
 
 const char *const kAppearanceLabels[] = {"Auto", "Light", "Dark"};
+const char *const kToneLabels[] = {"Soft", "Rich", "Vivid"};
 const char *const kDimLabels[] = {"Never", "30 s", "1 min", "5 min"};
 const uint16_t kDimSeconds[] = {0, 30, 60, 300};
 const char *const kOffLabels[] = {"Never", "5 min", "15 min", "1 h"};
@@ -280,6 +281,7 @@ void SettingsApp::DisplayScreen::layout(const Rect &content, const Theme &t) {
   column(card_.inset(t.m.padding, t.m.padding),
          {px(label), px(t.m.control), px(label), px(t.m.control), px(label), px(t.m.control)}, t.dp(3), r);
   brightnessLabel_ = r[0];
+  night_ = t.phase == SkyPhase::Night;
   brightness_.bounds = r[1];
   dimLabel_ = r[2];
   dim_.bounds = r[3].inset(0, t.dp(2));
@@ -293,6 +295,7 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   brightness_.minimum = 16;
   brightness_.maximum = 255;
   brightness_.value = s.brightness;
+  nightDim_ = s.nightDim;
   dim_.labels = kDimLabels;
   dim_.count = 4;
   dim_.selected = nearestIndex(kDimSeconds, 4, s.dimAfterSec);
@@ -303,7 +306,8 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
 
 void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   paintGlass(c, t, card_, t.m.radiusCard);
-  sectionLabel(c, t, brightnessLabel_, "Brightness");
+  sectionLabel(c, t, brightnessLabel_,
+               nightDim_ && night_ ? "Brightness \xc2\xb7 dimmed for the night" : "Brightness");
   brightness_.draw(c, t);
   sectionLabel(c, t, dimLabel_, "Dim when idle");
   dim_.draw(c, t);
@@ -334,45 +338,57 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
 // ------------------------------------------------------------------ appearance
 
 void SettingsApp::AppearanceScreen::layout(const Rect &content, const Theme &t) {
-  Rect r[4];
+  Rect r[5];
   column(content.inset(t.m.margin, t.m.gapS),
-         {px(t.m.control), px(2 * t.font.body->lineHeight), px(t.m.control), flex()}, t.m.gapS, r);
+         {px(t.m.control), px(t.font.caption->lineHeight), px(t.m.control), px(t.m.control), flex()}, t.m.gapS, r);
   mode_.bounds = r[0];
   note_ = r[1];
-  nightCard_ = r[2];
-  nightDim_.bounds = r[2].inset(t.m.padding, 0);
-  skies_ = Rect(r[3].x, r[3].y, r[3].w, r[3].h < t.dp(64) ? r[3].h : t.dp(64));
+  Rect tone[2];
+  row(r[2], {px(t.dp(64)), flex()}, t.m.gapM, tone);
+  toneLabel_ = tone[0].inset(t.dp(4), 0);
+  tone_.bounds = tone[1];
+  nightCard_ = r[3];
+  nightDim_.bounds = r[3].inset(t.m.padding, 0);
+  skies_ = Rect(r[4].x, r[4].y, r[4].w, r[4].h < t.dp(64) ? r[4].h : t.dp(64));
 }
 
 void SettingsApp::AppearanceScreen::onShow(AppContext &ctx) {
   mode_.labels = kAppearanceLabels;
   mode_.count = 3;
   mode_.selected = (uint8_t)ctx.settings().appearance;
+  tone_.labels = kToneLabels;
+  tone_.count = 3;
+  tone_.selected = (uint8_t)ctx.settings().colorTone;
   nightDim_.on = ctx.settings().nightDim;
 }
 
 void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
   mode_.draw(c, t);
+  c.drawTextIn(*t.font.body, "Colour", toneLabel_, t.color.text);
+  tone_.draw(c, t);
   paintGlass(c, t, nightCard_, t.m.radiusCard);
   c.drawTextIn(*t.font.body, "Dim at night", nightDim_.bounds, t.color.text);
   nightDim_.draw(c, t);
-  c.drawWrapped(*t.font.body,
-                mode_.selected == 0 ? "Auto follows the sky: light through the day, starlit from dusk."
-                                    : "The sky still drifts from dawn to night.",
-                note_, t.color.textMuted, 2);
+  c.drawTextIn(*t.font.caption,
+               mode_.selected == 0 ? "Light through the day, starlit from dusk"
+                                   : "The sky still drifts from dawn to night",
+               note_, t.color.textMuted);
   // One swatch per sky phase, previewing the current mode's gradients.
   for (int i = 0; i < 4; ++i) {
     const Rect cell = grid(skies_, 4, 1, i, t.m.gapS);
     if (!c.visible(cell.inset(-glassOutset(t)))) continue;
-    const Theme preview = makeTheme(t.density, t.color.dark, (SkyPhase)i);
+    const Theme preview = makeTheme(t.density, t.color.dark, (SkyPhase)i, t.tone);
     Rect parts[2];
     column(cell, {flex(), px(t.font.caption->lineHeight)}, t.dp(3), parts);
     const Rect sw = parts[0];
     c.fillRoundRect(sw.offset(0, t.dp(2)), t.m.radiusControl, t.color.shadow, t.color.shadowAlpha);
     for (int y = 0; y < sw.h; ++y) {
       const int k = sw.h > 1 ? y * 255 / (sw.h - 1) : 0;
-      const Color row = k < 128 ? blend(preview.color.sky[0], preview.color.sky[1], (uint8_t)(k * 2))
-                                : blend(preview.color.sky[1], preview.color.orbPink, (uint8_t)((k - 128) * 2));
+      // Each phase's own gradient, ending in its tint, so they read apart.
+      // (Dark skies only borrow a little of the light tint.)
+      const int tintMax = t.color.dark ? 90 : 254;
+      const Color row = k < 128 ? blend(preview.color.sky[0], preview.color.sky[2], (uint8_t)(k * 2))
+                                : blend(preview.color.sky[2], preview.color.skyTint, (uint8_t)((k - 128) * tintMax / 127));
       const Rect line(sw.x, sw.y + y, sw.w, 1);
       const Rect prev = c.pushClip(line);
       c.fillRoundRect(sw, t.m.radiusControl, row);
@@ -389,6 +405,12 @@ bool SettingsApp::AppearanceScreen::onEvent(const Event &e, AppContext &ctx) {
     SystemSettings s = ctx.settings();
     s.nightDim = nightDim_.on;
     ctx.applySettings(s);
+    return true;
+  }
+  if (tone_.handle(e, ctx)) {
+    SystemSettings s = ctx.settings();
+    s.colorTone = (ColorTone)tone_.selected;
+    ctx.applySettings(s);  // re-themes and repaints everything
     return true;
   }
   if (!mode_.handle(e, ctx)) return false;
