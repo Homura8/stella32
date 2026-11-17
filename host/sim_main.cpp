@@ -77,8 +77,8 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("settings");
     s.run(200);
     save(4, "settings");
-    const char *pages[] = {"wifi", "display", "appearance", "time", "about"};
-    for (int i = 0; i < 5; ++i) {
+    const char *pages[] = {"wifi", "display", "sound", "appearance", "time", "about"};
+    for (int i = 0; i < 6; ++i) {
       const Point row = s.settingsRow(i);
       s.tap(row.x, row.y);
       s.run(600);  // Wi-Fi: let the scan finish
@@ -164,6 +164,26 @@ void capture(int width, int height, const std::string &root) {
     save(16, "alert");
     tapRect(s, s.os.alertButtonRect(0));
 
+    // The stopwatch, a few laps in.
+    s.os.goHome();
+    s.os.launch("stopwatch");
+    s.run(100);
+    {
+      const Rect area = sc.inset(st.m.margin, st.m.gapS);
+      const Rect buttons(area.x, area.bottom() - st.m.control, area.w, st.m.control);
+      Rect b[2];
+      layout::row(buttons, {layout::flex(), layout::flex(2)}, st.m.gapM, b);
+      tapRect(s, b[1]);  // Start
+      const int lapMs[] = {21300, 19800, 23100, 20400};
+      for (int ms : lapMs) {
+        s.run((uint32_t)ms);
+        tapRect(s, b[0]);  // Lap
+      }
+      s.run(7300);
+      save(26, "stopwatch");
+      tapRect(s, b[1]);  // Stop
+    }
+
     // Display calibration (both tabs) and touch calibration.
     s.os.launch("settings");
     s.run(100);
@@ -196,7 +216,7 @@ void capture(int width, int height, const std::string &root) {
     while (s.os.topScreen() != &s.settings.root()) s.os.pop();  // earlier scenes left screens on its stack
     s.run(100);
     {
-      const Point aboutRow = s.settingsRow(4);
+      const Point aboutRow = s.settingsRow(5);
       s.tap(aboutRow.x, aboutRow.y);
       Rect ar[2];
       layout::column(sc.inset(st.m.margin, st.m.gapS), {layout::flex(), layout::px(st.m.control)}, st.m.gapS, ar);
@@ -205,7 +225,7 @@ void capture(int width, int height, const std::string &root) {
       const int lh = st.font.body->lineHeight;
       Rect ur[3];
       layout::column(sc.inset(st.m.margin, st.m.gapS),
-                     {layout::px(2 * lh + st.dp(6) + st.dp(6) + 2 * st.m.padding), layout::flex(), layout::px(st.m.control)},
+                     {layout::px(2 * lh + st.dp(32) + st.dp(6) + st.dp(9) + 2 * st.m.padding), layout::flex(), layout::px(st.m.control)},
                      st.m.gapM, ur);
       const Rect action = layout::center(ur[2], st.dp(200), st.m.control);
       tapRect(s, action);

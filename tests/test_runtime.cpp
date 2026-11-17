@@ -157,7 +157,7 @@ TEST(home_pages_with_buttons) {
   const int tileW = (area.w - t.m.gapM * (columns - 1)) / columns;
   const int tileY = headerBottom + t.m.gapS + tileW / 2;
   s.tap(area.x + tileW / 2, tileY);
-  CHECK(strcmp(topApp(s), "settings") == 0);  // the fifth listed app
+  CHECK(strcmp(topApp(s), "stopwatch") == 0);  // the fifth listed app
   s.os.goHome();
   s.run(100);
   s.tap(prevX, y);
@@ -238,7 +238,7 @@ TEST(every_screen_renders_at_every_size) {
       CHECK(s.dev.display.framebuffer().size() == (size_t)sz[0] * sz[1]);
     }
     s.os.launch("settings");
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 6; ++i) {
       const Point row = s.settingsRow(i);
       s.tap(row.x, row.y);
       CHECK(s.os.topScreen() != &s.settings.root());

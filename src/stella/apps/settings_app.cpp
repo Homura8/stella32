@@ -66,6 +66,10 @@ void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kNetwork && setup_.isVisible()) setup_.refresh(ctx);
   if ((topicId == topics::kUpdate || topicId == topics::kNetwork) && softwareUpdate_.isVisible())
     softwareUpdate_.refresh(ctx);
+  if (topicId == topics::kUpdate && main_.isVisible()) {
+    main_.onShow(ctx);  // the About row's "Update 0.6.1"
+    ctx.invalidate(ctx.contentRect());
+  }
 }
 
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
@@ -89,6 +93,15 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
   const SystemSettings &s = ctx.settings();
   snprintf(appearance_, sizeof(appearance_), "%s", kAppearanceLabels[(int)s.appearance]);
   snprintf(time_, sizeof(time_), "%s \xc2\xb7 %s", s.clock24h ? "24 h" : "12 h", zoneLabel(s.timezone));
+  if (s.volume == 0) snprintf(sound_, sizeof(sound_), "Off");
+  else snprintf(sound_, sizeof(sound_), "%u%%", (unsigned)s.volume);
+  // An offered or installed update shows here, so it is seen without digging.
+  const UpdateStatus update = ctx.update().status();
+  about_[0] = '\0';
+  if (update.state == UpdateState::Available && update.version[0])
+    snprintf(about_, sizeof(about_), "Update %.12s", update.version);
+  else if (update.state == UpdateState::Ready)
+    snprintf(about_, sizeof(about_), "Restart to update");
   const NetworkStatus net = ctx.network().status();
   snprintf(wifi_, sizeof(wifi_), "%s",
            !net.present                              ? "Not available"
@@ -103,9 +116,10 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
     const char *detail;
   } rows[kRows] = {{"Wi-Fi", icons::wifi, 2, wifi_},
                    {"Display", icons::sun, 3, nullptr},
+                   {"Sound", icons::bell, 1, sound_},
                    {"Appearance", icons::appearance, 1, appearance_},
                    {"Time", icons::clock, 2, time_},
-                   {"About", icons::info, 0, nullptr}};
+                   {"About", icons::info, 0, about_}};
   for (int i = 0; i < kRows; ++i) {
     rows_[i].title = rows[i].title;
     rows_[i].icon = rows[i].icon;
@@ -120,12 +134,58 @@ void SettingsApp::MainScreen::draw(Canvas &c, const Theme &t) {
 }
 
 bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
-  Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.appearance_, &app_.time_, &app_.about_};
+  Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_};
   for (int i = 0; i < kRows; ++i) {
     if (rows_[i].handle(e, ctx)) {
       ctx.push(*targets[i]);
       return true;
     }
+  }
+  return false;
+}
+
+// ------------------------------------------------------------------ sound
+
+void SettingsApp::SoundScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int rowH = t.m.control + t.dp(4);
+  card_ = Rect(area.x, area.y, area.w, rowH + 2 * t.dp(4));
+  const Rect inner = card_.inset(t.m.padding, t.dp(4));
+  Rect parts[2];
+  row(inner, {px(t.dp(96)), flex()}, t.m.gapM, parts);
+  label_ = parts[0];
+  volume_.bounds = parts[1];
+  note_ = Rect(area.x, card_.bottom() + t.m.gapM, area.w, area.bottom() - card_.bottom() - t.m.gapM);
+}
+
+void SettingsApp::SoundScreen::onShow(AppContext &ctx) {
+  volume_.minimum = 0;
+  volume_.maximum = 100;
+  volume_.value = ctx.settings().volume;
+  changed_ = false;
+}
+
+void SettingsApp::SoundScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, card_, t.m.radiusCard);
+  c.drawTextIn(*t.font.body, "Volume", label_, t.color.text);
+  volume_.draw(c, t);
+  c.drawWrapped(*t.font.caption,
+                "For alarms and timers on a speaker plugged into the SPEAK connector. Let go of the slider to hear it.",
+                note_.inset(t.dp(4), t.dp(2)), t.color.textMuted, 4, Align::Center);
+}
+
+bool SettingsApp::SoundScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (volume_.handle(e, ctx, ctx.theme())) {
+    SystemSettings s = ctx.settings();
+    s.volume = (uint8_t)volume_.value;
+    ctx.applySettings(s);
+    changed_ = true;
+    return true;
+  }
+  if (volume_.dragging) return true;
+  if (e.type == EventType::Release && changed_) {
+    changed_ = false;
+    ctx.previewChime();
   }
   return false;
 }
@@ -941,15 +1001,18 @@ bool SettingsApp::AboutScreen::onEvent(const Event &e, AppContext &ctx) {
 void SettingsApp::UpdateScreen::layout(const Rect &content, const Theme &t) {
   const int lh = t.font.body->lineHeight;
   const int bar = t.dp(6);
+  const int toggleH = t.dp(32);
   Rect r[3];
-  column(content.inset(t.m.margin, t.m.gapS), {px(2 * lh + bar + t.dp(6) + 2 * t.m.padding), flex(), px(t.m.control)},
-         t.m.gapM, r);
+  column(content.inset(t.m.margin, t.m.gapS),
+         {px(2 * lh + toggleH + bar + t.dp(9) + 2 * t.m.padding), flex(), px(t.m.control)}, t.m.gapM, r);
   card_ = r[0];
-  Rect inner[3];
-  column(r[0].inset(t.m.padding, t.m.padding), {px(lh), px(lh), px(bar)}, t.dp(3), inner);
+  Rect inner[4];
+  column(r[0].inset(t.m.padding, t.m.padding), {px(lh), px(lh), px(toggleH), px(bar)}, t.dp(3), inner);
   rows_[0] = inner[0];
   rows_[1] = inner[1];
-  bar_ = inner[2];
+  autoRow_ = inner[2];
+  auto_.bounds = autoRow_;
+  bar_ = inner[3];
   status_ = r[1];
   action_.bounds = layout::center(r[2], t.dp(200), t.m.control);
 }
@@ -958,6 +1021,7 @@ void SettingsApp::UpdateScreen::onShow(AppContext &ctx) { refresh(ctx); }
 
 void SettingsApp::UpdateScreen::refresh(AppContext &ctx) {
   st_ = ctx.update().status();
+  auto_.on = ctx.settings().autoUpdate;
   const NetworkStatus net = ctx.network().status();
   snprintf(installed_, sizeof(installed_), "Stella %s", ctx.status().version);
   if (st_.version[0] && (st_.state == UpdateState::Available || st_.state == UpdateState::Downloading ||
@@ -1027,6 +1091,8 @@ void SettingsApp::UpdateScreen::draw(Canvas &c, const Theme &t) {
     c.drawTextIn(*t.font.body, values[i], parts[1], p.text, Align::Right);
   }
   // Progress (only while it moves).
+  c.drawTextIn(*t.font.body, "Check daily", autoRow_, p.text);
+  auto_.draw(c, t);
   c.fillRoundRect(bar_, bar_.h / 2, p.line, (uint8_t)(p.lineAlpha * 2));
   if (st_.state == UpdateState::Downloading || st_.state == UpdateState::Ready) {
     const int w = bar_.w * (st_.state == UpdateState::Ready ? 100 : st_.percent) / 100;
@@ -1038,6 +1104,12 @@ void SettingsApp::UpdateScreen::draw(Canvas &c, const Theme &t) {
 }
 
 bool SettingsApp::UpdateScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (auto_.handle(e, ctx)) {
+    SystemSettings s = ctx.settings();
+    s.autoUpdate = auto_.on;
+    ctx.applySettings(s);
+    return true;
+  }
   if (!action_.handle(e, ctx)) return false;
   switch (st_.state) {
     case UpdateState::Idle:

@@ -25,6 +25,7 @@ void check(Canvas &c, const Rect &box, Color color);
 void lock(Canvas &c, const Rect &box, Color color);
 void bell(Canvas &c, const Rect &box, Color color);
 void stopwatch(Canvas &c, const Rect &box, Color color);
+void hourglass(Canvas &c, const Rect &box, Color color);
 void plus(Canvas &c, const Rect &box, Color color);
 void chevronUp(Canvas &c, const Rect &box, Color color);
 void chevronDown(Canvas &c, const Rect &box, Color color);

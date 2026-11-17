@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.6.0"
+#define STELLA_VERSION "0.6.1"
 #endif
 
 namespace stella {
@@ -143,6 +143,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     restartAtMs_ = millis() + 900;
   }
   bool showAlert(const Alert &alert) override;
+  void previewChime() override;
   void dismissAlert(uint16_t tag) override;
   void scheduleWake(uint32_t delayMs) override;
   void setNextAlarm(int64_t epochSeconds) override;
@@ -190,6 +191,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void beginAlert(uint32_t now);
   void closeAlert(int action);
   void updateAlert(uint32_t now);
+  void updatePreview(uint32_t now);
+  void applyVolume();
   void runWakes(uint32_t now);
   int callerIndex() const;
   Rect statusBarRect() const { return Rect(screen_.x, screen_.y, screen_.w, theme_.m.statusBar); }
@@ -266,6 +269,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   size_t alertCount_ = 0;
   uint32_t alertShownAt_ = 0, chimeAt_ = 0;
   uint8_t chimeStep_ = 0;
+  uint8_t previewStep_ = 0;  // 0 = no preview playing; else 1 + the note being played
+  uint32_t previewAt_ = 0;
   Rect alertCard_, alertHeader_, alertMessage_;
   Button alertButtons_[2];
   int lastMinute_ = -1;

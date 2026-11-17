@@ -41,6 +41,7 @@ void SystemSettings::sanitize() {
   if (panelRefreshHz != 0 && (panelRefreshHz < 60 || panelRefreshHz > 120)) panelRefreshHz = 0;
   if (skyPin > 4) skyPin = 0;
   if (bedside > 2) bedside = 1;
+  if (volume > 100) volume = 100;
   // A correction outside these bounds is a failed calibration: undo it.
   if (touchScaleX < 819 || touchScaleX > 1280 || touchScaleY < 819 || touchScaleY > 1280 || touchOffsetX < -60 ||
       touchOffsetX > 60 || touchOffsetY < -60 || touchOffsetY > 60) {
@@ -115,6 +116,25 @@ struct SettingsV5 {
   bool clock24h;
   char timezone[48];
   bool nightDim;
+  ColorTone colorTone;
+  uint8_t contrastLight, contrastDark, whiteLevel, warmth;
+  bool dither;
+  int8_t panelVcom;
+  uint8_t panelRefreshHz;
+  uint8_t skyPin;
+  int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+};
+
+// Frozen layout of version 6 (0.4.0 - 0.6.0). Never edit.
+struct SettingsV6 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  uint8_t bedside;
   ColorTone colorTone;
   uint8_t contrastLight, contrastDark, whiteLevel, warmth;
   bool dither;
@@ -235,6 +255,34 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.touchScaleY = v5.touchScaleY;
       loaded.touchOffsetY = v5.touchOffsetY;
       if (migrated) *migrated = true;  // bedside keeps the board's default
+    }
+  } else if (s == RecordStatus::OldVersion && found == 6) {
+    SettingsV6 v6;
+    s = loadRecord(store, kNamespace, kKey, 6, &v6, sizeof(v6));
+    if (s == RecordStatus::Ok) {
+      loaded = out;
+      loaded.appearance = v6.appearance;
+      loaded.brightness = v6.brightness;
+      loaded.dimAfterSec = v6.dimAfterSec;
+      loaded.sleepAfterSec = v6.sleepAfterSec;
+      loaded.clock24h = v6.clock24h;
+      memcpy(loaded.timezone, v6.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v6.nightDim;
+      loaded.bedside = v6.bedside;
+      loaded.colorTone = v6.colorTone;
+      loaded.contrastLight = v6.contrastLight;
+      loaded.contrastDark = v6.contrastDark;
+      loaded.whiteLevel = v6.whiteLevel;
+      loaded.warmth = v6.warmth;
+      loaded.dither = v6.dither;
+      loaded.panelVcom = v6.panelVcom;
+      loaded.panelRefreshHz = v6.panelRefreshHz;
+      loaded.skyPin = v6.skyPin;
+      loaded.touchScaleX = v6.touchScaleX;
+      loaded.touchOffsetX = v6.touchOffsetX;
+      loaded.touchScaleY = v6.touchScaleY;
+      loaded.touchOffsetY = v6.touchOffsetY;
+      if (migrated) *migrated = true;  // volume and autoUpdate keep their defaults
     }
   }
   if (s == RecordStatus::Ok) {

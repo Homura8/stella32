@@ -197,6 +197,17 @@ void stopwatch(Canvas &c, const Rect &box, Color color) {
   seg(c, f, 0.f, 0.06f, 0.12f, 0.12f, color);
 }
 
+void hourglass(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  seg(c, f, -0.24f, -0.36f, 0.24f, -0.36f, color);  // top and bottom caps
+  seg(c, f, -0.24f, 0.36f, 0.24f, 0.36f, color);
+  seg(c, f, -0.18f, -0.36f, 0.f, 0.f, color);  // the glass: two funnels meeting at the neck
+  seg(c, f, 0.18f, -0.36f, 0.f, 0.f, color);
+  seg(c, f, 0.f, 0.f, -0.18f, 0.36f, color);
+  seg(c, f, 0.f, 0.f, 0.18f, 0.36f, color);
+  disc(c, f.cx, f.Y(0.24f), 0.055f * f.s, color);  // sand
+}
+
 void plus(Canvas &c, const Rect &box, Color color) {
   const Frame f = frame(box);
   seg(c, f, -0.26f, 0.f, 0.26f, 0.f, color);

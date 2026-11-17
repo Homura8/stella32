@@ -32,6 +32,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
     : dev(width, height) {
   config.serviceThread = threaded;
   config.updateManifestUrl = "https://updates.example/stella/manifest.json";
+  config.defaults.autoUpdate = false;  // the daily check is tested on its own; other tests count requests
   if (online) {
     config.wifiSsid = "Starlight";
     config.wifiPassword = "moonbeam";
@@ -49,6 +50,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.install(weather);
   os.install(alarms);
   os.install(timer);
+  os.install(stopwatch);
   os.install(settings);
   os.install(touchTest);
   os.start();
@@ -99,7 +101,11 @@ void SimSession::drag(int x0, int y0, int x1, int y1) {
 Point SimSession::settingsRow(int i) const {
   const Theme &t = os.theme();
   const Rect c = os.contentRect();
-  return Point{(int16_t)c.centerX(), (int16_t)(c.y + t.m.gapS + i * t.m.row + t.m.row / 2)};
+  // Settings' list shrinks its rows when all of them do not fit (see MainScreen::layout).
+  constexpr int kRows = 6;
+  const int areaH = c.h - 2 * t.m.gapS;
+  const int rowH = kRows * t.m.row <= areaH ? t.m.row : areaH / kRows;
+  return Point{(int16_t)c.centerX(), (int16_t)(c.y + t.m.gapS + i * rowH + rowH / 2)};
 }
 
 Point SimSession::backButton() const { return Point{(int16_t)(os.theme().m.margin + 6), (int16_t)(os.theme().m.statusBar / 2)}; }

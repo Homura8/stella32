@@ -393,7 +393,7 @@ TEST(software_update_screen_by_touch) {
   serve(s, Offer{});
   s.os.launch("settings");
   s.run(100);
-  const Point about = s.settingsRow(4);
+  const Point about = s.settingsRow(5);
   s.tap(about.x, about.y);
   const Rect entry = aboutUpdateButton(s);
   s.tap(entry.centerX(), entry.centerY());
@@ -423,7 +423,7 @@ TEST(software_update_screen_renders_at_every_size_and_state) {
     serve(s, Offer{});
     s.os.launch("settings");
     s.run(100);
-    const Point about = s.settingsRow(4);
+    const Point about = s.settingsRow(5);
     s.tap(about.x, about.y);
     const Rect entry = aboutUpdateButton(s);
     CHECK(entry.h >= s.os.theme().dp(32));
@@ -438,4 +438,96 @@ TEST(software_update_screen_renders_at_every_size_and_state) {
     }
     CHECK(s.os.update().status().state == UpdateState::Ready);
   }
+}
+
+// ------------------------------------------------------------ daily check
+
+namespace {
+void setAutoUpdate(SimSession &s, bool on) {
+  SystemSettings st = s.os.settings();
+  st.autoUpdate = on;
+  s.os.applySettings(st);
+}
+int manifestRequests(SimSession &s) { return s.dev.http.manifestRequests; }
+}  // namespace
+
+TEST(daily_check_finds_an_update_by_itself_and_never_installs_it) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  setAutoUpdate(s, true);  // switching it on looks right away, quietly
+  s.run(3000);
+  const UpdateStatus st = s.os.update().status();
+  CHECK(st.state == UpdateState::Available);
+  CHECK(strcmp(st.version, "99.0.0") == 0);
+  CHECK(!s.dev.firmware.finished && !s.dev.firmware.begun);  // nothing was downloaded
+  CHECK_EQ(s.dev.platform.restarts(), 0);
+}
+
+TEST(daily_check_is_off_when_the_setting_is_off) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  const int before = manifestRequests(s);
+  s.run(3u * 60u * 60u * 1000u);  // three hours: nothing asks the server
+  CHECK_EQ(manifestRequests(s), before);
+  CHECK(s.os.update().status().state == UpdateState::Idle);
+}
+
+TEST(daily_check_repeats_once_a_day_and_notices_a_newer_version_later) {
+  SimSession s(320, 240);
+  Offer old;
+  old.version = "0.0.1";  // nothing newer yet
+  serve(s, old);
+  setAutoUpdate(s, true);
+  s.run(3000);
+  CHECK(s.os.update().status().state == UpdateState::UpToDate);
+  const int first = manifestRequests(s);
+  s.run(20u * 60u * 60u * 1000u);
+  CHECK_EQ(manifestRequests(s), first);  // not yet a day
+  serve(s, Offer{});                      // the server now has a newer version
+  s.run(5u * 60u * 60u * 1000u);          // past 24 h
+  CHECK(manifestRequests(s) > first);
+  CHECK(s.os.update().status().state == UpdateState::Available);
+}
+
+TEST(daily_check_failures_stay_quiet_and_retry) {
+  SimSession s(320, 240);
+  s.dev.http.routes.insert(s.dev.http.routes.begin(), {"manifest.json", "", 503});
+  setAutoUpdate(s, true);
+  s.run(3000);
+  const UpdateStatus st = s.os.update().status();
+  CHECK(st.state == UpdateState::Idle);  // no error is shown for a background check
+  CHECK(st.error[0] == '\0');
+  const int tried = manifestRequests(s);
+  CHECK(tried >= 1);
+  serve(s, Offer{});                    // the server recovers
+  s.run(45u * 60u * 1000u);             // it tries again within the hour
+  CHECK(manifestRequests(s) > tried);
+  CHECK(s.os.update().status().state == UpdateState::Available);
+}
+
+TEST(daily_check_does_not_disturb_an_offer_or_a_failed_result) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  setAutoUpdate(s, true);
+  s.run(3000);
+  CHECK(s.os.update().status().state == UpdateState::Available);
+  const int before = manifestRequests(s);
+  s.run(30u * 60u * 60u * 1000u);  // a day and a half with the offer on screen
+  CHECK_EQ(manifestRequests(s), before);
+  CHECK(s.os.update().status().state == UpdateState::Available);
+}
+
+TEST(settings_shows_the_offered_update_and_the_toggle_saves) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  setAutoUpdate(s, true);
+  s.run(3000);
+  s.os.launch("settings");
+  s.run(200);
+  const Point about = s.settingsRow(5);
+  s.tap(about.x, about.y);
+  const Rect entry = aboutUpdateButton(s);
+  s.tap(entry.centerX(), entry.centerY());
+  CHECK(strcmp(s.os.topScreen()->title(), "Software update") == 0);
+  CHECK(s.os.settings().autoUpdate);
 }

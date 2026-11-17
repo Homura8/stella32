@@ -16,16 +16,16 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.6.0, signed over-the-air updates |
+| Version | 0.6.1: daily update check, volume, Stopwatch, faster phone setup |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 125 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
-| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
+| Host tests | 148 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.46 MB flash (74% of a 1.9 MB update slot), 83 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
 Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *bedside* mode
 that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
-API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Settings**
-(Wi-Fi, display, appearance, time, about) and **Touch test** (calibration aid).
+API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Stopwatch**
+(laps), **Settings** (Wi-Fi, display, sound, appearance, time, about) and **Touch test** (calibration aid).
 Wi-Fi is set up on the device itself (scan, pick a network, type the password
 on the on-screen keyboard) or from a phone (*Settings > Wi-Fi > Phone*: join
 "Stella-Setup" and a web page takes the network and password). Alarms and timers ring through a system alert over
@@ -142,7 +142,9 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
    stars visible, and does the black background still flicker?
 9. *Phone setup*: *Settings > Wi-Fi > Phone* shows "Stella-Setup", a password
    and 192.168.4.1. Join it from a phone: the setup page should open by
-   itself (otherwise open the address). The page lists nearby networks; enter
+   itself within a few seconds (0.6.0 took about a minute: its web server
+   served one connection at a time and waited on silent ones; 0.6.1 reads
+   every connection without waiting; otherwise open the address). The page lists nearby networks; enter
    a password and Connect. Try a wrong password first: the page and the screen
    say why and it stays open; the right one closes setup and the device
    connects. Cancel and the back button close it; so does waiting 10 minutes.
@@ -156,7 +158,10 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     restart the About screen shows it and, a minute later, the `health` log
     says the update is confirmed. To test the rollback: install a build whose
     firmware hangs or resets at boot (never confirmed): the device returns to
-    the previous version by itself.
+    the previous version by itself. With *Check daily* on (Settings > About >
+    Software update, on by default) the device also looks by itself two
+    minutes after boot and then once a day: Settings' About row says
+    "Update 0.6.2" without anything being installed.
 12. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
 13. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
@@ -165,10 +170,16 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
    sleeping screen; *Again* restarts it. An alarm set for the next minute
    rings, *Snooze* brings it back nine minutes later, and a one-off alarm
    switches itself off. With a small speaker on the *SPEAK* connector the
-   chime is audible but gentle (`STELLA_CYD_TONE_DUTY` adjusts it).
-15. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+   chime volume is set in Settings > Sound.
+15. *Sound and Stopwatch*: Settings > Sound's slider sets the alarm and timer
+    volume; letting go plays two short notes at the new level (the default,
+    60 %, is louder than 0.6.0's fixed level; the curve is a guess for the
+    CYD's amplifier, so report if the steps feel uneven). Stopwatch: Start,
+    Lap (newest on top, quickest accented, slowest marked), Stop, Resume,
+    Reset; it keeps counting while another app is open.
+16. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-16. Leave it running overnight; no `restarting` line in the log and the
+17. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

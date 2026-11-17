@@ -168,6 +168,7 @@ class SimHttp : public HttpClient {
   int requests = 0;
   int failWith = 0;  // non-zero: every request returns this
   std::string lastUrl;
+  int manifestRequests = 0;  // requests whose URL mentions manifest.json
   int get(const char *url, uint32_t timeoutMs, size_t maxBodyBytes, HttpSink &sink) override;
 };
 
@@ -255,12 +256,15 @@ class SimSound : public Sound {
     current_ = hz;
     if (hz) ++tones_;
   }
+  void setVolume(uint8_t percent) override { volume_ = percent; }
   uint16_t current() const { return current_; }
   int tones() const { return tones_; }  // tones started so far
+  uint8_t volume() const { return volume_; }
 
  private:
   uint16_t current_ = 0;
   int tones_ = 0;
+  uint8_t volume_ = 255;  // until the runtime sets it
 };
 
 // A complete simulated device.

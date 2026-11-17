@@ -7,7 +7,6 @@
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
-#include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_attr.h>
@@ -21,7 +20,9 @@
 #include "../../core/log.h"
 #include "../../core/text.h"
 #include "../../hal/hal.h"
+#include "../../core/deadline.h"
 #include "../../net/firmware_update.h"
+#include "../../net/http_request.h"
 #include "../../net/setup_portal.h"
 #include "../../runtime/runtime.h"
 
@@ -245,29 +246,79 @@ class Esp32Firmware : public FirmwareSlot {
 // device, so a phone opens the page by itself) and a tiny web server. All
 // meaning lives in the portable SetupPortal; this only moves bytes. Runs on
 // the service thread (poll() is called about every 25 ms while setup is open).
+//
+// The server never waits. A phone that joins opens several connections at once
+// (captive-portal probes, speculative sockets that send nothing), and the
+// stock WebServer serves one client at a time and waits up to five seconds on
+// each silent one, which made the page take about a minute. Here every
+// connection is read without blocking, a few are open at once, a request is
+// answered as soon as it is complete, and a socket that stays silent is
+// closed after kIdleMs.
 class Esp32SetupServer : public SetupServer {
  public:
+  static constexpr int kSlots = 4;
+  static constexpr uint32_t kIdleMs = 2500;
+
   bool begin(const char *apSsid, const char *apPassword, SetupHandler &handler) override {
     handler_ = &handler;
     WiFi.mode(WIFI_AP_STA);  // keep the station side alive for scanning and joining
-    if (!WiFi.softAP(apSsid, apPassword, /*channel=*/1, /*ssid_hidden=*/0, /*max_connection=*/2)) {
+    if (!WiFi.softAP(apSsid, apPassword, /*channel=*/1, /*ssid_hidden=*/0, /*max_connection=*/3)) {
       WiFi.mode(WIFI_STA);
       return false;
     }
     dns_.start(53, "*", WiFi.softAPIP());
-    web_.onNotFound([this]() { serve(); });
-    web_.begin();
+    server_.begin();
+    server_.setNoDelay(true);
     running_ = true;
     return true;
   }
   void poll() override {
     if (!running_) return;
-    dns_.processNextRequest();
-    web_.handleClient();
+    for (int i = 0; i < 4; ++i) dns_.processNextRequest();  // a phone asks many names at once
+    // Take every connection that is waiting.
+    for (;;) {
+      NetworkClient client = server_.accept();
+      if (!client) break;
+      Slot *free = nullptr;
+      for (Slot &slot : slots_)
+        if (!slot.client) {
+          free = &slot;
+          break;
+        }
+      if (!free) {  // all busy: the longest-silent one makes room
+        free = &slots_[0];
+        for (Slot &slot : slots_)
+          if (elapsedMs(millis(), slot.lastMs) > elapsedMs(millis(), free->lastMs)) free = &slot;
+        close(*free);
+      }
+      free->client = client;
+      free->parser.reset();
+      free->lastMs = millis();
+    }
+    for (Slot &slot : slots_) {
+      if (!slot.client) continue;
+      uint8_t buffer[128];
+      int budget = 8;  // a few reads per client per poll keeps one busy phone from starving the rest
+      while (budget-- > 0 && slot.client.connected() && slot.client.available() > 0 && !slot.parser.done()) {
+        const int n = slot.client.read(buffer, sizeof(buffer));
+        if (n <= 0) break;
+        slot.lastMs = millis();
+        slot.parser.feed(buffer, (size_t)n);
+      }
+      if (slot.parser.done()) {
+        respond(slot);
+        close(slot);
+      } else if (!slot.client.connected() && slot.client.available() <= 0) {
+        close(slot);  // the phone hung up without asking for anything
+      } else if (elapsedMs(millis(), slot.lastMs) >= kIdleMs) {
+        close(slot);  // a speculative connection that never spoke
+      }
+    }
   }
   void end() override {
     if (!running_) return;
-    web_.stop();
+    for (Slot &slot : slots_) close(slot);
+    server_.end();
     dns_.stop();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
@@ -277,59 +328,65 @@ class Esp32SetupServer : public SetupServer {
   void address(char *out, size_t capacity) override { copyText(out, capacity, WiFi.softAPIP().toString().c_str()); }
 
  private:
-  // Re-encodes one form value (the web server has already decoded it).
-  static size_t encode(char *dst, size_t cap, const String &value) {
-    static const char kHex[] = "0123456789ABCDEF";
-    size_t n = 0;
-    for (size_t i = 0; i < value.length() && n + 4 < cap; ++i) {
-      const unsigned char c = (unsigned char)value[i];
-      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
-        dst[n++] = (char)c;
-      } else {
-        dst[n++] = '%';
-        dst[n++] = kHex[c >> 4];
-        dst[n++] = kHex[c & 15];
-      }
-    }
-    dst[n] = '\0';
-    return n;
+  struct Slot {
+    NetworkClient client;
+    HttpRequestParser parser;  // wiped on reset: the form holds the Wi-Fi password
+    uint32_t lastMs = 0;
+  };
+
+  void close(Slot &slot) {
+    slot.parser.reset();
+    if (slot.client) slot.client.stop();
+    slot.client = NetworkClient();
   }
 
-  void serve() {
-    if (!handler_) return;
-    SetupRequest request;
-    request.post = web_.method() == HTTP_POST;
-    const String uri = web_.uri();
-    request.path = uri.c_str();
-    char body[512];
-    size_t n = 0;
-    body[0] = '\0';
-    if (request.post) {
-      for (int i = 0; i < web_.args() && n + 8 < sizeof(body); ++i) {
-        if (i) body[n++] = '&';
-        n += encode(body + n, sizeof(body) - n, web_.argName(i));
-        body[n++] = '=';
-        n += encode(body + n, sizeof(body) - n, web_.arg(i));
-        body[n] = '\0';
-      }
+  void respond(Slot &slot) {
+    const HttpRequestParser &req = slot.parser;
+    int status = 200;
+    const char *type = "text/html; charset=utf-8";
+    size_t length = 0;
+    if (req.state() == HttpRequestParser::State::Failed) {
+      status = req.errorStatus();
+      type = "text/plain";
+      length = (size_t)snprintf(page_, sizeof(page_), "Bad request");
+    } else if (handler_) {
+      SetupRequest request;
+      request.post = req.post();
+      request.path = req.path();
+      request.body = req.body();
+      request.bodyLen = req.bodyLen();
+      SetupResponse response;
+      response.body = page_;
+      response.capacity = sizeof(page_);
+      handler_->handleSetup(request, response);
+      length = response.length < sizeof(page_) ? response.length : sizeof(page_) - 1;
+      status = response.status;
+      type = response.contentType;
     }
-    request.body = body;
-    request.bodyLen = n;
-    SetupResponse response;
-    response.body = page_;
-    response.capacity = sizeof(page_);
-    handler_->handleSetup(request, response);
-    page_[response.length < sizeof(page_) ? response.length : sizeof(page_) - 1] = '\0';
-    web_.sendHeader("Cache-Control", "no-store");
-    web_.send(response.status, response.contentType, page_);
-    volatile char *v = body;  // the form held the Wi-Fi password
-    for (size_t i = 0; i < sizeof(body); ++i) v[i] = 0;
+    page_[length] = '\0';
+    char head[160];
+    const int h = snprintf(head, sizeof(head),
+                           "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n"
+                           "Cache-Control: no-store\r\nConnection: close\r\n\r\n",
+                           status, status == 200 ? "OK" : "Error", type, (unsigned)length);
+    slot.client.write((const uint8_t *)head, (size_t)(h > 0 && h < (int)sizeof(head) ? h : sizeof(head) - 1));
+    // A GET page is a few KB; write it in pieces so a slow phone is not waited for in one go.
+    const uint8_t *data = (const uint8_t *)page_;
+    size_t left = length;
+    while (left > 0 && slot.client.connected()) {
+      const size_t n = slot.client.write(data, left < 1024 ? left : 1024);
+      if (n == 0) break;
+      data += n;
+      left -= n;
+    }
+    slot.client.flush();
   }
 
-  WebServer web_{80};
+  NetworkServer server_{80};
   DNSServer dns_;
   SetupHandler *handler_ = nullptr;
   bool running_ = false;
+  Slot slots_[kSlots];
   char page_[SetupPortal::kPageBytes];
 };
 

@@ -12,9 +12,10 @@ namespace stella {
 
 struct SystemSettings {
   // v2 added nightDim, v3 colorTone, v4 the display and touch calibration,
-  // v5 per-mode contrast, white level and warmth, v6 the bedside clock. Older
+  // v5 per-mode contrast, white level and warmth, v6 the bedside clock, v7 the speaker volume and
+  // the automatic update check. Older
   // records are migrated by loadSettings().
-  static constexpr uint16_t kVersion = 6;
+  static constexpr uint16_t kVersion = 7;
 
   Appearance appearance = Appearance::Auto;
   uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
@@ -36,6 +37,8 @@ struct SystemSettings {
   uint8_t skyPin = 0;            // 0 = the sky follows the time; 1..4 = dawn..night
   // Touch correction applied to every touch point: x' = x * scaleX / 1024 + offsetX.
   int16_t touchScaleX = 1024, touchOffsetX = 0, touchScaleY = 1024, touchOffsetY = 0;
+  uint8_t volume = 60;           // 0..100: alert chimes (0 = silent), see Sound::setVolume
+  bool autoUpdate = true;        // look for a newer version once a day (never installs by itself)
 
   Look look(bool dark) const {
     Look l;

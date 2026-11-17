@@ -32,7 +32,7 @@ void describeDuration(uint32_t ms, char *out, size_t capacity) {
 TimerApp::TimerApp() : screen_(*this) {}
 
 const AppInfo &TimerApp::info() const {
-  static const AppInfo kInfo{"timer", "Timer", icons::stopwatch, 2, 0};
+  static const AppInfo kInfo{"timer", "Timer", icons::hourglass, 2, 0};
   return kInfo;
 }
 
@@ -50,7 +50,7 @@ uint32_t TimerApp::onWake(AppContext &ctx) {
   Alert alert;
   alert.title = "Time's up";
   alert.message = message;
-  alert.icon = icons::stopwatch;
+  alert.icon = icons::hourglass;
   alert.primary = "Done";
   alert.secondary = "Again";
   alert.tag = kDoneTag;
