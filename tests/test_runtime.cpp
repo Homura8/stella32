@@ -12,14 +12,10 @@ namespace {
 
 const char *topApp(SimSession &s) { return s.os.foreground() ? s.os.foreground()->info().id : ""; }
 
-// Centre of launcher tile `i` (first page), derived from the same theme tokens.
+// Centre of launcher tile `i` (first page), asked of the Home screen itself.
 Point launcherTile(SimSession &s, int index) {
-  const Theme &t = s.os.theme();
-  const Rect c = s.os.contentRect().inset(t.m.margin, t.m.gapS);
-  const int columns = t.density == Density::Regular ? 5 : 4;
-  const int tileW = (c.w - t.m.gapM * (columns - 1)) / columns;  // square tiles
-  const int top = c.y + t.font.headline->lineHeight + t.font.caption->lineHeight + 2 * t.m.gapS;
-  return Point{(int16_t)(c.x + index * (tileW + t.m.gapM) + tileW / 2), (int16_t)(top + tileW / 2)};
+  const Rect r = s.launcher.tileBounds(index);
+  return Point{(int16_t)r.centerX(), (int16_t)r.centerY()};
 }
 
 }  // namespace
@@ -146,22 +142,17 @@ TEST(tap_seen_once_across_a_slow_frame_still_launches) {
 // paging needed a swipe, which is hard on a resistive panel.
 TEST(home_pages_with_buttons) {
   SimSession s(320, 240, kEveningEpoch, Appearance::Auto, false, /*online=*/false);
-  const Theme &t = s.os.theme();
-  const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
-  const int headerTop = area.y, headerBottom = area.y + t.font.headline->lineHeight + t.m.gapS + t.font.caption->lineHeight;
-  const int y = (headerTop + headerBottom) / 2;
-  const int nextX = area.right() - t.dp(88) / 4, prevX = area.right() - t.dp(88) * 3 / 4;
-  s.tap(nextX, y);
+  const Rect next = s.launcher.pagerNext(), prev = s.launcher.pagerPrev();
+  CHECK(!next.empty() && !prev.empty());
+  s.tap(next.centerX(), next.centerY());
   // Page 2 starts with the fifth app; its tile is now first.
-  const int columns = 4;
-  const int tileW = (area.w - t.m.gapM * (columns - 1)) / columns;
-  const int tileY = headerBottom + t.m.gapS + tileW / 2;
-  s.tap(area.x + tileW / 2, tileY);
+  const Rect first = s.launcher.tileBounds(0);
+  s.tap(first.centerX(), first.centerY());
   CHECK(strcmp(topApp(s), "stopwatch") == 0);  // the fifth listed app
   s.os.goHome();
   s.run(100);
-  s.tap(prevX, y);
-  s.tap(area.x + tileW / 2, tileY);
+  s.tap(prev.centerX(), prev.centerY());
+  s.tap(first.centerX(), first.centerY());
   CHECK(strcmp(topApp(s), "clock") == 0);
 }
 

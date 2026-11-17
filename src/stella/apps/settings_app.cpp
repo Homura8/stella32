@@ -1337,7 +1337,7 @@ void SettingsApp::AboutScreen::refresh(AppContext &ctx) {
   char next[kRows][40];
   const uint32_t up = s.uptimeMs / 1000;
   snprintf(next[0], 40, "%s", s.board);
-  snprintf(next[1], 40, "Stella %s", s.version);
+  snprintf(next[1], 40, "StellaOS %s", s.version);
   snprintf(next[2], 40, "%d x %d %s", s.width, s.height, s.density == Density::Regular ? "regular" : "compact");
   snprintf(next[3], 40, "%lud %02luh %02lum", (unsigned long)(up / 86400), (unsigned long)(up / 3600 % 24),
            (unsigned long)(up / 60 % 60));
@@ -1422,7 +1422,7 @@ void SettingsApp::UpdateScreen::refresh(AppContext &ctx) {
   st_ = ctx.update().status();
   auto_.on = ctx.settings().autoUpdate;
   const NetworkStatus net = ctx.network().status();
-  snprintf(installed_, sizeof(installed_), "Stella %s", ctx.status().version);
+  snprintf(installed_, sizeof(installed_), "StellaOS %s", ctx.status().version);
   if (st_.version[0] && (st_.state == UpdateState::Available || st_.state == UpdateState::Downloading ||
                          st_.state == UpdateState::Ready || st_.state == UpdateState::UpToDate))
     snprintf(offered_, sizeof(offered_), "%s \xc2\xb7 %lu.%lu MB", st_.version, (unsigned long)(st_.size / 1048576),
