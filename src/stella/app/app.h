@@ -14,6 +14,7 @@
 #include "../gfx/canvas.h"
 #include "../hal/hal.h"
 #include "../input/event.h"
+#include "../net/firmware_update.h"
 #include "../net/http_service.h"
 #include "../net/network_status.h"
 #include "../service/job_scheduler.h"
@@ -218,6 +219,10 @@ class AppContext : public Invalidator {
   virtual void applySettings(const SystemSettings &settings) = 0;
   virtual SystemStatus status() const = 0;
   virtual NetworkControl &network() = 0;
+  // Over-the-air updates (Settings > About > Software update).
+  virtual UpdateControl &update() = 0;
+  // Restart the device shortly (after a short pause so the screen can say so).
+  virtual void restartDevice() = 0;
   // Show a system alert owned by the calling app; one with the same tag is
   // replaced. Alerts queue (a few) while another is showing. False if full.
   virtual bool showAlert(const Alert &alert) = 0;

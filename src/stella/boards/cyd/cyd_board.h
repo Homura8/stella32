@@ -196,7 +196,11 @@ class CydBoard {
     touch_.begin();
     sound_.begin();
   }
-  Board board() { return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_}; }
+  Board board() {
+    return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_};
+  }
+  // The ECDSA P-256 public key (PEM) that update manifests must be signed with.
+  void setUpdateKey(const char *pem) { firmware_.setPublicKey(pem); }
   Color *renderBuffer() { return buffer_; }
   size_t renderBufferPixels() const { return sizeof(buffer_) / sizeof(buffer_[0]); }
 #if STELLA_CYD_DMA
@@ -214,6 +218,7 @@ class CydBoard {
   esp32::Esp32HttpClient http_;
   CydSound sound_;
   esp32::Esp32SetupServer setup_;
+  esp32::Esp32Firmware firmware_;
   Color buffer_[Profile::kWidth * Profile::kRenderRows];
 #if STELLA_CYD_DMA
   Color buffer2_[Profile::kWidth * Profile::kRenderRows];

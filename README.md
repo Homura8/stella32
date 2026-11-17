@@ -16,9 +16,9 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.5.0, phone Wi-Fi setup |
+| Version | 0.6.0, signed over-the-air updates |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 114 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 125 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -73,6 +73,17 @@ In the Arduino IDE: add this repository as a library, open
 *File > Examples > Stella32 > CYD*, choose *ESP32 Dev Module* with the
 *Huge APP* partition scheme.
 
+### Over-the-air updates
+
+`Settings > About > Software update` installs a new firmware without USB: it
+is downloaded over HTTPS, checked (size, SHA-256 and an ECDSA signature over
+the version and the image, made with a key only you hold) and written to the
+spare app slot; the new version is confirmed after a healthy minute, and
+otherwise the bootloader returns to the previous one. It needs the two-slot
+build (`arduino-cli compile --profile cyd-ota examples/CYD`, one USB flash;
+settings and Wi-Fi are kept) and your key and URL in `secrets.h`. See
+[Architecture > Updates](docs/ARCHITECTURE.md) and `tools/update_tool.py`.
+
 ## Repository guide
 
 | Path | Contents |
@@ -96,7 +107,7 @@ In the Arduino IDE: add this repository as a library, open
 
 ## Hardware checklist (first CYD flash)
 
-1. Boot log shows `Stella 0.5.0 on ESP32-2432S028R (CYD), 320x240 compact`;
+1. Boot log shows `Stella 0.6.0 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
@@ -137,18 +148,25 @@ In the Arduino IDE: add this repository as a library, open
 10. *Lists*: on Settings > Time (time zones), Settings > About, the Wi-Fi
    network list and the weather places, the up/down buttons at the right edge
    scroll by a page; the rail shows where you are.
-11. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
+11. *Software update* (the `cyd-ota` build, a signing key and a manifest URL,
+    see above): About > Software update > Check shows the offered version;
+    Install downloads it with a progress bar, then Restart now. After the
+    restart the About screen shows the new version and, a minute later, the
+    update is confirmed. To test the rollback: install a build whose firmware
+    hangs or resets at boot (never confirmed): the device returns to the
+    previous version by itself.
+12. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
-12. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
+13. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
-13. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
+14. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
    sleeping screen; *Again* restarts it. An alarm set for the next minute
    rings, *Snooze* brings it back nine minutes later, and a one-off alarm
    switches itself off. With a small speaker on the *SPEAK* connector the
    chime is audible but gentle (`STELLA_CYD_TONE_DUTY` adjusts it).
-14. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+15. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-15. Leave it running overnight; no `restarting` line in the log and the
+16. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

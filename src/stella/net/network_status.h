@@ -12,6 +12,7 @@ namespace stella {
 namespace topics {
 constexpr uint16_t kNetwork = 1;   // Topic<NetworkStatus>
 constexpr uint16_t kWifiScan = 2;  // Topic<WifiScan>
+// (3 is the firmware update status, see net/firmware_update.h)
 constexpr uint16_t kFirstUser = 16;
 }  // namespace topics
 

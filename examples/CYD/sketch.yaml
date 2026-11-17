@@ -1,5 +1,8 @@
-# Pinned build for the ESP32-2432S028R. From the repository root:
-#   arduino-cli compile --profile cyd examples/CYD
+# Pinned builds for the ESP32-2432S028R. From the repository root:
+#   arduino-cli compile --profile cyd examples/CYD       (one 3 MB app, no updates)
+#   arduino-cli compile --profile cyd-ota examples/CYD   (two 1.9 MB app slots: over-the-air updates)
+# Switching between them needs one USB flash (the partition table changes);
+# settings and the saved Wi-Fi network are kept (NVS stays at the same address).
 profiles:
   cyd:
     fqbn: esp32:esp32:esp32:PartitionScheme=huge_app
@@ -10,4 +13,13 @@ profiles:
       - TFT_eSPI (2.5.43)
       - XPT2046_Touchscreen (1.4.0)
       - dir: ../..   # this repository (Stella32)
+  cyd-ota:
+    fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
+    platforms:
+      - platform: esp32:esp32 (3.3.12)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - TFT_eSPI (2.5.43)
+      - XPT2046_Touchscreen (1.4.0)
+      - dir: ../..
 default_profile: cyd

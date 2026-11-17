@@ -93,6 +93,7 @@ int SimHttp::get(const char *url, uint32_t, size_t maxBodyBytes, HttpSink &sink)
     if (r.body.size() > maxBodyBytes) return kHttpErrTooLarge;
     // Deliver in small pieces, as a network would.
     for (size_t i = 0; i < r.body.size(); i += 37) {
+      if (i >= r.cutAfter) return kHttpErrTimeout;
       const size_t n = r.body.size() - i < 37 ? r.body.size() - i : 37;
       if (!sink.onData(reinterpret_cast<const uint8_t *>(r.body.data() + i), n)) return kHttpErrAborted;
     }

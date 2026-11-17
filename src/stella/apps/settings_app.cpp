@@ -54,7 +54,7 @@ const char *resetName(ResetCause c) {
 
 }  // namespace
 
-SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this) {}
+SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this), about_(*this) {}
 
 const AppInfo &SettingsApp::info() const {
   static const AppInfo kInfo{"settings", "Settings", icons::gear, 1, 0};
@@ -64,6 +64,8 @@ const AppInfo &SettingsApp::info() const {
 void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kNetwork || topicId == topics::kWifiScan) wifi_.refresh(ctx);
   if (topicId == topics::kNetwork && setup_.isVisible()) setup_.refresh(ctx);
+  if ((topicId == topics::kUpdate || topicId == topics::kNetwork) && softwareUpdate_.isVisible())
+    softwareUpdate_.refresh(ctx);
 }
 
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
@@ -861,7 +863,11 @@ bool SettingsApp::TimeScreen::onEvent(const Event &e, AppContext &ctx) {
 // ------------------------------------------------------------------ about
 
 void SettingsApp::AboutScreen::layout(const Rect &content, const Theme &t) {
-  card_ = content.inset(t.m.margin, t.m.gapS);
+  Rect r[2];
+  column(content.inset(t.m.margin, t.m.gapS), {flex(), px(t.m.control)}, t.m.gapS, r);
+  card_ = r[0];
+  update_.bounds = layout::center(r[1], t.dp(190), t.m.control);
+  update_.label = "Software update";
   list_.bounds = card_.inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(24);
   list_.buttonWidth = t.dp(32);
@@ -918,10 +924,137 @@ void SettingsApp::AboutScreen::drawRow(Canvas &c, const Theme &t, int index, con
 void SettingsApp::AboutScreen::draw(Canvas &c, const Theme &t) {
   paintGlass(c, t, card_, t.m.radiusCard);
   list_.draw(c, t, drawRow, this);
+  update_.draw(c, t);
 }
 
 bool SettingsApp::AboutScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (update_.handle(e, ctx)) {
+    ctx.push(app_.softwareUpdate_);
+    return true;
+  }
   list_.handle(e, ctx);
+  return true;
+}
+
+// ------------------------------------------------------------------ software update
+
+void SettingsApp::UpdateScreen::layout(const Rect &content, const Theme &t) {
+  const int lh = t.font.body->lineHeight;
+  const int bar = t.dp(6);
+  Rect r[3];
+  column(content.inset(t.m.margin, t.m.gapS), {px(2 * lh + bar + t.dp(6) + 2 * t.m.padding), flex(), px(t.m.control)},
+         t.m.gapM, r);
+  card_ = r[0];
+  Rect inner[3];
+  column(r[0].inset(t.m.padding, t.m.padding), {px(lh), px(lh), px(bar)}, t.dp(3), inner);
+  rows_[0] = inner[0];
+  rows_[1] = inner[1];
+  bar_ = inner[2];
+  status_ = r[1];
+  action_.bounds = layout::center(r[2], t.dp(200), t.m.control);
+}
+
+void SettingsApp::UpdateScreen::onShow(AppContext &ctx) { refresh(ctx); }
+
+void SettingsApp::UpdateScreen::refresh(AppContext &ctx) {
+  st_ = ctx.update().status();
+  const NetworkStatus net = ctx.network().status();
+  snprintf(installed_, sizeof(installed_), "Stella %s", ctx.status().version);
+  if (st_.version[0] && (st_.state == UpdateState::Available || st_.state == UpdateState::Downloading ||
+                         st_.state == UpdateState::Ready || st_.state == UpdateState::UpToDate))
+    snprintf(offered_, sizeof(offered_), "%s \xc2\xb7 %lu.%lu MB", st_.version, (unsigned long)(st_.size / 1048576),
+             (unsigned long)(st_.size % 1048576 * 10 / 1048576));
+  else
+    snprintf(offered_, sizeof(offered_), "\xe2\x80\x94");
+  const char *label = "Check for updates";
+  bool enabled = true;
+  char text[sizeof(statusText_)];
+  switch (st_.state) {
+    case UpdateState::Unavailable:
+      snprintf(text, sizeof(text), "%.60s", st_.error[0] ? st_.error : "Updates are not set up");
+      enabled = false;
+      break;
+    case UpdateState::Idle:
+      snprintf(text, sizeof(text), net.connected ? "Looks for a newer version of Stella." : "Connect to Wi-Fi to check for updates.");
+      enabled = net.connected;
+      break;
+    case UpdateState::Checking:
+      snprintf(text, sizeof(text), "Looking for updates\xe2\x80\xa6");
+      label = "Checking";
+      enabled = false;
+      break;
+    case UpdateState::UpToDate:
+      snprintf(text, sizeof(text), "You have the latest version.");
+      label = "Check again";
+      break;
+    case UpdateState::Available:
+      snprintf(text, sizeof(text), "Version %.12s is ready. It is checked and signed; the device restarts to use it.",
+               st_.version);
+      label = "Install";
+      break;
+    case UpdateState::Downloading:
+      snprintf(text, sizeof(text), "Downloading and checking\xe2\x80\xa6 %u%%", (unsigned)st_.percent);
+      label = "Installing";
+      enabled = false;
+      break;
+    case UpdateState::Ready:
+      snprintf(text, sizeof(text), "Installed. Restart to run it; if it doesn't run well, the previous version returns.");
+      label = "Restart now";
+      break;
+    default:
+      snprintf(text, sizeof(text), "%.70s", st_.error[0] ? st_.error : "Something went wrong");
+      label = "Try again";
+      enabled = net.connected;
+      break;
+  }
+  action_.label = label;
+  action_.enabled = enabled;
+  action_.style = st_.state == UpdateState::Available || st_.state == UpdateState::Ready ? ButtonStyle::Accent
+                                                                                          : ButtonStyle::Glass;
+  memcpy(statusText_, text, sizeof(text));
+  if (isVisible()) ctx.invalidate(ctx.contentRect());
+}
+
+void SettingsApp::UpdateScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, card_, t.m.radiusCard);
+  const char *labels[2] = {"Installed", "Available"};
+  const char *values[2] = {installed_, offered_};
+  for (int i = 0; i < 2; ++i) {
+    Rect parts[2];
+    row(rows_[i], {px(t.dp(80)), flex()}, t.m.gapS, parts);
+    c.drawTextIn(*t.font.caption, labels[i], parts[0], p.textMuted);
+    c.drawTextIn(*t.font.body, values[i], parts[1], p.text, Align::Right);
+  }
+  // Progress (only while it moves).
+  c.fillRoundRect(bar_, bar_.h / 2, p.line, (uint8_t)(p.lineAlpha * 2));
+  if (st_.state == UpdateState::Downloading || st_.state == UpdateState::Ready) {
+    const int w = bar_.w * (st_.state == UpdateState::Ready ? 100 : st_.percent) / 100;
+    if (w > 0) c.fillRoundRect(Rect(bar_.x, bar_.y, w > bar_.h ? w : bar_.h, bar_.h), bar_.h / 2, p.accent);
+  }
+  c.drawWrapped(*t.font.body, statusText_, status_.inset(t.dp(4), t.dp(2)),
+                st_.state == UpdateState::Failed ? p.danger : p.textMuted, 4, Align::Center);
+  action_.draw(c, t);
+}
+
+bool SettingsApp::UpdateScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (!action_.handle(e, ctx)) return false;
+  switch (st_.state) {
+    case UpdateState::Idle:
+    case UpdateState::UpToDate:
+    case UpdateState::Failed:
+      ctx.update().check();
+      break;
+    case UpdateState::Available:
+      ctx.update().install();
+      break;
+    case UpdateState::Ready:
+      ctx.toast("Restarting\xe2\x80\xa6");
+      ctx.restartDevice();
+      break;
+    default:
+      break;
+  }
   return true;
 }
 

@@ -35,6 +35,7 @@ void applyTimezone(const char *posix) {
 Runtime::Runtime() {
   topics_[topicCount_++] = &network_;
   topics_[topicCount_++] = &scan_;
+  topics_[topicCount_++] = &updateStatus_;
 }
 
 Runtime::~Runtime() {
@@ -84,6 +85,13 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   wifi_.configure(board.wifi, board.storage, &jobs_, config.wifiSsid, config.wifiPassword, board.setup);
   if (wifi_.available()) jobs_.add(wifi_, millis());
   http_.configure(board.http, &networkResource_);
+  updater_.configure(&http_, board.firmware, board.platform, &jobs_, config.updateManifestUrl, STELLA_VERSION);
+  if (updater_.enabled()) jobs_.add(updater_, millis(), 0);
+  // A freshly updated image runs on probation: it is confirmed after a healthy
+  // minute, and otherwise the bootloader returns to the previous one.
+  updateUnconfirmed_ = board.platform->updatePending();
+  confirmAtMs_ = millis() + 60000;
+  if (updateUnconfirmed_) LOGI(kTag, "running a fresh update on probation; confirming after 60 s of healthy running");
   jobs_.setWakeSignal(&serviceWake_);
 
   lastInteraction_ = millis();
@@ -196,6 +204,17 @@ uint32_t Runtime::step() {
   }
 
   updatePower(now);
+
+  if (updateUnconfirmed_ && frames_ > 0 && reached(now, confirmAtMs_)) {
+    updateUnconfirmed_ = false;
+    board_.platform->confirmUpdate();
+    LOGI(kTag, "update confirmed");
+  }
+  if (restartPending_ && reached(now, restartAtMs_)) {
+    LOGI(kTag, "restarting on request");
+    board_.platform->restart();
+    restartPending_ = false;  // a simulated board returns
+  }
 
   uiStackFree_.store(board_.platform->stackHeadroom());
   if (reached(now, nextHealthLog_)) {

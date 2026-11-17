@@ -8,6 +8,7 @@
 #include "../core/color.h"
 #include "../core/geometry.h"
 #include "network.h"
+#include "update.h"
 
 namespace stella {
 
@@ -80,6 +81,12 @@ class Platform {
   virtual void *retainedMemory(size_t &size) = 0;
   // Lowest free stack ever seen on the calling thread, in bytes (0 if unknown).
   virtual uint32_t stackHeadroom() const { return 0; }
+  // After a firmware update the new image runs "pending": unless it is
+  // confirmed, the next reset returns to the previous image (ESP32: the
+  // bootloader's rollback). The runtime confirms once the system has run
+  // healthily for a while.
+  virtual bool updatePending() const { return false; }
+  virtual void confirmUpdate() {}
 };
 
 // Persistent key/value storage (NVS on ESP32). Namespaces and keys are limited
@@ -113,6 +120,7 @@ struct Board {
   HttpClient *http = nullptr;        // optional (requires wifi)
   Sound *sound = nullptr;            // optional; alerts are silent without it
   SetupServer *setup = nullptr;      // optional; phone-based Wi-Fi setup
+  FirmwareSlot *firmware = nullptr;  // optional; over-the-air updates
 };
 
 }  // namespace stella

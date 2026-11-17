@@ -12,13 +12,16 @@
 #include <WiFiClientSecure.h>
 #include <esp_attr.h>
 #include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_timer.h>
+#include <mbedtls/pk.h>
 #include <time.h>
 
 #include "../../core/log.h"
 #include "../../core/text.h"
 #include "../../hal/hal.h"
+#include "../../net/firmware_update.h"
 #include "../../net/setup_portal.h"
 #include "../../runtime/runtime.h"
 
@@ -70,6 +73,16 @@ class Esp32Platform : public Platform {
     return retainedBlock();
   }
   uint32_t stackHeadroom() const override { return (uint32_t)uxTaskGetStackHighWaterMark(nullptr); }
+  // After an over-the-air update the bootloader runs the new image "pending
+  // verification" and returns to the old one at the next reset unless it is
+  // confirmed (the Arduino core's own confirmation is deferred by the
+  // sketch's verifyRollbackLater(); see examples/CYD/CYD.ino).
+  bool updatePending() const override {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    return running && esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY;
+  }
+  void confirmUpdate() override { esp_ota_mark_app_valid_cancel_rollback(); }
 
  private:
   const char *name_;
@@ -163,6 +176,68 @@ class Esp32WifiDriver : public WifiDriver {
 
  private:
   bool attempting_ = false;
+};
+
+// The other app slot of an OTA partition layout (two app partitions), with the
+// update signing key built into the firmware. Never writes over the running
+// image: with a single-app layout (e.g. Huge APP) there is no other slot and
+// updates are reported unavailable. The signature is checked with mbedTLS
+// (ECDSA P-256 over SHA-256); an empty key disables updates altogether.
+class Esp32Firmware : public FirmwareSlot {
+ public:
+  explicit Esp32Firmware(const char *publicKeyPem = nullptr) : pem_(publicKeyPem) {}
+  void setPublicKey(const char *pem) { pem_ = pem; }
+
+  bool available() override {
+    const esp_partition_t *p = target();
+    return pem_ && pem_[0] && p && p->size >= 256 * 1024;
+  }
+  size_t capacity() override {
+    const esp_partition_t *p = target();
+    return p ? p->size : 0;
+  }
+  bool begin(size_t size) override {
+    abort();
+    part_ = target();
+    if (!part_ || size > part_->size) return false;
+    open_ = esp_ota_begin(part_, size, &handle_) == ESP_OK;
+    return open_;
+  }
+  bool write(const uint8_t *data, size_t size) override { return open_ && esp_ota_write(handle_, data, size) == ESP_OK; }
+  bool finish() override {
+    if (!open_) return false;
+    open_ = false;
+    // esp_ota_end() validates the image (header, checksum); only then is it
+    // chosen for the next boot, and the bootloader treats it as pending.
+    if (esp_ota_end(handle_) != ESP_OK) return false;
+    return esp_ota_set_boot_partition(part_) == ESP_OK;
+  }
+  void abort() override {
+    if (open_) esp_ota_abort(handle_);
+    open_ = false;
+  }
+  bool verify(const uint8_t digest[32], const uint8_t r[32], const uint8_t s[32]) override {
+    if (!pem_ || !pem_[0]) return false;
+    uint8_t der[72];
+    const size_t derLength = UpdateService::encodeDerSignature(r, s, der);
+    mbedtls_pk_context key;
+    mbedtls_pk_init(&key);
+    bool ok = mbedtls_pk_parse_public_key(&key, reinterpret_cast<const unsigned char *>(pem_), strlen(pem_) + 1) == 0 &&
+              mbedtls_pk_can_do(&key, MBEDTLS_PK_ECDSA) && mbedtls_pk_get_bitlen(&key) == 256 &&
+              mbedtls_pk_verify(&key, MBEDTLS_MD_SHA256, digest, 32, der, derLength) == 0;
+    mbedtls_pk_free(&key);
+    return ok;
+  }
+
+ private:
+  static const esp_partition_t *target() {
+    const esp_partition_t *next = esp_ota_get_next_update_partition(nullptr);
+    return next && next != esp_ota_get_running_partition() ? next : nullptr;
+  }
+  const char *pem_;
+  const esp_partition_t *part_ = nullptr;
+  esp_ota_handle_t handle_ = 0;
+  bool open_ = false;
 };
 
 // Phone setup: a WPA2 access point, a captive DNS (every name resolves to the

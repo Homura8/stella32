@@ -20,6 +20,15 @@
 #define STELLA_WIFI_SSID ""
 #define STELLA_WIFI_PASSWORD ""
 #endif
+// Over-the-air updates (see docs/ARCHITECTURE.md, "Updates"): the manifest URL
+// and the public key that signed updates must verify against. Without both,
+// and without the OTA partition layout (profile cyd-ota), updates stay off.
+#ifndef STELLA_UPDATE_URL
+#define STELLA_UPDATE_URL ""
+#endif
+#ifndef STELLA_UPDATE_PUBLIC_KEY
+#define STELLA_UPDATE_PUBLIC_KEY ""
+#endif
 #ifndef STELLA_DEFAULT_TIMEZONE
 #define STELLA_DEFAULT_TIMEZONE "AEST-10AEDT,M10.1.0,M4.1.0/3"  // Melbourne; change in Settings > Time
 #endif
@@ -38,6 +47,11 @@ stella::apps::TimerApp timer;
 
 }  // namespace
 
+// Stella confirms a freshly updated image itself, after it has run healthily
+// for a minute (Runtime); until then the bootloader can still roll back. The
+// Arduino core would otherwise confirm it at once.
+extern "C" bool verifyRollbackLater() { return true; }
+
 void setup() {
   Serial.begin(115200);
   board.begin();
@@ -48,6 +62,8 @@ void setup() {
   config.renderBuffer2 = board.secondRenderBuffer();
   config.wifiSsid = STELLA_WIFI_SSID;  // first boot only; Settings > Wi-Fi replaces it
   config.wifiPassword = STELLA_WIFI_PASSWORD;
+  board.setUpdateKey(STELLA_UPDATE_PUBLIC_KEY);
+  config.updateManifestUrl = STELLA_UPDATE_URL[0] ? STELLA_UPDATE_URL : nullptr;
   strncpy(config.defaults.timezone, STELLA_DEFAULT_TIMEZONE, sizeof(config.defaults.timezone) - 1);
   // Panel calibration defaults for this board (Settings > Display > Calibrate
   // changes them on the device). The CYD's TN panel washes pastels out, lifts

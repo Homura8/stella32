@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.5.0"
+#define STELLA_VERSION "0.6.0"
 #endif
 
 namespace stella {
@@ -51,6 +51,9 @@ struct RuntimeConfig {
   const char *wifiSsid = nullptr;
   const char *wifiPassword = nullptr;
   Color *renderBuffer2 = nullptr;  // optional second chunk buffer for async displays
+  // HTTPS URL of the update manifest (see net/firmware_update.h); updates need
+  // this, a second app slot and a signing key built into Board::firmware.
+  const char *updateManifestUrl = nullptr;
 };
 
 enum class PowerState : uint8_t { Active, Dimmed, Off };
@@ -134,6 +137,11 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void applySettings(const SystemSettings &settings) override;
   SystemStatus status() const override;
   NetworkControl &network() override { return wifi_; }
+  UpdateControl &update() override { return updater_; }
+  void restartDevice() override {
+    restartPending_ = true;
+    restartAtMs_ = millis() + 900;
+  }
   bool showAlert(const Alert &alert) override;
   void dismissAlert(uint16_t tag) override;
   void scheduleWake(uint32_t delayMs) override;
@@ -225,6 +233,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Topic<NetworkStatus> network_{topics::kNetwork};
   Topic<WifiScan> scan_{topics::kWifiScan};
   WifiManager wifi_{network_, scan_};
+  Topic<UpdateStatus> updateStatus_{topics::kUpdate};
+  UpdateService updater_{updateStatus_};
   HttpService http_;
   TopicBase *topics_[kMaxTopics] = {};
   size_t topicCount_ = 0;
@@ -260,6 +270,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Button alertButtons_[2];
   int lastMinute_ = -1;
   bool started_ = false, serviceRunning_ = false;
+  bool updateUnconfirmed_ = false, restartPending_ = false;
+  uint32_t confirmAtMs_ = 0, restartAtMs_ = 0;
   int uiWatch_ = -1, serviceWatch_ = -1;
   std::atomic<bool> restartRequested_{false};
   std::atomic<bool> stopping_{false}, serviceExited_{false};

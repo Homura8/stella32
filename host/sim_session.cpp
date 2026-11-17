@@ -31,6 +31,7 @@ std::string weatherFixture(bool day) {
 SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online)
     : dev(width, height) {
   config.serviceThread = threaded;
+  config.updateManifestUrl = "https://updates.example/stella/manifest.json";
   if (online) {
     config.wifiSsid = "Starlight";
     config.wifiPassword = "moonbeam";

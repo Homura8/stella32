@@ -159,8 +159,28 @@ class SettingsApp : public App {
     int selected_ = 0;
   };
 
+  // Settings > About > Software update: check, install, restart. The update
+  // is signed and verified by the service (net/firmware_update.h); a new
+  // image that doesn't run healthily is replaced by the previous one.
+  class UpdateScreen : public Screen {
+   public:
+    const char *title() const override { return "Software update"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void refresh(AppContext &ctx);
+
+   private:
+    Rect card_, rows_[2], bar_, status_;
+    Button action_;
+    UpdateStatus st_;
+    char installed_[32] = {0}, offered_[40] = {0}, statusText_[96] = {0};
+  };
+
   class AboutScreen : public Screen {
    public:
+    explicit AboutScreen(SettingsApp &app) : app_(app) {}
     const char *title() const override { return "About"; }
     void layout(const Rect &content, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
@@ -172,8 +192,10 @@ class SettingsApp : public App {
     static constexpr int kRows = 10;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     void refresh(AppContext &ctx);
+    SettingsApp &app_;
     Rect card_;
     ListView list_;
+    Button update_;
     char values_[kRows][40] = {};
   };
 
@@ -185,6 +207,7 @@ class SettingsApp : public App {
   CalibrateScreen calibrate_;
   AppearanceScreen appearance_;
   TimeScreen time_;
+  UpdateScreen softwareUpdate_;
   AboutScreen about_;
 };
 

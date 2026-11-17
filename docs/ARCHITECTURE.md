@@ -238,6 +238,57 @@ the device and stored in the system settings (record v5):
   offset that the runtime applies to every touch before gestures. Implausible
   fits (over 20% scale or 60 px offset) are rejected.
 
+## Updates (over the air)
+
+`Settings > About > Software update` checks for, installs and restarts into a
+new firmware, safely. Nothing runs by itself and the device never trusts the
+network alone (`net/firmware_update.*`, `tools/update_tool.py`):
+
+1. A **manifest** (HTTPS, JSON, no redirects) names `version`, the image
+   `url`, its `size`, its `sha256` and an ECDSA P-256 signature (`sig_r`,
+   `sig_s`, hex). It is parsed by the bounded JSON parser; every field is
+   validated (HTTPS only, sizes, hex lengths, a real `a.b.c` version).
+2. The image streams into the **other** app slot while it is hashed. Size and
+   SHA-256 must match the manifest exactly (more or fewer bytes, or a cut
+   download, abort the install).
+3. The signature covers SHA-256(`"stella-update-v1|<version>|<hex image
+   sha256>"`): the *version* is signed, so an old signed image cannot be
+   relabelled as new. It is checked with the public key built into the
+   firmware (mbedTLS on ESP32). **No key built in = no updates.**
+4. Only then is the slot chosen for the next boot, **pending**: the bootloader
+   (rollback is enabled in Arduino-ESP32 3.3.12's SDK) returns to the previous
+   image at the next reset unless the new one is confirmed. The runtime
+   confirms after **one healthy minute** (`Runtime::step`); the sketch defers
+   the Arduino core's own immediate confirmation with `verifyRollbackLater()`.
+   A new image that crashes, hangs (the supervisor restarts it after 3
+   minutes) or never draws a frame is therefore replaced by the old one by
+   itself. A new update is refused until the last one is confirmed.
+
+Every failure (unreachable server, bad manifest, damaged or oversize download,
+a flash write error, a rejected signature, an invalid image) aborts the slot
+write and leaves the running firmware untouched. The code never writes over the
+running image: a single-app layout (the default *Huge APP*) has no other slot,
+so updates report *unavailable* there.
+
+**Setting it up.** Updates need the two-slot layout, one USB flash to switch:
+`arduino-cli compile --profile cyd-ota examples/CYD` (1.9 MB per slot; the
+firmware is 1.5 MB). Settings and the saved Wi-Fi network are kept: both
+layouts keep NVS at 0x9000. Then:
+
+```bash
+pip install cryptography
+python3 tools/update_tool.py keygen --private update-key.pem --public update-public.pem  # private key: offline, never in git
+# put the printed STELLA_UPDATE_PUBLIC_KEY and your STELLA_UPDATE_URL in examples/CYD/secrets.h, build, flash by USB once
+python3 tools/update_tool.py sign --key update-key.pem --image build/CYD.ino.bin --version 0.6.1 \
+    --url https://example.com/stella/stella-0.6.1.bin --out manifest.json
+python3 tools/update_tool.py verify --public update-public.pem --manifest manifest.json --image build/CYD.ino.bin
+# upload manifest.json and the .bin to the HTTPS host (direct URLs: the client does not follow redirects)
+```
+
+The manifest's strings are limited to 95 characters (the device's JSON value
+buffer), so keep the image URL short. A new version must be *higher*; to go
+back, flash by USB.
+
 ## Persistence
 
 `KeyValueStore` (NVS on ESP32) holds records with a magic number, schema
@@ -250,9 +301,10 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,462,747 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 78,684 B; 248,996 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,481,941 B flash, 92,300 B static RAM |
+| Program (flash) | 1,476,023 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 79,756 B; 247,924 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,495,185 B flash, 93,380 B static RAM |
+| OTA layout (`cyd-ota`) | the same 1,476,023 B in a 1,966,080 B app slot (75%) |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |

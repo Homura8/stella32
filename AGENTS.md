@@ -101,6 +101,13 @@ change needs to break one, stop and ask the owner; then update this file.
     `tools/fontgen.py`; `docs/screenshots/` from `tools/screenshots.py`. Edit
     the generator, never the output.
 
+17. **Updates.** An update is installed only after its size, SHA-256 and a
+    signature over version and digest have been checked, and only into the
+    slot that is not running; a failure leaves the running firmware untouched.
+    Never add an unsigned or unverified install path, never accept a version
+    that is not newer, and never confirm a pending image before it has run
+    healthily (see `docs/ARCHITECTURE.md`, Updates).
+
 ## 5. How to make common changes
 
 - **Change a screen's layout:** edit only that screen's `layout()` (rows,

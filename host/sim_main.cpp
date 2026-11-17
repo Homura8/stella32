@@ -13,6 +13,7 @@
 
 #include "sim_session.h"
 #include "stella/app/text_entry.h"
+#include "stella/core/sha256.h"
 #include "stella/ui/layout.h"
 
 using namespace stella;
@@ -23,6 +24,25 @@ namespace {
 int failures = 0;
 
 void tapRect(SimSession &s, const Rect &r) { s.tap(r.centerX(), r.centerY()); }
+
+// A pretend update server: version 0.9.0, a 1.3 MB image (the simulated
+// firmware accepts the "signature" of all 0x5a bytes).
+void serveUpdate(SimSession &s) {
+  std::string image(1300000, 'x');
+  for (size_t i = 0; i < image.size(); ++i) image[i] = (char)((i * 2654435761u) >> 24);
+  uint8_t digest[32];
+  Sha256::hash(image.data(), image.size(), digest);
+  char hex[65];
+  toHex(digest, 32, hex);
+  std::string rs;
+  for (int i = 0; i < 32; ++i) rs += "5a";
+  const std::string manifest = std::string("{\"version\":\"0.9.0\",\"url\":\"https://updates.example/stella32.bin\",\"size\":") +
+                               std::to_string(image.size()) + ",\"sha256\":\"" + hex + "\",\"sig_r\":\"" + rs +
+                               "\",\"sig_s\":\"" + rs + "\"}";
+  s.dev.firmware.slotSize = 1966080;  // the 1.9 MB app slot of the OTA layout
+  s.dev.http.routes.insert(s.dev.http.routes.begin(), {"stella32.bin", image, 200});
+  s.dev.http.routes.insert(s.dev.http.routes.begin(), {"manifest.json", manifest, 200});
+}
 
 void shot(SimSession &s, const std::string &dir, const char *name) {
   const std::string path = dir + "/" + name + ".ppm";
@@ -168,6 +188,33 @@ void capture(int width, int height, const std::string &root) {
     s.tap(area.right() - st.dp(52), area.bottom() - st.m.control / 2);
     s.run(100);
     save(20, "touch-calibrate");
+
+    // Software update: offered, then installed and waiting for a restart.
+    serveUpdate(s);
+    s.os.goHome();
+    s.os.launch("settings");
+    while (s.os.topScreen() != &s.settings.root()) s.os.pop();  // earlier scenes left screens on its stack
+    s.run(100);
+    {
+      const Point aboutRow = s.settingsRow(4);
+      s.tap(aboutRow.x, aboutRow.y);
+      Rect ar[2];
+      layout::column(sc.inset(st.m.margin, st.m.gapS), {layout::flex(), layout::px(st.m.control)}, st.m.gapS, ar);
+      save(23, "about-update");
+      tapRect(s, layout::center(ar[1], st.dp(190), st.m.control));
+      const int lh = st.font.body->lineHeight;
+      Rect ur[3];
+      layout::column(sc.inset(st.m.margin, st.m.gapS),
+                     {layout::px(2 * lh + st.dp(6) + st.dp(6) + 2 * st.m.padding), layout::flex(), layout::px(st.m.control)},
+                     st.m.gapM, ur);
+      const Rect action = layout::center(ur[2], st.dp(200), st.m.control);
+      tapRect(s, action);
+      s.run(3000);
+      save(24, "update-available");
+      tapRect(s, action);
+      s.run(9000);
+      save(25, "update-ready");
+    }
 
     // The bedside clock, with the alarm set earlier.
     s.os.goHome();
