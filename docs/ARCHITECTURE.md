@@ -169,6 +169,28 @@ dark (Off) display is consumed so it never activates what is under the finger;
 a dimmed display is still readable, so a touch there brightens it and acts. Rendering
 pauses while the backlight is off; the dirty region is kept for wake.
 
+Brightness is stored as a *perceived* level; `backlightDuty()` maps it to PWM
+duty with a 2.2 power curve (LEDs look much brighter than their duty cycle).
+Dimmed is half the level, *Dim at night* 45% of it, so the slider keeps
+working at night. The CYD drives its backlight with 20 kHz PWM (the Arduino
+`analogWrite` default of 1 kHz can be seen as flicker).
+
+## Calibration
+
+Panels and touch controllers differ from batch to batch, so both are tuned on
+the device and stored in the system settings (record v4):
+
+- **Display** (*Settings > Display > Calibrate*): `Look` (tone, contrast,
+  dithering) is applied when the theme is built; `Display::PanelTrim` (VCOM
+  offset, frame rate) is sent to the panel by the runtime (after
+  `waitIdle()`), only when it changes. Defaults render the design exactly;
+  board sketches set their panel's defaults through `RuntimeConfig::defaults`,
+  which also fill fields an older settings record lacks.
+- **Touch** (*Touch test > Calibrate*): four crosses are tapped with the
+  correction switched off; a least-squares fit per axis gives a scale and
+  offset that the runtime applies to every touch before gestures. Implausible
+  fits (over 20% scale or 60 px offset) are rejected.
+
 ## Persistence
 
 `KeyValueStore` (NVS on ESP32) holds records with a magic number, schema
@@ -181,9 +203,9 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,347,167 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
-| Static RAM (globals) | 71,892 B; 255,788 B left for stacks and heap |
-| With DMA (`STELLA_CYD_DMA 1`) | 1,366,281 B flash, 85,532 B static RAM |
+| Program (flash) | 1,356,823 B of 3 MB (huge_app partition); mbedTLS/HTTPS is most of it |
+| Static RAM (globals) | 72,668 B; 255,012 B left for stacks and heap |
+| With DMA (`STELLA_CYD_DMA 1`) | 1,376,009 B flash, 86,292 B static RAM |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
 | Fonts (both densities, flash) | ~98 KB |

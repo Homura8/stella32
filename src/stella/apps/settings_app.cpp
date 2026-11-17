@@ -15,6 +15,7 @@ using namespace layout;
 namespace {
 
 const char *const kAppearanceLabels[] = {"Auto", "Light", "Dark"};
+const char *const kToneLabels[] = {"Soft", "Rich", "Vivid"};  // ColorTone order
 const char *const kDimLabels[] = {"Never", "30 s", "1 min", "5 min"};
 const uint16_t kDimSeconds[] = {0, 30, 60, 300};
 const char *const kOffLabels[] = {"Never", "5 min", "15 min", "1 h"};
@@ -50,14 +51,10 @@ const char *resetName(ResetCause c) {
   }
 }
 
-// Section label above a control, in the muted caption style.
-void sectionLabel(Canvas &c, const Theme &t, const Rect &r, const char *text) {
-  c.drawTextIn(*t.font.caption, text, r, t.color.textMuted);
-}
 
 }  // namespace
 
-SettingsApp::SettingsApp() : main_(*this), wifi_(*this) {}
+SettingsApp::SettingsApp() : main_(*this), wifi_(*this), display_(*this) {}
 
 const AppInfo &SettingsApp::info() const {
   static const AppInfo kInfo{"settings", "Settings", icons::gear, 1, 0};
@@ -273,19 +270,43 @@ bool SettingsApp::WifiScreen::onEvent(const Event &e, AppContext &ctx) {
 
 // ------------------------------------------------------------------ display
 
+namespace {
+
+const char *const kRefreshLabels[] = {"Default", "90 Hz", "100 Hz", "119 Hz"};
+const uint8_t kRefreshHz[] = {0, 90, 100, 119};
+const char *const kTabLabels[] = {"Colour", "Flicker"};
+
+// Rows of a settings card: as tall as a control when they fit, never below
+// the 32 dp touch minimum (the card then takes what it needs).
+int cardRowHeight(const Theme &t, int available, int rows) {
+  const int want = t.m.control + t.dp(4);
+  const int fit = (available - 2 * t.dp(4)) / rows;
+  const int minimum = t.dp(32);
+  return want <= fit ? want : fit < minimum ? minimum : fit;
+}
+
+}  // namespace
+
 void SettingsApp::DisplayScreen::layout(const Rect &content, const Theme &t) {
-  card_ = content.inset(t.m.margin, t.m.gapS);
-  const int label = t.font.caption->lineHeight;
-  Rect r[6];
-  column(card_.inset(t.m.padding, t.m.padding),
-         {px(label), px(t.m.control), px(label), px(t.m.control), px(label), px(t.m.control)}, t.dp(3), r);
-  brightnessLabel_ = r[0];
-  brightness_.bounds = r[1];
-  dimLabel_ = r[2];
-  dim_.bounds = r[3].inset(0, t.dp(2));
-  offLabel_ = r[4];
-  off_.bounds = r[5].inset(0, t.dp(2));
-  card_.h = r[5].bottom() + t.m.padding - card_.y;
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int rowH = cardRowHeight(t, area.h, kRows);
+  card_ = Rect(area.x, area.y, area.w, kRows * rowH + 2 * t.dp(4));
+  const Rect inner = card_.inset(t.m.padding, t.dp(4));
+  for (int i = 0; i < kRows; ++i) {
+    rows_[i] = Rect(inner.x, inner.y + i * rowH, inner.w, rowH);
+    Rect parts[2];
+    row(rows_[i], {px(t.dp(96)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+    const Rect control = parts[1].inset(0, (rowH - t.m.control) / 2 > 0 ? (rowH - t.m.control) / 2 : 0);
+    if (i == 0) brightness_.bounds = control;
+    if (i == 1) nightDim_.bounds = rows_[i];
+    if (i == 2) dim_.bounds = control.inset(0, t.dp(2));
+    if (i == 3) off_.bounds = control.inset(0, t.dp(2));
+  }
+  calibrate_.bounds = Rect(card_.x, rows_[4].y, card_.w, rows_[4].h);
+  calibrate_.title = "Calibrate";
+  calibrate_.icon = nullptr;
+  calibrate_.chevron = true;
 }
 
 void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
@@ -293,22 +314,38 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   brightness_.minimum = 16;
   brightness_.maximum = 255;
   brightness_.value = s.brightness;
+  nightDim_.on = s.nightDim;
   dim_.labels = kDimLabels;
   dim_.count = 4;
   dim_.selected = nearestIndex(kDimSeconds, 4, s.dimAfterSec);
   off_.labels = kOffLabels;
   off_.count = 4;
   off_.selected = nearestIndex(kOffSeconds, 4, s.sleepAfterSec);
+  const LocalTime now = ctx.localTime();
+  night_ = !now.valid || phaseForHour(now.hour) == SkyPhase::Night;
+  snprintf(calibrateDetail_, sizeof(calibrateDetail_), "%s \xc2\xb7 %u%%", toneName(s.colorTone),
+           (unsigned)s.contrast);
+  calibrate_.detail = calibrateDetail_;
 }
 
 void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
   paintGlass(c, t, card_, t.m.radiusCard);
-  sectionLabel(c, t, brightnessLabel_, "Brightness");
+  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off"};
+  for (int i = 0; i < kRows - 1; ++i) {
+    c.drawTextIn(*t.font.body, kLabels[i], labels_[i], p.text);
+    paintHairline(c, t, rows_[i].x, rows_[i].bottom() - 1, rows_[i].w);
+  }
+  // While night dimming is lowering the backlight, say so beside the slider.
+  if (nightDim_.on && night_) {
+    const int icon = t.dp(12);
+    icons::moon(c, trailing(labels_[0], icon), p.accent);
+  }
   brightness_.draw(c, t);
-  sectionLabel(c, t, dimLabel_, "Dim when idle");
+  nightDim_.draw(c, t);
   dim_.draw(c, t);
-  sectionLabel(c, t, offLabel_, "Turn screen off");
   off_.draw(c, t);
+  calibrate_.draw(c, t);
 }
 
 bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
@@ -316,6 +353,13 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
   if (brightness_.handle(e, ctx, ctx.theme())) {
     s.brightness = (uint8_t)brightness_.value;
     ctx.applySettings(s);
+    return true;
+  }
+  if (brightness_.dragging) return true;
+  if (nightDim_.handle(e, ctx)) {
+    s.nightDim = nightDim_.on;
+    ctx.applySettings(s);
+    ctx.invalidate(labels_[0]);
     return true;
   }
   if (dim_.handle(e, ctx)) {
@@ -328,67 +372,252 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
     ctx.applySettings(s);
     return true;
   }
-  return brightness_.dragging;
+  if (calibrate_.handle(e, ctx)) {
+    ctx.push(app_.calibrate_);
+    return true;
+  }
+  return false;
+}
+
+// ------------------------------------------------------------------ calibrate
+
+void SettingsApp::CalibrateScreen::layout(const Rect &content, const Theme &t) {
+  theme_ = t;
+  content_ = content;
+  arrange();
+}
+
+void SettingsApp::CalibrateScreen::arrange() {
+  const Theme &t = theme_;
+  const Rect area = content_.inset(t.m.margin, t.m.gapS);
+  Rect r[3];
+  column(area, {px(t.m.control), flex(), px(0)}, t.m.gapM, r);
+  tabs_.bounds = r[0];
+  const Rect body = r[1];
+  const int rowH = cardRowHeight(t, body.h * 3 / 5, 3);
+  if (tabs_.selected == 0) {
+    // Colour: test strip on top, three rows of controls under it.
+    strip_ = Rect(body.x, body.y, body.w, body.h - 3 * rowH - t.m.gapM);
+    patch_ = note_ = Rect();
+  } else {
+    patch_ = Rect(body.x, body.y, body.w, body.h - 2 * rowH - t.m.gapM - t.font.caption->lineHeight);
+    note_ = Rect(body.x, patch_.bottom(), body.w, t.font.caption->lineHeight + t.m.gapS);
+    strip_ = Rect();
+  }
+  const int rows = tabs_.selected == 0 ? 3 : 2;
+  const int top = body.bottom() - rows * rowH;
+  for (int i = 0; i < 3; ++i) {
+    if (i >= rows) {
+      rows_[i] = labels_[i] = Rect();
+      continue;
+    }
+    rows_[i] = Rect(body.x, top + i * rowH, body.w, rowH);
+    Rect parts[2];
+    row(rows_[i].inset(t.dp(4), 0), {px(t.dp(84)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+    const Rect control = parts[1].inset(0, (rowH - t.m.control) / 2 > 0 ? (rowH - t.m.control) / 2 : 0);
+    if (tabs_.selected == 0) {
+      if (i == 0) contrast_.bounds = control;
+      if (i == 1) tone_.bounds = control.inset(0, t.dp(2));
+      if (i == 2) dither_.bounds = rows_[i].inset(t.dp(4), 0);
+    } else {
+      if (i == 0) vcom_.bounds = control;
+      if (i == 1) refresh_.bounds = control.inset(0, t.dp(2));
+    }
+  }
+}
+
+void SettingsApp::CalibrateScreen::onShow(AppContext &ctx) {
+  const SystemSettings &s = ctx.settings();
+  tabs_.labels = kTabLabels;
+  tabs_.count = 2;
+  tone_.labels = kToneLabels;
+  tone_.count = 3;
+  tone_.selected = (uint8_t)s.colorTone;
+  refresh_.labels = kRefreshLabels;
+  refresh_.count = 4;
+  refresh_.selected = 0;
+  for (uint8_t i = 0; i < 4; ++i)
+    if (kRefreshHz[i] == s.panelRefreshHz) refresh_.selected = i;
+  contrast_.minimum = 0;
+  contrast_.maximum = 100;
+  contrast_.value = s.contrast;
+  vcom_.minimum = -30;
+  vcom_.maximum = 30;
+  vcom_.value = s.panelVcom;
+  dither_.on = s.dither;
+  panelTrim_ = ctx.status().panelTrim;
+  arrange();
+}
+
+void SettingsApp::CalibrateScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  tabs_.draw(c, t);
+  if (!strip_.empty() && c.visible(strip_)) {
+    // Compare with the same screen on a good monitor (docs/screenshots):
+    // a grey ramp, the text inks, the accent and the sky tints.
+    Rect parts[2];
+    column(strip_, {flex(), flex()}, t.dp(4), parts);
+    for (int i = 0; i < 8; ++i) {
+      const uint8_t v = (uint8_t)(i * 255 / 7);
+      const Rect cell = grid(parts[0], 8, 1, i, 0);
+      c.fillRect(cell, lookColor(t.look, (uint32_t)v << 16 | (uint32_t)v << 8 | v));
+    }
+    Rect swatches[6];
+    row(parts[1], {flex(), flex(), flex(), flex(), flex(), flex()}, t.dp(3), swatches);
+    const Color inks[6] = {p.text, p.textMuted, p.accent, p.tints[0], p.tints[2], p.tints[3]};
+    for (int i = 0; i < 6; ++i) c.fillRoundRect(swatches[i], t.dp(4), inks[i]);
+    c.drawTextIn(*t.font.body, "Aa", swatches[0], p.accentText, Align::Center);
+  }
+  if (!patch_.empty() && c.visible(patch_)) {
+    // One-pixel checkerboard: the pattern that shows VCOM flicker most.
+    const Rect area = c.clip().intersect(patch_.inset(t.dp(2)));
+    const Color on = lookColor(t.look, 0xb0b0b0), off = lookColor(t.look, 0x303030);
+    for (int y = area.y; y < area.bottom(); ++y)
+      for (int x = area.x; x < area.right(); ++x) c.at(x, y) = ((x ^ y) & 1) ? on : off;
+    c.strokeRoundRect(patch_, t.dp(4), 1, p.line, p.lineAlpha);
+  }
+  if (!note_.empty()) {
+    c.drawTextIn(*t.font.caption,
+                 panelTrim_ ? "Move Flicker until the patch stops shimmering" : "This display has no flicker adjustment",
+                 note_, p.textMuted, Align::Center);
+  }
+  static const char *const kColour[3] = {"Contrast", "Colour", "Smooth sky"};
+  static const char *const kFlicker[2] = {"Flicker", "Refresh"};
+  for (int i = 0; i < 3; ++i) {
+    if (rows_[i].empty()) continue;
+    c.drawTextIn(*t.font.body, tabs_.selected == 0 ? kColour[i] : kFlicker[i], labels_[i],
+                 tabs_.selected == 1 && !panelTrim_ ? p.textMuted : p.text);
+  }
+  if (tabs_.selected == 0) {
+    contrast_.draw(c, t);
+    tone_.draw(c, t);
+    dither_.draw(c, t);
+  } else if (panelTrim_) {
+    vcom_.draw(c, t);
+    refresh_.draw(c, t);
+  }
+}
+
+bool SettingsApp::CalibrateScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (tabs_.handle(e, ctx)) {
+    arrange();
+    ctx.invalidate(ctx.contentRect());
+    return true;
+  }
+  SystemSettings s = ctx.settings();
+  if (tabs_.selected == 0) {
+    if (contrast_.handle(e, ctx, ctx.theme())) {
+      s.contrast = (uint8_t)contrast_.value;
+      ctx.applySettings(s);  // re-themes: every colour changes
+      return true;
+    }
+    if (contrast_.dragging) return true;
+    if (tone_.handle(e, ctx)) {
+      s.colorTone = (ColorTone)tone_.selected;
+      ctx.applySettings(s);
+      return true;
+    }
+    if (dither_.handle(e, ctx)) {
+      s.dither = dither_.on;
+      ctx.applySettings(s);
+      return true;
+    }
+    return false;
+  }
+  if (!panelTrim_) return false;
+  if (vcom_.handle(e, ctx, ctx.theme())) {
+    s.panelVcom = (int8_t)vcom_.value;
+    ctx.applySettings(s);  // sent to the panel at once
+    return true;
+  }
+  if (vcom_.dragging) return true;
+  if (refresh_.handle(e, ctx)) {
+    s.panelRefreshHz = kRefreshHz[refresh_.selected];
+    ctx.applySettings(s);
+    return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ appearance
 
 void SettingsApp::AppearanceScreen::layout(const Rect &content, const Theme &t) {
-  Rect r[4];
-  column(content.inset(t.m.margin, t.m.gapS),
-         {px(t.m.control), px(2 * t.font.body->lineHeight), px(t.m.control), flex()}, t.m.gapS, r);
+  Rect r[3];
+  column(content.inset(t.m.margin, t.m.gapS), {px(t.m.control), px(t.font.caption->lineHeight), flex()}, t.m.gapS, r);
   mode_.bounds = r[0];
   note_ = r[1];
-  nightCard_ = r[2];
-  nightDim_.bounds = r[2].inset(t.m.padding, 0);
-  skies_ = Rect(r[3].x, r[3].y, r[3].w, r[3].h < t.dp(64) ? r[3].h : t.dp(64));
+  // Swatches (as tall as fits, up to 88 dp) with their note right below.
+  const int noteH = t.font.caption->lineHeight;
+  const int room = r[2].h - t.m.gapL - noteH - t.m.gapS;
+  skies_ = Rect(r[2].x, r[2].y + t.m.gapL, r[2].w, room < t.dp(88) ? room : t.dp(88));
+  skyNote_ = Rect(r[2].x, skies_.bottom() + t.m.gapS, r[2].w, noteH);
 }
 
 void SettingsApp::AppearanceScreen::onShow(AppContext &ctx) {
   mode_.labels = kAppearanceLabels;
   mode_.count = 3;
   mode_.selected = (uint8_t)ctx.settings().appearance;
-  nightDim_.on = ctx.settings().nightDim;
+  skyPin_ = ctx.settings().skyPin;
+  pressedSky_ = -1;
 }
 
 void SettingsApp::AppearanceScreen::draw(Canvas &c, const Theme &t) {
   mode_.draw(c, t);
-  paintGlass(c, t, nightCard_, t.m.radiusCard);
-  c.drawTextIn(*t.font.body, "Dim at night", nightDim_.bounds, t.color.text);
-  nightDim_.draw(c, t);
-  c.drawWrapped(*t.font.body,
-                mode_.selected == 0 ? "Auto follows the sky: light through the day, starlit from dusk."
-                                    : "The sky still drifts from dawn to night.",
-                note_, t.color.textMuted, 2);
-  // One swatch per sky phase, previewing the current mode's gradients.
+  c.drawTextIn(*t.font.caption,
+               mode_.selected == 0 ? "Light through the day, starlit from dusk"
+                                   : "The sky still drifts from dawn to night",
+               note_, t.color.textMuted);
+  // One swatch per sky phase; tap one to keep that sky, tap it again to let
+  // the sky follow the time.
   for (int i = 0; i < 4; ++i) {
     const Rect cell = grid(skies_, 4, 1, i, t.m.gapS);
     if (!c.visible(cell.inset(-glassOutset(t)))) continue;
-    const Theme preview = makeTheme(t.density, t.color.dark, (SkyPhase)i);
+    const Theme preview = makeTheme(t.density, t.color.dark, (SkyPhase)i, t.look);
     Rect parts[2];
     column(cell, {flex(), px(t.font.caption->lineHeight)}, t.dp(3), parts);
     const Rect sw = parts[0];
     c.fillRoundRect(sw.offset(0, t.dp(2)), t.m.radiusControl, t.color.shadow, t.color.shadowAlpha);
     for (int y = 0; y < sw.h; ++y) {
       const int k = sw.h > 1 ? y * 255 / (sw.h - 1) : 0;
-      const Color row = k < 128 ? blend(preview.color.sky[0], preview.color.sky[1], (uint8_t)(k * 2))
-                                : blend(preview.color.sky[1], preview.color.orbPink, (uint8_t)((k - 128) * 2));
+      // Each phase's own gradient, ending in its tint, so they read apart.
+      // (Dark skies only borrow a little of the light tint.)
+      const int tintMax = t.color.dark ? 90 : 254;
+      const Color row = k < 128 ? blend(preview.color.sky[0], preview.color.sky[2], (uint8_t)(k * 2))
+                                : blend(preview.color.sky[2], preview.color.skyTint, (uint8_t)((k - 128) * tintMax / 127));
       const Rect line(sw.x, sw.y + y, sw.w, 1);
       const Rect prev = c.pushClip(line);
       c.fillRoundRect(sw, t.m.radiusControl, row);
       c.restoreClip(prev);
     }
-    c.strokeRoundRect(sw, t.m.radiusControl, 1, t.color.rim, t.color.rimAlpha);
-    c.drawTextIn(*t.font.caption, phaseName((SkyPhase)i), parts[1],
-                 (SkyPhase)i == t.phase ? t.color.accent : t.color.textMuted, Align::Center);
+    const bool pinned = skyPin_ == i + 1;
+    if (pinned) c.strokeRoundRect(sw.inset(-t.dp(2)), t.m.radiusControl + t.dp(2), t.dp(2), t.color.accent);
+    else c.strokeRoundRect(sw, t.m.radiusControl, 1, t.color.rim, t.color.rimAlpha);
+    if (pressedSky_ == i) c.fillRoundRect(sw, t.m.radiusControl, t.color.accent, 46);
+    const bool current = (SkyPhase)i == t.phase;
+    c.drawTextIn(*t.font.caption, phaseName((SkyPhase)i), parts[1], current ? t.color.accent : t.color.textMuted,
+                 Align::Center);
   }
+  char note[64];
+  if (skyPin_) snprintf(note, sizeof(note), "Keeping the %s sky \xc2\xb7 tap it again to follow the time",
+                        phaseName((SkyPhase)(skyPin_ - 1)));
+  else snprintf(note, sizeof(note), "The sky follows the time \xc2\xb7 tap one to keep it");
+  c.drawTextIn(*t.font.caption, note, skyNote_, t.color.textMuted, Align::Center);
 }
 
 bool SettingsApp::AppearanceScreen::onEvent(const Event &e, AppContext &ctx) {
-  if (nightDim_.handle(e, ctx)) {
+  const Theme &t = ctx.theme();
+  for (int i = 0; i < 4; ++i) {
+    const Rect cell = grid(skies_, 4, 1, i, t.m.gapS);
+    bool pressed = pressedSky_ == i;
+    const bool tapped = trackPress(cell, e, pressed, ctx, skies_.inset(-t.dp(4)));
+    if (pressed != (pressedSky_ == i)) pressedSky_ = pressed ? i : -1;
+    if (!tapped) continue;
     SystemSettings s = ctx.settings();
-    s.nightDim = nightDim_.on;
-    ctx.applySettings(s);
+    s.skyPin = skyPin_ == i + 1 ? 0 : (uint8_t)(i + 1);
+    skyPin_ = s.skyPin;
+    ctx.applySettings(s);  // re-themes when the sky changes
+    ctx.invalidate(skies_.inset(-t.dp(4)).unite(skyNote_));
     return true;
   }
   if (!mode_.handle(e, ctx)) return false;

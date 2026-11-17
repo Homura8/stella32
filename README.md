@@ -16,11 +16,11 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.3.0, alarms, timer and alerts |
+| Version | 0.3.1, CYD polish: colour, brightness, paging |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 72 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
+| Host tests | 90 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding and alarms; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.35 MB flash (42%), 72 KB static RAM (21%) |
-| On hardware | **Not yet verified on a physical CYD.** See the checklist below. |
+| On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
 Built-in apps: **Home** (launcher), **Clock**, **Weather** (Open-Meteo, no
 API key), **Alarms** (weekday or one-off, snooze), **Timer**, **Settings**
@@ -94,7 +94,7 @@ In the Arduino IDE: add this repository as a library, open
 
 ## Hardware checklist (first CYD flash)
 
-1. Boot log shows `Stella 0.3.0 on ESP32-2432S028R (CYD), 320x240 compact`;
+1. Boot log shows `Stella 0.3.1 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
 2. *Touch test*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
@@ -107,17 +107,30 @@ In the Arduino IDE: add this repository as a library, open
 6. Brightness, dim, screen-off and *Dim at night* work; the touch that wakes a
    dark screen does not activate anything, while a tap on a dimmed screen
    brightens it and acts. Single quick taps open apps reliably. Settings
-   survive a reset.
-7. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
+   survive a reset. The brightness slider changes evenly over its whole
+   range, also at night ("dimmed for the night"), and the backlight does not
+   flicker (20 kHz PWM).
+7. *Settings > Display > Calibrate*: with
+   `docs/screenshots/320x240/17-calibrate-colour-day.png` open on a good
+   monitor, move *Contrast* (and pick a *Colour*) until the grey ramp and
+   the text swatch match; on *Flicker*, move the slider until the
+   checkerboard stops shimmering, and try the refresh rates. Turning
+   *Smooth sky* off shows whether dithering causes any banding or flicker.
+   Report the values so they can become the CYD defaults.
+   The home screen's ‹ › buttons page through apps while *Set up Wi-Fi* shows;
+   tapping a sky in *Appearance* keeps it.
+8. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
+   then land under the pen. Leaving the test clears its trail.
+9. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
-8. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
+10. *Alarms and Timer*: a one-minute timer rings over another app and wakes a
    sleeping screen; *Again* restarts it. An alarm set for the next minute
    rings, *Snooze* brings it back nine minutes later, and a one-off alarm
    switches itself off. With a small speaker on the *SPEAK* connector the
    chime is audible but gentle (`STELLA_CYD_TONE_DUTY` adjusts it).
-9. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
+11. Optional: build with `STELLA_CYD_DMA 1` and compare smoothness; any
    corruption means DMA must stay off for this board.
-10. Leave it running overnight; no `restarting` line in the log and the
+12. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Licence

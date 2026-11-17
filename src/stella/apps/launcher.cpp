@@ -53,6 +53,30 @@ void LauncherApp::HomeScreen::arrange() {
   grid_ = parts[2];
   dots_ = parts[3];
   note_ = parts[5];
+  // With several pages, a pill of previous/next buttons sits beside the
+  // greeting; swiping still works too.
+  if (paged) {
+    const Rect header(area_.x, greeting_.y, area_.w, date_.bottom() - greeting_.y);
+    pager_ = trailing(header, t.dp(88));
+    pager_ = center(pager_, pager_.w, t.m.control);
+    Rect halves[2];
+    row(pager_, {flex(), flex()}, 0, halves);
+    prev_ = halves[0];
+    next_ = halves[1];
+    const int textW = area_.w - pager_.w - t.m.gapM;
+    greeting_.w = textW;
+    date_.w = textW;
+  } else {
+    pager_ = prev_ = next_ = Rect();
+  }
+}
+
+bool LauncherApp::HomeScreen::showPage(int page, AppContext &ctx) {
+  if (page < 0 || page >= pageCount() || page == page_) return false;
+  page_ = page;
+  const Theme &t = ctx.theme();
+  ctx.invalidate(grid_.inset(-glassOutset(t)).unite(dots_).unite(pager_.inset(-glassOutset(t))));
+  return true;
 }
 
 Rect LauncherApp::HomeScreen::tile(int slot) const { return grid(grid_, columns_, rows_, slot, gap_); }
@@ -168,6 +192,17 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
   }
 
   const int pages = pageCount();
+  if (!pager_.empty() && c.visible(pager_.inset(-glassOutset(t)))) {
+    paintGlass(c, t, pager_, pager_.h / 2);
+    const int r = pager_.h / 2;
+    if (prevPressed_) c.fillRoundRect(prev_, r, p.accent, 46);
+    if (nextPressed_) c.fillRoundRect(next_, r, p.accent, 46);
+    c.vline(pager_.centerX(), pager_.y + t.dp(8), pager_.h - t.dp(16), p.line, p.lineAlpha);
+    const int icon = t.dp(14);
+    const Color faint = blend(p.glass, p.textMuted, 110);
+    icons::back(c, center(prev_, icon, icon), page_ > 0 ? p.accent : faint);
+    icons::chevronRight(c, center(next_, icon, icon), page_ < pages - 1 ? p.accent : faint);
+  }
   if (pages > 1) {
     const int dot = t.dp(3), gap = t.dp(10);
     const int x0 = dots_.centerX() - (pages - 1) * gap / 2;
@@ -181,6 +216,12 @@ bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
   if (setupNote_ && trackPress(note_, e, notePressed_, ctx, note_.inset(-glassOutset(t)))) {
     ctx.launch("settings", "wifi");
     return true;
+  }
+  if (!pager_.empty()) {
+    const Rect repaint = pager_.inset(-glassOutset(t));
+    if (trackPress(prev_, e, prevPressed_, ctx, repaint)) return showPage(page_ - 1, ctx) || true;
+    if (trackPress(next_, e, nextPressed_, ctx, repaint)) return showPage(page_ + 1, ctx) || true;
+    if (pager_.contains(e.startX, e.startY) && e.isPointer()) return true;
   }
   switch (e.type) {
     case EventType::Press:
@@ -200,11 +241,7 @@ bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
       }
       const int dx = e.x - e.startX;
       if (e.dragged && (dx > t.dp(40) || dx < -t.dp(40))) {
-        const int next = page_ + (dx < 0 ? 1 : -1);
-        if (next >= 0 && next < pageCount()) {
-          page_ = next;
-          ctx.invalidate(grid_.inset(-glassOutset(t)).unite(dots_));
-        }
+        showPage(page_ + (dx < 0 ? 1 : -1), ctx);
       }
       return true;
     }

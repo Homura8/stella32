@@ -40,6 +40,7 @@ void paintSky(Canvas &c, const Theme &t, const Rect &screen) {
   const Rect area = c.clip().intersect(screen);
   if (area.empty()) return;
   const Palette &p = t.color;
+  const bool dither = t.look.dither;
   const Rgb s0 = toRgb(p.sky[0]), s1 = toRgb(p.sky[1]), s2 = toRgb(p.sky[2]);
   const float orb = p.orbAlpha / 255.f;
   // Positions follow the site's .pastel-bg layers (pink top-left, tint
@@ -107,7 +108,7 @@ void paintSky(Canvas &c, const Theme &t, const Rect &screen) {
         const int32_t r = left.r + (((right.r - left.r) * f) >> 3);
         const int32_t g = left.g + (((right.g - left.g) * f) >> 3);
         const int32_t b = left.b + (((right.b - left.b) * f) >> 3);
-        const uint32_t th = bayer[x & 3];
+        const uint32_t th = dither ? bayer[x & 3] : 8u;  // 8 = plain rounding
         *out++ = (Color)(dither5(r, th) << 11 | dither6(g, th) << 5 | dither5(b, th));
       }
     }

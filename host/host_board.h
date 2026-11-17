@@ -18,6 +18,15 @@ class SimDisplay : public Display {
   int16_t height() const override { return (int16_t)h_; }
   void writePixels(const Rect &area, const Color *pixels) override;
   void setBacklight(uint8_t level) override { backlight_ = level; }
+  // Panel trim is recorded so tests can check calibration reaches the panel.
+  bool supportsPanelTrim() const override { return trimmable; }
+  void setPanelTrim(const PanelTrim &trim) override {
+    lastTrim = trim;
+    ++trims;
+  }
+  bool trimmable = true;
+  PanelTrim lastTrim;
+  int trims = 0;
 
   Color pixel(int x, int y) const { return pixels_[(size_t)y * w_ + x]; }
   const std::vector<Color> &framebuffer() const { return pixels_; }

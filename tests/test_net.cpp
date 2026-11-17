@@ -214,7 +214,7 @@ TEST(settings_v1_records_are_migrated) {
   CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok && migrated);
   CHECK(s.appearance == Appearance::Dark && s.brightness == 77 && s.sleepAfterSec == 300 && !s.clock24h);
   CHECK(strcmp(s.timezone, "JST-9") == 0 && s.nightDim);  // new field gets its default
-  // The runtime writes the migrated record back as v2.
+  // The runtime writes the migrated record back as the current version.
   SimDevice dev(320, 240);
   dev.storage = store;
   Runtime os;
@@ -226,6 +226,36 @@ TEST(settings_v1_records_are_migrated) {
   CHECK(os.settings().brightness == 77);
   migrated = true;
   CHECK(loadSettings(&dev.storage, s, &migrated) == RecordStatus::Ok && !migrated);
+}
+
+TEST(settings_v2_records_are_migrated) {
+  MemoryStore store;
+  struct V2 {
+    Appearance appearance;
+    uint8_t brightness;
+    uint16_t dimAfterSec, sleepAfterSec;
+    bool clock24h;
+    char timezone[48];
+    bool nightDim;
+  } v2{Appearance::Light, 120, 60, 0, true, "AEST-10", false};
+  CHECK(saveRecord(&store, "sys", "settings", 2, &v2, sizeof(v2)));
+  SystemSettings s;
+  bool migrated = false;
+  CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok && migrated);
+  CHECK(s.appearance == Appearance::Light && s.brightness == 120 && !s.nightDim);
+  CHECK(strcmp(s.timezone, "AEST-10") == 0 && s.colorTone == ColorTone::Soft);  // new field: default
+}
+
+// Regression (CYD): night dimming was a hard cap at 40, so at night the
+// brightness slider stopped doing anything above ~10% and looked broken.
+TEST(night_dimming_scales_and_the_backlight_curve_is_monotonic) {
+  CHECK(nightBrightness(255) > nightBrightness(200) && nightBrightness(200) > nightBrightness(100));
+  CHECK(nightBrightness(100) >= 16 && nightBrightness(16) == 16);
+  CHECK_EQ(backlightDuty(0), 0);
+  CHECK(backlightDuty(16) <= 3 && backlightDuty(255) == 255);
+  for (int v = 1; v < 255; ++v) CHECK(backlightDuty((uint8_t)v) <= backlightDuty((uint8_t)(v + 1)));
+  // Half way on the slider is well under half the duty (LEDs look brighter).
+  CHECK(backlightDuty(128) < 70);
 }
 
 namespace {

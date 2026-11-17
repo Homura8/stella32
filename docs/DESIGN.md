@@ -34,6 +34,39 @@ dithering so RGB565 never bands.
 
 Appearance `Auto` is light at dawn/day and dark ("starlit") at dusk/night;
 `Light` and `Dark` pin the mode while the sky still follows the phase.
+Tapping a sky swatch in *Settings > Appearance* keeps that sky (tap it again
+to follow the time); night dimming still follows the clock.
+
+## Panel calibration (`Look`)
+
+Small TN panels (like the CYD's) wash pastels out to white, lift dark tones
+(text looks light lilac, "dark" mode looks grey) and flatten the sky phases.
+*Settings > Display > Calibrate* tunes how the palette is rendered on this
+panel, live, against the same screen on a good monitor
+(`docs/screenshots/*/17-calibrate-colour-*.png`):
+
+- **Contrast** (0-100 %): a gamma on every colour, text included (1.0 at 0 %,
+  2.2 at 100 %). White stays white.
+- **Colour** (`ColorTone`), below.
+- **Smooth sky**: ordered dithering of the sky gradient (off = plain rounding;
+  a test for banding or flicker).
+- **Flicker** and **Refresh** (panels that support `Display::PanelTrim`):
+  the LCD's VCOM offset, tuned against a checkerboard patch, and its frame
+  rate.
+
+All of it is applied once in `makeTheme` (and `Display::setPanelTrim`), so
+drawing code never changes. The design defaults (Soft, 0 %) are what the
+screenshots show; a board sketch sets its panel's defaults (the CYD starts at
+Rich, 40 %). Tones:
+
+| Tone | Light skies | Saturation | Light depth (gamma) | Edges and shadows |
+| --- | --- | --- | --- | --- |
+| Soft | as designed | 1.0x | 1.0 | 1.0x |
+| Rich | 30% toward the phase tint | 1.45x | 1.35 | 1.7x |
+| Vivid | 48% toward the phase tint | 1.9x | 1.7 | 2.4x |
+
+Tones never change text colours (contrast does); accents get half the
+saturation gain; dark skies only gain saturation.
 
 ## Materials
 
@@ -75,7 +108,7 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
 | `gapS / gapM / gapL` | 4 / 8 / 12 | 6 / 11 / 17 |
 | `padding` (inside cards) | 10 | 14 |
 | `radiusCard / radiusControl` | 16 / 12 | 22 / 16 |
-| `statusBar` | 26 | 34 |
+| `statusBar` | 32 | 44 |
 | `control` (buttons, segmented) | 36 | 50 |
 | `row` (list rows) | 40 | 56 |
 | `icon` | 24 | 32 |
@@ -83,8 +116,8 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
 ## Components
 
 - **Status bar:** sparkle + "Stella" at home; back chevron + screen title
-  elsewhere (tap the left third to go back, long-press anywhere on it for
-  home). Network icon and time at the right, in `textMuted`.
+  elsewhere (tap anywhere in the left third, 32 dp tall, to go back;
+  long-press anywhere on it for home). Network icon and time at the right, in `textMuted`.
 - **Glass card:** groups related rows; rows separated by hairlines.
 - **List row:** icon bubble, title, optional muted value, chevron.
 - **Segmented choice:** glass pill; the selected chip is an opaque `surface`
@@ -109,6 +142,9 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   12-hour mode, Monday-first day chips (accent when on) and Delete/Save.
 - **Timer:** display-font countdown over a thin accent progress track, a
   muted "Ends at ..." line, preset chips and Reset / +1 min / Start.
+- **Home:** greeting, date, a grid of square app tiles. When the apps span
+  several pages, a glass pill of ‹ › buttons sits beside the greeting
+  (swiping also works; resistive panels make swipes hard).
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

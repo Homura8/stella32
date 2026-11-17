@@ -20,6 +20,23 @@ enum class Appearance : uint8_t { Auto = 0, Light = 1, Dark = 2 };
 enum class SkyPhase : uint8_t { Dawn = 0, Day = 1, Dusk = 2, Night = 3 };
 // Density class picks fonts and metrics. Compact: ~320x240. Regular: ~480x320+.
 enum class Density : uint8_t { Compact = 0, Regular = 1 };
+// How strongly the palette is rendered. Soft is the Celestia Glow palette as
+// designed (for good IPS screens); Rich and Vivid deepen the sky toward each
+// phase's own colour, raise saturation and strengthen edges and shadows, for
+// small TN panels (like the CYD's) that wash pastels out to white. Text
+// colours never change.
+enum class ColorTone : uint8_t { Soft = 0, Rich = 1, Vivid = 2 };
+
+// How the palette is rendered on a particular panel (calibrated on the device
+// in Settings > Display > Calibrate). The defaults render the design exactly.
+struct Look {
+  ColorTone tone = ColorTone::Soft;
+  // 0..100: a gamma on every colour, text included (1.0 at 0, 2.2 at 100).
+  // Panels that lift their dark tones (light-lilac text, grey "dark" mode)
+  // need some; good IPS screens need none.
+  uint8_t contrast = 0;
+  bool dither = true;  // ordered dithering of the sky gradient
+};
 
 struct Palette {
   bool dark;
@@ -62,6 +79,7 @@ struct Theme {
   fonts::FontSet font;
   Density density;
   SkyPhase phase;
+  Look look;
 
   // Scale a compact-baseline length ("dp") to this density.
   constexpr int dp(int v) const { return (v * m.scale16 + 8) / 16; }
@@ -70,8 +88,11 @@ struct Theme {
 Density densityFor(int width, int height);
 SkyPhase phaseForHour(int hour);  // 5-8 dawn, 8-17 day, 17-20 dusk, else night
 bool resolveDark(Appearance appearance, SkyPhase phase);  // Auto: dark at dusk and night
-Theme makeTheme(Density density, bool dark, SkyPhase phase);
+Theme makeTheme(Density density, bool dark, SkyPhase phase, const Look &look = Look{});
 
 const char *phaseName(SkyPhase phase);
+const char *toneName(ColorTone tone);
+// A design colour (e.g. a calibration grey) as this look renders it.
+Color lookColor(const Look &look, uint32_t hex);
 
 }  // namespace stella

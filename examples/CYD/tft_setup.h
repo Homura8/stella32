@@ -18,8 +18,9 @@
 #define TFT_CS   15
 #define TFT_DC    2
 #define TFT_RST  -1
-#define TFT_BL   21
-#define TFT_BACKLIGHT_ON HIGH
+// The backlight (GPIO 21) is driven by the board code (CydDisplay) with
+// high-frequency PWM; TFT_BL is deliberately not defined so TFT_eSPI does not
+// switch it fully on during init().
 #define USE_HSPI_PORT
 
 // 20 MHz is what Celestia Nightstand ran on this hardware; try 40 MHz once verified.

@@ -49,6 +49,11 @@ void setup() {
   config.wifiSsid = STELLA_WIFI_SSID;  // first boot only; Settings > Wi-Fi replaces it
   config.wifiPassword = STELLA_WIFI_PASSWORD;
   strncpy(config.defaults.timezone, STELLA_DEFAULT_TIMEZONE, sizeof(config.defaults.timezone) - 1);
+  // Panel calibration defaults for this board (Settings > Display > Calibrate
+  // changes them on the device). The CYD's TN panel washes pastels out and
+  // lifts dark tones, so it starts richer and with some contrast.
+  config.defaults.colorTone = stella::ColorTone::Rich;
+  config.defaults.contrast = 40;
   if (!os.begin(board.board(), config)) {
     Serial.println("Stella failed to start");
     return;

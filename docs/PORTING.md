@@ -13,6 +13,10 @@ apps and the runtime do not change.
 2. **Display.** Implement `stella::Display`: `width()`, `height()`,
    `writePixels(rect, pixels)` (contiguous native-order RGB565, `rect.w *
    rect.h` pixels; finish reading before returning) and `setBacklight(0..255)`.
+   Optional: `supportsPanelTrim()`/`setPanelTrim()` (LCD VCOM offset and
+   frame rate) enable the Flicker tab of *Settings > Display > Calibrate*.
+   Set your panel's calibration defaults (`colorTone`, `contrast`, ...) on
+   `RuntimeConfig::defaults` in the sketch.
 3. **Touch.** Implement `stella::TouchInput::sample()`, returning screen
    coordinates via `mapTouch()` with the board's `TouchCalibration`. Use the
    *Touch test* app on the device to check the corner targets.
