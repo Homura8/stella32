@@ -1,0 +1,17 @@
+# Private configuration: never commit credentials.
+secrets.h
+**/secrets.h
+
+# Build output
+build/
+build-*/
+*.bin
+*.elf
+*.map
+
+# Python / editors
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/

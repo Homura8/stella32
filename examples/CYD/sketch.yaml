@@ -1,0 +1,13 @@
+# Pinned build for the ESP32-2432S028R. From the repository root:
+#   arduino-cli compile --profile cyd examples/CYD
+profiles:
+  cyd:
+    fqbn: esp32:esp32:esp32:PartitionScheme=huge_app
+    platforms:
+      - platform: esp32:esp32 (3.3.12)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - TFT_eSPI (2.5.43)
+      - XPT2046_Touchscreen (1.4.0)
+      - dir: ../..   # this repository (Stella32)
+default_profile: cyd

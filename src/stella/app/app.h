@@ -1,0 +1,140 @@
+#pragma once
+// The application model: what an app is, and everything it may ask of the OS.
+//
+//  * An App owns one or more Screens. Navigation is a per-app screen stack
+//    (push for detail views, pop to go back). The shell supplies the status
+//    bar, back navigation, toasts and the sky backdrop.
+//  * All app code runs on the single UI thread. Background work belongs in
+//    service Jobs; results reach apps through Topics (onTopic()).
+//  * Apps are statically allocated objects registered with the runtime at
+//    boot. They never touch hardware: the AppContext is their only door.
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../gfx/canvas.h"
+#include "../hal/hal.h"
+#include "../input/event.h"
+#include "../ui/icons.h"
+#include "../ui/theme.h"
+#include "../ui/widgets.h"
+#include "system_settings.h"
+
+namespace stella {
+
+class AppContext;
+
+constexpr uint32_t kNoTick = 0xFFFFFFFFu;
+
+class Screen {
+ public:
+  virtual ~Screen() = default;
+  // Status bar title; nullptr uses the app name.
+  virtual const char *title() const { return nullptr; }
+  // Compute every rectangle this screen uses from `content` and the theme.
+  // Called before the first draw and whenever the theme or display changes.
+  // This is the one place to edit when changing the screen's layout.
+  virtual void layout(const Rect &content, const Theme &theme) = 0;
+  // Paint the content area. The sky backdrop is already painted underneath;
+  // draw only what this screen adds. Must be deterministic (no state changes).
+  virtual void draw(Canvas &canvas, const Theme &theme) = 0;
+  // Input and system events. Return true if handled.
+  virtual bool onEvent(const Event &event, AppContext &ctx) {
+    (void)event;
+    (void)ctx;
+    return false;
+  }
+  virtual void onShow(AppContext &ctx) { (void)ctx; }  // became visible
+  virtual void onHide(AppContext &ctx) { (void)ctx; }  // covered or left
+  // Periodic work while visible: return ms until the next tick, or kNoTick.
+  virtual uint32_t onTick(AppContext &ctx) {
+    (void)ctx;
+    return kNoTick;
+  }
+};
+
+enum AppFlags : uint8_t {
+  kAppHome = 1 << 0,    // the launcher; shown at boot and by "home"
+  kAppHidden = 1 << 1,  // not listed in the launcher
+};
+
+struct AppInfo {
+  const char *id;    // stable, <= 15 chars (also its storage namespace)
+  const char *name;  // shown in the launcher and status bar
+  IconFn icon;
+  uint8_t tint;      // launcher bubble colour: Palette::tints index (0..3)
+  uint8_t flags;
+};
+
+class App {
+ public:
+  virtual ~App() = default;
+  virtual const AppInfo &info() const = 0;
+  virtual Screen &root() = 0;
+  virtual void onStart(AppContext &ctx) { (void)ctx; }  // once, before the first show
+  virtual void onTopic(uint16_t topicId, AppContext &ctx) {
+    (void)topicId;
+    (void)ctx;
+  }
+};
+
+struct LocalTime {
+  bool valid = false;  // false until the wall clock is known
+  int64_t epoch = 0;
+  int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, weekday = 0, yearDay = 0;
+};
+
+struct NetworkStatus {
+  bool present = false;  // the board has a network interface
+  bool connected = false;
+  int8_t rssi = 0;
+  char ssid[33] = {0};
+  char ip[16] = {0};
+};
+
+struct SystemStatus {
+  const char *board = "";
+  const char *version = "";
+  uint32_t uptimeMs = 0;
+  MemoryStats memory;
+  ResetCause resetCause = ResetCause::Unknown;
+  int16_t width = 0, height = 0;
+  Density density = Density::Compact;
+  NetworkStatus network;
+  uint32_t supervisorRestarts = 0;
+  uint32_t framesRendered = 0;
+  uint32_t lastFrameMs = 0;  // render time of the most recent frame
+};
+
+class AppContext : public Invalidator {
+ public:
+  // Display and theme.
+  virtual const Theme &theme() const = 0;
+  virtual Rect screenRect() const = 0;
+  virtual Rect contentRect() const = 0;
+  virtual void invalidateAll() = 0;
+
+  // Time.
+  virtual uint32_t millis() const = 0;
+  virtual LocalTime localTime() const = 0;
+  virtual void formatTime(const LocalTime &t, char *out, size_t capacity) const = 0;  // honours 12/24 h
+
+  // Navigation.
+  virtual bool push(Screen &screen) = 0;
+  virtual void pop() = 0;
+  virtual void goHome() = 0;
+  virtual bool launch(const char *appId) = 0;
+  virtual size_t appCount() const = 0;
+  virtual const AppInfo *appAt(size_t index) const = 0;
+
+  // System.
+  virtual void toast(const char *text) = 0;
+  virtual const SystemSettings &settings() const = 0;
+  // Apply new settings (theme, brightness, timezone...) and persist them soon.
+  virtual void applySettings(const SystemSettings &settings) = 0;
+  virtual SystemStatus status() const = 0;
+  // Per-app persistent records, namespaced by AppInfo::id.
+  virtual RecordStatus loadAppRecord(const char *key, uint16_t version, void *data, size_t size) = 0;
+  virtual bool saveAppRecord(const char *key, uint16_t version, const void *data, size_t size) = 0;
+};
+
+}  // namespace stella
