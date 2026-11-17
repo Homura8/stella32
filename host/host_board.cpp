@@ -1,6 +1,7 @@
 #include "host_board.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace stella {
@@ -83,8 +84,90 @@ int SimWifi::scanResults(WifiNetwork *out, int capacity) {
   return n;
 }
 
+namespace {
+
+bool inList(const std::string &item, std::initializer_list<const char *> list) {
+  for (const char *s : list)
+    if (item == s) return true;
+  return false;
+}
+
+// Every comma-separated name must be one the (fake) API knows.
+std::string checkVariables(const std::string &param, const std::string &value, std::initializer_list<const char *> known) {
+  size_t start = 0;
+  while (start <= value.size()) {
+    size_t end = value.find(',', start);
+    if (end == std::string::npos) end = value.size();
+    const std::string name = value.substr(start, end - start);
+    if (!inList(name, known)) return param + " has an unknown variable '" + name + "'";
+    start = end + 1;
+  }
+  return "";
+}
+
+bool isNumber(const std::string &s, double lo, double hi) {
+  if (s.empty()) return false;
+  char *end = nullptr;
+  const double v = strtod(s.c_str(), &end);
+  return *end == '\0' && v >= lo && v <= hi;
+}
+
+}  // namespace
+
+std::string SimHttp::validateUrl(const char *url) {
+  const std::string u(url);
+  if (u.compare(0, 8, "https://") != 0) return "not an https:// address";
+  for (unsigned char ch : u)
+    if (ch <= 0x20 || ch >= 0x7F) return "a space or control character in the address";
+  const size_t slash = u.find('/', 8);
+  const std::string host = u.substr(8, slash == std::string::npos ? std::string::npos : slash - 8);
+  if (host.empty() || host.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:") != std::string::npos)
+    return "a bad host name";
+  const size_t q = u.find('?');
+  if (q == std::string::npos) return "";
+  // The query: name=value pairs, none empty.
+  std::vector<std::pair<std::string, std::string>> params;
+  size_t start = q + 1;
+  while (start <= u.size()) {
+    size_t end = u.find('&', start);
+    if (end == std::string::npos) end = u.size();
+    const std::string pair = u.substr(start, end - start);
+    const size_t eq = pair.find('=');
+    if (eq == std::string::npos || eq == 0 || eq + 1 == pair.size()) return "an empty or broken parameter '" + pair + "'";
+    params.emplace_back(pair.substr(0, eq), pair.substr(eq + 1));
+    start = end + 1;
+  }
+  if (host == "api.open-meteo.com") {
+    bool lat = false, lon = false;
+    for (const auto &p : params) {
+      const std::string &k = p.first, &v = p.second;
+      std::string why;
+      if (k == "latitude") lat = true, why = isNumber(v, -90, 90) ? "" : "latitude out of range";
+      else if (k == "longitude") lon = true, why = isNumber(v, -180, 180) ? "" : "longitude out of range";
+      else if (k == "current")
+        why = checkVariables(k, v, {"temperature_2m", "apparent_temperature", "relative_humidity_2m", "weather_code", "is_day", "wind_speed_10m"});
+      else if (k == "daily")
+        why = checkVariables(k, v, {"weather_code", "temperature_2m_max", "temperature_2m_min", "precipitation_probability_max"});
+      else if (k == "hourly") why = checkVariables(k, v, {"temperature_2m", "precipitation_probability", "weather_code"});
+      else if (k == "timeformat") why = inList(v, {"iso8601", "unixtime"}) ? "" : "timeformat '" + v + "' is not iso8601 or unixtime";
+      else if (k == "timezone") why = v == "auto" || v.find('/') != std::string::npos ? "" : "timezone '" + v + "' is not auto or a zone name";
+      else if (k == "forecast_days") why = isNumber(v, 1, 16) ? "" : "forecast_days must be 1..16";
+      else if (k == "forecast_hours") why = isNumber(v, 1, 384) ? "" : "forecast_hours must be 1..384";
+      else why = "unknown parameter '" + k + "'";
+      if (!why.empty()) return why;
+    }
+    if (!lat || !lon) return "latitude and longitude are required";
+  }
+  return "";
+}
+
 int SimHttp::get(const char *url, uint32_t, size_t maxBodyBytes, HttpSink &sink) {
   ++requests;
+  lastRejection = validateUrl(url);
+  if (!lastRejection.empty()) {
+    lastUrl = url;
+    return 400;
+  }
   if (strstr(url, "manifest.json")) ++manifestRequests;
   lastUrl = url;
   if (failWith) return failWith;
