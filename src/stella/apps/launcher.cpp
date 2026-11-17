@@ -18,6 +18,57 @@ const AppInfo &LauncherApp::info() const {
   return kInfo;
 }
 
+LauncherApp::LauncherApp() : home_(*this), custom_(*this) {}
+
+void LauncherApp::onStart(AppContext &ctx) {
+  HomeLayoutRecord saved;
+  if (ctx.loadAppRecord("layout", HomeLayoutRecord::kVersion, &saved, sizeof(saved)) == RecordStatus::Ok &&
+      saved.count <= HomeLayoutRecord::kMax)
+    layout_ = saved;
+  syncLayout(ctx);
+}
+
+void LauncherApp::onRoute(const char *route, AppContext &ctx) {
+  if (route && strcmp(route, "customise") == 0) ctx.push(custom_);
+}
+
+const AppInfo *LauncherApp::find(AppContext &ctx, const char *id) const {
+  for (size_t i = 0; i < ctx.appCount(); ++i) {
+    const AppInfo *info = ctx.appAt(i);
+    if (info && strcmp(info->id, id) == 0) return info;
+  }
+  return nullptr;
+}
+
+// Keeps the saved order, drops apps that no longer exist or never show on Home,
+// and adds the ones it has not seen yet (visible) at the end.
+void LauncherApp::syncLayout(AppContext &ctx) {
+  HomeLayoutRecord next;
+  for (int i = 0; i < layout_.count && next.count < HomeLayoutRecord::kMax; ++i) {
+    const AppInfo *info = find(ctx, layout_.items[i].id);
+    if (!info || (info->flags & (kAppHome | kAppHidden))) continue;
+    bool seen = false;
+    for (int j = 0; j < next.count; ++j) seen |= strcmp(next.items[j].id, info->id) == 0;
+    if (seen) continue;
+    HomeLayoutRecord::Item &item = next.items[next.count++];
+    copyText(item.id, sizeof(item.id), info->id);
+    item.visible = layout_.items[i].visible;
+  }
+  for (size_t i = 0; i < ctx.appCount() && next.count < HomeLayoutRecord::kMax; ++i) {
+    const AppInfo *info = ctx.appAt(i);
+    if (!info || (info->flags & (kAppHome | kAppHidden))) continue;
+    bool present = false;
+    for (int j = 0; j < next.count; ++j) present |= strcmp(next.items[j].id, info->id) == 0;
+    if (present) continue;
+    HomeLayoutRecord::Item &item = next.items[next.count++];
+    copyText(item.id, sizeof(item.id), info->id);
+    item.visible = 1;
+  }
+  layout_ = next;
+}
+
+void LauncherApp::save(AppContext &ctx) { ctx.saveAppRecord("layout", HomeLayoutRecord::kVersion, &layout_, sizeof(layout_)); }
+
 void LauncherApp::onTopic(uint16_t topicId, AppContext &ctx) {
   if (topicId == topics::kNetwork) home_.refreshText(ctx);
 }
@@ -177,9 +228,10 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
 
 void LauncherApp::HomeScreen::onShow(AppContext &ctx) {
   apps_.clear();
-  for (size_t i = 0; i < ctx.appCount(); ++i) {
-    const AppInfo *info = ctx.appAt(i);
-    if (info && !(info->flags & (kAppHome | kAppHidden))) apps_.push(info);
+  app_.syncLayout(ctx);  // an app may have been installed since
+  for (int i = 0; i < app_.layout_.count; ++i) {
+    if (!app_.layout_.items[i].visible) continue;
+    if (const AppInfo *info = app_.find(ctx, app_.layout_.items[i].id)) apps_.push(info);
   }
   arrange();
   if (page_ >= pageCount()) page_ = 0;
@@ -277,6 +329,10 @@ bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
     if (trackPress(next_, e, nextPressed_, ctx, repaint)) return showPage(page_ + 1, ctx) || true;
     if (pager_.contains(e.startX, e.startY) && e.isPointer()) return true;
   }
+  if (e.type == EventType::LongPress && header_.contains(e.x, e.y)) {  // a hidden shortcut; Settings has the row
+    ctx.push(app_.custom_);
+    return true;
+  }
   switch (e.type) {
     case EventType::Press:
       pressed_ = tileAt(e.x, e.y);
@@ -307,6 +363,115 @@ bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
     default:
       return false;
   }
+}
+
+}  // namespace apps
+}  // namespace stella
+
+namespace stella {
+namespace apps {
+
+// ------------------------------------------------------------------ Home screen editor
+
+void LauncherApp::CustomiseScreen::layout(const Rect &content, const Theme &t) {
+  theme_ = t;
+  card_ = content.inset(t.m.margin, t.m.gapS);
+  list_.bounds = card_.inset(t.dp(2), t.dp(4));
+  list_.rowHeight = t.dp(36);
+  list_.buttonWidth = t.dp(32);
+}
+
+void LauncherApp::CustomiseScreen::refreshInfos(AppContext &ctx) {
+  infos_.clear();
+  for (int i = 0; i < app_.layout_.count; ++i) infos_.push(app_.find(ctx, app_.layout_.items[i].id));
+}
+
+void LauncherApp::CustomiseScreen::onShow(AppContext &ctx) {
+  app_.syncLayout(ctx);
+  refreshInfos(ctx);
+  list_.count = app_.layout_.count;
+  list_.offset = 0;
+}
+
+Rect LauncherApp::CustomiseScreen::rowRect(int i) const {
+  const Rect rows = list_.rows();
+  return Rect(rows.x, rows.y + i * list_.rowHeight - list_.offset, rows.w, list_.rowHeight);
+}
+
+// Controls sit at the right end of a row: up, down, then the switch.
+Rect LauncherApp::CustomiseScreen::controlsOf(const Rect &row, int which) const {
+  const Theme &t = theme_;
+  const int arrow = t.dp(30), toggleW = t.dp(44), gap = t.dp(4);
+  const int right = row.right() - t.dp(8);
+  if (which == 2) return Rect(right - toggleW, row.y, toggleW, row.h);
+  const int downX = right - toggleW - gap - arrow;
+  return which == 1 ? Rect(downX, row.y, arrow, row.h) : Rect(downX - arrow, row.y, arrow, row.h);
+}
+
+Rect LauncherApp::CustomiseScreen::upRect(int i) const { return controlsOf(rowRect(i), 0); }
+Rect LauncherApp::CustomiseScreen::downRect(int i) const { return controlsOf(rowRect(i), 1); }
+Rect LauncherApp::CustomiseScreen::toggleRect(int i) const { return controlsOf(rowRect(i), 2); }
+
+void LauncherApp::CustomiseScreen::drawItem(Canvas &c, const Theme &t, int index, const Rect &row, bool, void *self) {
+  const CustomiseScreen &s = *static_cast<const CustomiseScreen *>(self);
+  const HomeLayoutRecord::Item &item = s.app_.layout_.items[index];
+  const Palette &p = t.color;
+  const AppInfo *info = index < (int)s.infos_.size() ? s.infos_[index] : nullptr;
+  const int bubble = t.dp(12);
+  const Rect inner = row.inset(t.m.padding, 0);
+  if (info) {
+    paintBubble(c, t, inner.x + bubble, row.centerY(), bubble, info->tint);
+    if (info->icon) info->icon(c, center(Rect(inner.x, row.y, 2 * bubble, row.h), t.dp(14), t.dp(14)), p.accent);
+  }
+  const Rect up = s.controlsOf(row, 0), down = s.controlsOf(row, 1), toggle = s.controlsOf(row, 2);
+  const int nameX = inner.x + 2 * bubble + t.m.gapM;
+  c.drawTextIn(*t.font.body, info ? info->name : item.id, Rect(nameX, row.y, up.x - nameX, row.h),
+               item.visible ? p.text : p.textMuted);
+  const int icon = t.dp(12);
+  icons::chevronUp(c, center(up, icon, icon), index > 0 ? p.accent : blend(p.glass, p.textMuted, 110));
+  icons::chevronDown(c, center(down, icon, icon),
+                     index < s.app_.layout_.count - 1 ? p.accent : blend(p.glass, p.textMuted, 110));
+  Toggle sw;
+  sw.bounds = toggle;
+  sw.on = item.visible != 0;
+  sw.draw(c, t);
+  if (index < s.app_.layout_.count - 1) paintHairline(c, t, row.x + t.m.padding, row.bottom() - 1, row.w - 2 * t.m.padding);
+}
+
+void LauncherApp::CustomiseScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, card_, t.m.radiusCard);
+  list_.draw(c, t, drawItem, this);
+}
+
+bool LauncherApp::CustomiseScreen::onEvent(const Event &e, AppContext &ctx) {
+  const int index = list_.handle(e, ctx);
+  if (index < 0 || index >= app_.layout_.count) return true;
+  HomeLayoutRecord &layout = app_.layout_;
+  if (e.type != EventType::Tap) return true;
+  if (toggleRect(index).contains(e.x, e.y)) {
+    HomeLayoutRecord::Item &item = layout.items[index];
+    if (strcmp(item.id, "settings") == 0 && item.visible) {
+      ctx.toast("Settings always stays on Home");
+    } else {
+      item.visible = item.visible ? 0 : 1;
+      app_.save(ctx);
+    }
+  } else if (upRect(index).contains(e.x, e.y) && index > 0) {
+    const HomeLayoutRecord::Item tmp = layout.items[index];
+    layout.items[index] = layout.items[index - 1];
+    layout.items[index - 1] = tmp;
+    app_.save(ctx);
+  } else if (downRect(index).contains(e.x, e.y) && index < layout.count - 1) {
+    const HomeLayoutRecord::Item tmp = layout.items[index];
+    layout.items[index] = layout.items[index + 1];
+    layout.items[index + 1] = tmp;
+    app_.save(ctx);
+  } else {
+    return true;
+  }
+  refreshInfos(ctx);
+  ctx.invalidate(card_.inset(-glassOutset(ctx.theme())));
+  return true;
 }
 
 }  // namespace apps

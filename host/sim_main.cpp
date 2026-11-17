@@ -226,7 +226,9 @@ void capture(int width, int height, const std::string &root) {
       Rect ar[2];
       layout::column(sc.inset(st.m.margin, st.m.gapS), {layout::flex(), layout::px(st.m.control)}, st.m.gapS, ar);
       save(23, "about-update");
-      tapRect(s, layout::center(ar[1], st.dp(190), st.m.control));
+      Rect aboutButtons[2];
+      layout::row(ar[1], {layout::flex(), layout::flex()}, st.m.gapM, aboutButtons);
+      tapRect(s, aboutButtons[1]);  // Software update
       const int lh = st.font.body->lineHeight;
       Rect ur[3];
       layout::column(sc.inset(st.m.margin, st.m.gapS),
@@ -267,6 +269,18 @@ void capture(int width, int height, const std::string &root) {
       s.run(100);
       s.os.pop();
     }
+
+    // What's new, and the Home screen editor.
+    s.os.goHome();
+    s.os.launch("settings", "whatsnew");
+    s.run(200);
+    save(31, "whats-new");
+    s.os.goHome();
+    s.os.launch("home", "customise");
+    s.run(200);
+    save(32, "home-editor");
+    s.os.goHome();
+    s.run(100);
 
     // The bedside clock, with the alarm set earlier.
     s.os.goHome();

@@ -376,7 +376,9 @@ Rect aboutUpdateButton(SimSession &s) {
   const Theme &t = s.os.theme();
   Rect r[2];
   layout::column(s.os.contentRect().inset(t.m.margin, t.m.gapS), {layout::flex(), layout::px(t.m.control)}, t.m.gapS, r);
-  return layout::center(r[1], t.dp(190), t.m.control);
+  Rect b[2];  // What's new | Software update
+  layout::row(r[1], {layout::flex(), layout::flex()}, t.m.gapM, b);
+  return b[1];
 }
 Rect updateAction(SimSession &s) {
   const Theme &t = s.os.theme();

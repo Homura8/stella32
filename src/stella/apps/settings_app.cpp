@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "changelog.h"
 #include "../core/deadline.h"
 #include "../core/text.h"
 #include "../ui/layout.h"
@@ -75,19 +76,24 @@ void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
 
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "wifi") == 0) ctx.push(wifi_);
+  if (route && strcmp(route, "whatsnew") == 0) ctx.push(whatsNew_);
 }
 
 // ------------------------------------------------------------------ main list
 
 void SettingsApp::MainScreen::layout(const Rect &content, const Theme &t) {
   const Rect area = content.inset(t.m.margin, t.m.gapS);
-  // Rows shrink a little on short panels so all five stay visible.
-  const int rowH = kRows * t.m.row <= area.h ? t.m.row : area.h / kRows;
-  card_ = Rect(area.x, area.y, area.w, kRows * rowH);
-  for (int i = 0; i < kRows; ++i) {
-    rows_[i].bounds = Rect(card_.x, card_.y + i * rowH, card_.w, rowH);
-    rows_[i].separator = i < kRows - 1;
-  }
+  // All rows when they fit; else as tall as the touch minimum and scrolled
+  // (with the up and down buttons).
+  const int minimum = t.dp(32);
+  int rowH = kRows * t.m.row <= area.h ? t.m.row : area.h / kRows;
+  if (rowH < minimum) rowH = minimum;
+  const int height = kRows * rowH < area.h ? kRows * rowH : area.h;
+  card_ = Rect(area.x, area.y, area.w, height);
+  list_.bounds = card_;
+  list_.rowHeight = rowH;
+  list_.count = kRows;
+  list_.buttonWidth = t.dp(32);
 }
 
 void SettingsApp::MainScreen::onShow(AppContext &ctx) {
@@ -110,39 +116,46 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
            : net.state == WifiState::Connecting      ? "Joining..."
            : net.state == WifiState::NotConfigured   ? "Off"
                                                      : "Not connected");
+}
+
+void SettingsApp::MainScreen::drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self) {
+  const MainScreen &s = *static_cast<const MainScreen *>(self);
   const struct {
     const char *title;
     IconFn icon;
     uint8_t tint;
     const char *detail;
-  } rows[kRows] = {{"Wi-Fi", icons::wifi, 2, wifi_},
+  } rows[kRows] = {{"Wi-Fi", icons::wifi, 2, s.wifi_},
                    {"Display", icons::sun, 3, nullptr},
-                   {"Sound & light", icons::bell, 1, sound_},
-                   {"Appearance", icons::appearance, 1, appearance_},
-                   {"Time", icons::clock, 2, time_},
-                   {"About", icons::info, 0, about_}};
-  for (int i = 0; i < kRows; ++i) {
-    rows_[i].title = rows[i].title;
-    rows_[i].icon = rows[i].icon;
-    rows_[i].tint = rows[i].tint;
-    rows_[i].detail = rows[i].detail;
-  }
+                   {"Sound & light", icons::bell, 1, s.sound_},
+                   {"Appearance", icons::appearance, 1, s.appearance_},
+                   {"Time", icons::clock, 2, s.time_},
+                   {"About", icons::info, 0, s.about_},
+                   {"Home screen", icons::home, 3, nullptr}};
+  ListRow r;
+  r.bounds = row;
+  r.title = rows[index].title;
+  r.icon = rows[index].icon;
+  r.tint = rows[index].tint;
+  r.detail = rows[index].detail;
+  r.separator = index < kRows - 1;
+  r.pressed = pressed;
+  r.draw(c, t);
 }
 
 void SettingsApp::MainScreen::draw(Canvas &c, const Theme &t) {
   paintGlass(c, t, card_, t.m.radiusCard);
-  for (const ListRow &row : rows_) row.draw(c, t);
+  list_.draw(c, t, drawRow, this);
 }
 
 bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
-  Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_};
-  for (int i = 0; i < kRows; ++i) {
-    if (rows_[i].handle(e, ctx)) {
-      ctx.push(*targets[i]);
-      return true;
-    }
-  }
-  return false;
+  const int index = list_.handle(e, ctx);
+  if (index < 0) return false;
+  Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_,
+                            nullptr};
+  if (targets[index]) ctx.push(*targets[index]);
+  else ctx.launch("home", "customise");
+  return true;
 }
 
 // ------------------------------------------------------------------ sound and light
@@ -1318,13 +1331,75 @@ bool SettingsApp::TimeScreen::onEvent(const Event &e, AppContext &ctx) {
   return true;
 }
 
+// ------------------------------------------------------------------ what's new
+
+void SettingsApp::WhatsNewScreen::layout(const Rect &content, const Theme &t) {
+  card_ = content.inset(t.m.margin, t.m.gapS);
+  list_.bounds = card_.inset(t.dp(2), t.dp(4));
+  list_.rowHeight = t.dp(26);
+  list_.buttonWidth = t.dp(32);
+}
+
+void SettingsApp::WhatsNewScreen::onShow(AppContext &) {
+  int entries = 0;
+  const ChangelogEntry *log = changelog(entries);
+  int rows = 0;
+  for (int i = 0; i < entries; ++i) {
+    ++rows;  // the version
+    for (const char *line : log[i].lines)
+      if (line) ++rows;
+  }
+  list_.count = rows;
+  list_.offset = 0;
+}
+
+// Row k is either a version heading or one of its lines.
+void SettingsApp::WhatsNewScreen::drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool, void *) {
+  int entries = 0;
+  const ChangelogEntry *log = changelog(entries);
+  int k = index;
+  for (int i = 0; i < entries; ++i) {
+    if (k == 0) {
+      char heading[24];
+      snprintf(heading, sizeof(heading), "StellaOS %s", log[i].version);
+      c.drawTextIn(*t.font.title, heading, row.inset(t.m.padding, 0), i == 0 ? t.color.accent : t.color.text);
+      return;
+    }
+    --k;
+    for (const char *line : log[i].lines) {
+      if (!line) continue;
+      if (k == 0) {
+        char text[64];
+        snprintf(text, sizeof(text), "\xe2\x80\xa2 %s", line);
+        c.drawTextIn(*t.font.body, text, row.inset(t.m.padding + t.dp(4), 0), t.color.textMuted);
+        return;
+      }
+      --k;
+    }
+  }
+}
+
+void SettingsApp::WhatsNewScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, card_, t.m.radiusCard);
+  list_.draw(c, t, drawRow, this);
+}
+
+bool SettingsApp::WhatsNewScreen::onEvent(const Event &e, AppContext &ctx) {
+  list_.handle(e, ctx);
+  return true;
+}
+
 // ------------------------------------------------------------------ about
 
 void SettingsApp::AboutScreen::layout(const Rect &content, const Theme &t) {
   Rect r[2];
   column(content.inset(t.m.margin, t.m.gapS), {flex(), px(t.m.control)}, t.m.gapS, r);
   card_ = r[0];
-  update_.bounds = layout::center(r[1], t.dp(190), t.m.control);
+  Rect b[2];
+  row(r[1], {flex(), flex()}, t.m.gapM, b);
+  whatsNew_.bounds = b[0];
+  whatsNew_.label = "What's new";
+  update_.bounds = b[1];
   update_.label = "Software update";
   list_.bounds = card_.inset(t.dp(2), t.dp(4));
   list_.rowHeight = t.dp(24);
@@ -1383,12 +1458,17 @@ void SettingsApp::AboutScreen::drawRow(Canvas &c, const Theme &t, int index, con
 void SettingsApp::AboutScreen::draw(Canvas &c, const Theme &t) {
   paintGlass(c, t, card_, t.m.radiusCard);
   list_.draw(c, t, drawRow, this);
+  whatsNew_.draw(c, t);
   update_.draw(c, t);
 }
 
 bool SettingsApp::AboutScreen::onEvent(const Event &e, AppContext &ctx) {
   if (update_.handle(e, ctx)) {
     ctx.push(app_.softwareUpdate_);
+    return true;
+  }
+  if (whatsNew_.handle(e, ctx)) {
+    ctx.push(app_.whatsNew_);
     return true;
   }
   list_.handle(e, ctx);

@@ -16,9 +16,9 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
+| Version | 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
-| Host tests | 187 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
+| Host tests | 198 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.48 MB flash (75% of a 1.9 MB update slot), 84 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
@@ -196,7 +196,13 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     screen dims in a dim room and comes back in the light without flicker or
     hunting, and with a differently coloured case. If it says the sensor barely
     changed, the case may cover it: say what you see.
-19. Leave it running overnight; no `restarting` line in the log and the
+19. *What's new and Home screen*: after installing an update, the first boot
+    should open a changelog by itself once Home has settled (and *About >
+    What's new* shows it any time). *Settings > Home screen* (the last row of
+    the list, which scrolls) or a long press on Home's time opens the editor:
+    switch apps off, move them with the arrows; Settings always stays. A
+    friend's CYD starts with every app visible.
+20. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Roadmap

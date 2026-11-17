@@ -71,6 +71,20 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   } else if (loaded != RecordStatus::Ok && loaded != RecordStatus::Missing) {
     LOGW(kTag, "settings %s; using defaults", recordStatusName(loaded));
   }
+  // After an update the person is shown what changed, once. A device with no
+  // saved settings is new (nothing to compare with): it only learns the version.
+  {
+    char seen[16] = {0};
+    const RecordStatus seenStatus = loadRecord(board.storage, "sys", "seen", 1, seen, sizeof(seen));
+    seen[sizeof(seen) - 1] = '\0';
+    const bool hadSettings = loaded == RecordStatus::Ok;
+    const bool newer = seenStatus != RecordStatus::Ok || UpdateService::compareVersions(STELLA_VERSION, seen) != 0;
+    whatsNewPending_ = hadSettings && newer && UpdateService::compareVersions(STELLA_VERSION, seen) != -1;
+    if (!hadSettings && newer) {
+      char now[16] = STELLA_VERSION;
+      saveRecord(board.storage, "sys", "seen", 1, now, sizeof(now));
+    }
+  }
   applyTimezone(settings_.timezone);
   applyPanelTrim(true);
   applyVolume();
@@ -213,6 +227,7 @@ uint32_t Runtime::step() {
   updatePreview(millis());
   updateLight(millis());
   updateLed(millis());
+  maybeShowWhatsNew(now);
 
   if (tickArmed_ && reached(now, nextTickAt_)) {
     if (Screen *s = topScreen()) {
@@ -1004,6 +1019,19 @@ void Runtime::updatePreview(uint32_t now) {
 }
 
 // ------------------------------------------------------------------ status LED and ambient light
+
+// The changelog, once per version, when Home is in front and quiet (not in the
+// middle of anything, not while an alert is up). It is marked seen as it opens.
+void Runtime::maybeShowWhatsNew(uint32_t now) {
+  if (!whatsNewPending_ || now < 6000 || frames_ == 0 || alertCount_ || power_ != PowerState::Active) return;
+  if (foreground_ != home_ || gestures_.active() || topFullscreen()) return;
+  AppSlot *home = slot(home_);
+  if (!home || home->depth != 1) return;
+  whatsNewPending_ = false;
+  char version[16] = STELLA_VERSION;
+  saveRecord(board_.storage, "sys", "seen", 1, version, sizeof(version));
+  launch("settings", "whatsnew");
+}
 
 void Runtime::applyLed(bool force) {
   led_.configure(settings_.ledMode, settings_.ledLevel);
