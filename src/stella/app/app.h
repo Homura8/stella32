@@ -187,6 +187,10 @@ struct SystemStatus {
   bool panelTrim = false;  // the display supports VCOM / refresh adjustment
   int64_t nextAlarm = 0;   // epoch seconds of the earliest app alarm, 0 = none (setNextAlarm)
   Glance glance;           // the first app's glance line (setGlance)
+  // Today's sun, as told by the Weather place (setSun): epoch seconds, both 0
+  // when unknown; `sunPolar` 1 = the Sun stays up all day, 2 = it stays down.
+  int64_t sunrise = 0, sunset = 0;
+  uint8_t sunPolar = 0;
 };
 
 class AppContext : public Invalidator {

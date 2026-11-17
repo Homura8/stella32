@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.12.0"
+#define STELLA_VERSION "0.13.0"
 #endif
 
 namespace stella {

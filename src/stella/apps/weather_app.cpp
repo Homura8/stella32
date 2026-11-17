@@ -257,7 +257,8 @@ bool WeatherApp::publishGlance(AppContext &ctx) {
     return false;
   }
   char text[32];
-  snprintf(text, sizeof(text), "%d\xc2\xb0 %s", (int)s.report.temperatureC, weatherLabel(s.report.code));
+  snprintf(text, sizeof(text), "%d\xc2\xb0 %s", displayTemperature(s.report.temperatureC, ctx.settings().fahrenheit),
+           weatherLabel(s.report.code));
   ctx.setGlance(weatherIcon(s.report.code, s.report.day), text);
   return true;
 }
@@ -353,6 +354,7 @@ void WeatherApp::MainScreen::refresh(AppContext &ctx) {
   const WeatherSnapshot next = app_.topic_.get();
   char status[sizeof(statusText_)];
   snap_ = next;
+  fahrenheit_ = ctx.settings().fahrenheit;
   // Day names from the local calendar (forecast days start today).
   const LocalTime now = ctx.localTime();
   for (int i = 0; i < WeatherReport::kDays; ++i) {
@@ -422,7 +424,7 @@ void WeatherApp::MainScreen::draw(Canvas &c, const Theme &t) {
   paintBubble(c, t, icon_.centerX(), icon_.centerY(), r, 2);
   const IconFn icon = w.valid ? weatherIcon(w.code, w.day) : icons::sparkle;
   icon(c, center(icon_, r, r), p.accent);
-  if (w.valid) snprintf(text, sizeof(text), "%d\xc2\xb0", w.temperatureC);
+  if (w.valid) snprintf(text, sizeof(text), "%d\xc2\xb0", displayTemperature(w.temperatureC, fahrenheit_));
   else snprintf(text, sizeof(text), "--\xc2\xb0");
   c.drawText(*t.font.display, text, temp_.x, temp_.y + t.font.display->ascent, w.valid ? p.text : p.textMuted);
   c.drawTextIn(*t.font.title, w.valid ? weatherLabel(w.code) : "Weather", condition_, p.text);
@@ -462,7 +464,7 @@ void WeatherApp::MainScreen::draw(Canvas &c, const Theme &t) {
   // Detail chips.
   char chip[3][24];
   if (w.valid) {
-    snprintf(chip[0], 24, "Feels %d\xc2\xb0", w.feelsLikeC);
+    snprintf(chip[0], 24, "Feels %d\xc2\xb0", displayTemperature(w.feelsLikeC, fahrenheit_));
     snprintf(chip[1], 24, "%s", rainChip_);
     snprintf(chip[2], 24, "Wind %u km/h", (unsigned)w.windKmh);
   } else {
@@ -493,7 +495,8 @@ void WeatherApp::MainScreen::draw(Canvas &c, const Theme &t) {
     if (has) {
       const int s = parts[1].h < t.dp(24) ? parts[1].h : t.dp(24);
       weatherIcon(w.days[i].code, true)(c, center(parts[1], s, s), p.accent);
-      snprintf(text, sizeof(text), "%d\xc2\xb0  %d\xc2\xb0", w.days[i].maxC, w.days[i].minC);
+      snprintf(text, sizeof(text), "%d\xc2\xb0  %d\xc2\xb0", displayTemperature(w.days[i].maxC, fahrenheit_),
+               displayTemperature(w.days[i].minC, fahrenheit_));
       c.drawTextIn(*t.font.caption, text, parts[2], p.text, Align::Center);
     }
   }
@@ -533,6 +536,7 @@ void WeatherApp::HourlyScreen::onShow(AppContext &ctx) { refresh(ctx); }
 
 void WeatherApp::HourlyScreen::refresh(AppContext &ctx) {
   report_ = app_.topic_.get().report;
+  fahrenheit_ = ctx.settings().fahrenheit;
   const LocalTime now = ctx.localTime();
   const RainOutlook rain = rainOutlook(report_, now.valid ? now.epoch : 0);
   char hour[12];
@@ -580,7 +584,7 @@ void WeatherApp::HourlyScreen::draw(Canvas &c, const Theme &t) {
       const WeatherHour &h = report_.hours[i];
       const Rect col(x0 + i * colW, inner.y, colW, inner.h);
       char temp[8];
-      snprintf(temp, sizeof(temp), "%d\xc2\xb0", (int)h.tempC);
+      snprintf(temp, sizeof(temp), "%d\xc2\xb0", displayTemperature(h.tempC, fahrenheit_));
       c.drawTextIn(*t.font.caption, temp, Rect(col.x - 2, inner.y, col.w + 4, lineH), p.text, Align::Center);
       const Rect track(col.centerX() - barW / 2, barTop, barW, barH);
       c.fillRoundRect(track, barW / 2, p.line, (uint8_t)(p.lineAlpha * 2));

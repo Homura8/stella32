@@ -50,6 +50,8 @@ void SystemSettings::sanitize() {
   if (lightDark > 4095) lightDark = 4095;
   if (lightBright > 4095) lightBright = 4095;
   if (!lightCalibrated()) autoBrightness = false;
+  if (dateOrder > 1) dateOrder = 0;
+  if (idleFace > 1) idleFace = 0;
   // A correction outside these bounds is a failed calibration: undo it.
   if (touchScaleX < 819 || touchScaleX > 1280 || touchScaleY < 819 || touchScaleY > 1280 || touchOffsetX < -60 ||
       touchOffsetX > 60 || touchOffsetY < -60 || touchOffsetY > 60) {
@@ -131,6 +133,34 @@ struct SettingsV5 {
   uint8_t panelRefreshHz;
   uint8_t skyPin;
   int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+};
+
+// Frozen layout of version 9 (0.8.0 - 0.12.0). Never edit.
+struct SettingsV9 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  uint8_t bedside;
+  ColorTone colorTone;
+  uint8_t contrastLight, contrastDark, whiteLevel, warmth;
+  bool dither;
+  int8_t panelVcom;
+  uint8_t panelRefreshHz;
+  uint8_t skyPin;
+  int16_t touchScaleX, touchOffsetX, touchScaleY, touchOffsetY;
+  uint8_t volume;
+  bool autoUpdate;
+  uint8_t ledMode, ledLevel;
+  uint8_t ledPin[3];
+  bool ledInverted;
+  bool autoBrightness;
+  uint16_t lightDark;
+  int16_t lightSelf;
+  uint16_t lightBright;
 };
 
 // Frozen layout of version 8 (0.7.0). Never edit.
@@ -393,6 +423,44 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.touchOffsetY = v8.touchOffsetY;
       loaded.volume = v8.volume;
       loaded.autoUpdate = v8.autoUpdate;
+      if (migrated) *migrated = true;
+    }
+  } else if (s == RecordStatus::OldVersion && found == 9) {
+    SettingsV9 v9;
+    s = loadRecord(store, kNamespace, kKey, 9, &v9, sizeof(v9));
+    if (s == RecordStatus::Ok) {
+      loaded = out;  // the units, date style and idle face keep their defaults
+      loaded.appearance = v9.appearance;
+      loaded.brightness = v9.brightness;
+      loaded.dimAfterSec = v9.dimAfterSec;
+      loaded.sleepAfterSec = v9.sleepAfterSec;
+      loaded.clock24h = v9.clock24h;
+      memcpy(loaded.timezone, v9.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v9.nightDim;
+      loaded.bedside = v9.bedside;
+      loaded.colorTone = v9.colorTone;
+      loaded.contrastLight = v9.contrastLight;
+      loaded.contrastDark = v9.contrastDark;
+      loaded.whiteLevel = v9.whiteLevel;
+      loaded.warmth = v9.warmth;
+      loaded.dither = v9.dither;
+      loaded.panelVcom = v9.panelVcom;
+      loaded.panelRefreshHz = v9.panelRefreshHz;
+      loaded.skyPin = v9.skyPin;
+      loaded.touchScaleX = v9.touchScaleX;
+      loaded.touchOffsetX = v9.touchOffsetX;
+      loaded.touchScaleY = v9.touchScaleY;
+      loaded.touchOffsetY = v9.touchOffsetY;
+      loaded.volume = v9.volume;
+      loaded.autoUpdate = v9.autoUpdate;
+      loaded.ledMode = v9.ledMode;
+      loaded.ledLevel = v9.ledLevel;
+      memcpy(loaded.ledPin, v9.ledPin, sizeof(loaded.ledPin));
+      loaded.ledInverted = v9.ledInverted;
+      loaded.autoBrightness = v9.autoBrightness;
+      loaded.lightDark = v9.lightDark;
+      loaded.lightSelf = v9.lightSelf;
+      loaded.lightBright = v9.lightBright;
       if (migrated) *migrated = true;
     }
   }

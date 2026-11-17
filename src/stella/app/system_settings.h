@@ -20,9 +20,9 @@ struct SystemSettings {
   // v5 per-mode contrast, white level and warmth, v6 the bedside clock, v7 the speaker volume and
   // the automatic update check, v8 screen animations (removed again in v9, whose
   // layout simply lacks the field), v9 the status LED and the ambient light
-  // sensor. Older
+  // sensor, v10 the units and date style and the idle face. Older
   // records are migrated by loadSettings().
-  static constexpr uint16_t kVersion = 9;
+  static constexpr uint16_t kVersion = 10;
 
   Appearance appearance = Appearance::Auto;
   uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
@@ -59,6 +59,12 @@ struct SystemSettings {
   int16_t lightSelf = 0;         // change in the reading with the backlight at full (signed)
   uint16_t lightBright = 0;      // reading in normal room light, backlight off; == lightDark: not calibrated
   bool lightCalibrated() const { return lightBright != lightDark; }
+  // Units and dates (Settings > Units).
+  bool fahrenheit = false;       // temperatures in degrees Fahrenheit
+  bool weekStartsSunday = false; // Alarms' day chips, the week in the calendar groundwork
+  uint8_t dateOrder = 0;         // 0 "17 Nov", 1 "Nov 17"
+  // Which face the idle screen shows when `bedside` says it should start.
+  uint8_t idleFace = 0;          // 0 the bedside clock, 1 the dashboard
 
   Look look(bool dark) const {
     Look l;

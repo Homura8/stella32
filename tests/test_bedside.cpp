@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "sim_session.h"
+#include "stella/apps/common.h"
 #include "stella/ui/layout.h"
 #include "test.h"
 
@@ -238,22 +239,24 @@ TEST(settings_v5_records_are_migrated_with_the_board_bedside_default) {
   CHECK(s.bedside == 2);
 }
 
-TEST(display_screen_bedside_row_sets_the_mode) {
+TEST(idle_face_screen_sets_when_and_which_face) {
   SimSession s(320, 240);
-  s.os.launch("settings");
+  s.os.launch("settings", "idle");  // Settings > Idle face (the last row of the list)
   s.run(100);
-  const Point row = s.settingsRow(1);
-  s.tap(row.x, row.y);  // Display
-  const Theme &t = s.os.theme();
-  const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
-  const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 6;
-  const int rowH = want <= fit ? want : fit < t.dp(32) ? t.dp(32) : fit;
-  const int y = area.y + t.dp(4) + 4 * rowH + rowH / 2;
-  CHECK(s.os.settings().bedside == 1);
-  s.tap(area.right() - t.m.padding - t.dp(20), y);  // "Always" is the last chip
+  CHECK(s.os.topScreen() && strcmp(s.os.topScreen()->title(), "Idle face") == 0);
+  CHECK(s.os.settings().bedside == 1 && s.os.settings().idleFace == 0);
+  const Rect always = s.settings.idleChoice(0, 2);  // Start: Off | Night | Always
+  s.tap(always.centerX(), always.centerY());
   CHECK(s.os.settings().bedside == 2);
-  s.tap(area.x + area.w * 3 / 4 - t.dp(30), y);
-  CHECK(s.os.settings().bedside != 2);
+  const Rect off = s.settings.idleChoice(0, 0);
+  s.tap(off.centerX(), off.centerY());
+  CHECK(s.os.settings().bedside == 0);
+  const Rect dashboard = s.settings.idleChoice(1, 1);  // Face: Clock | Dashboard
+  s.tap(dashboard.centerX(), dashboard.centerY());
+  CHECK(s.os.settings().idleFace == 1);
+  const Rect clock = s.settings.idleChoice(1, 0);
+  s.tap(clock.centerX(), clock.centerY());
+  CHECK(s.os.settings().idleFace == 0);
 }
 
 TEST(bedside_animation_cycle_and_calm_repaints) {
@@ -321,4 +324,103 @@ TEST(bedside_uses_the_largest_clock_that_fits) {
     }
     CHECK(!edgeTouched);
   }
+}
+
+// ------------------------------------------------------------------ dashboard and sun
+
+TEST(the_idle_face_setting_chooses_clock_or_dashboard) {
+  SimSession clock(320, 240);  // Monday 22:30
+  quickDim(clock, 1);
+  clock.run(40000);
+  CHECK(clock.os.topScreen() == &clock.clock.bedsideFace());
+  SimSession board(320, 240);
+  SystemSettings p = quickDim(board, 1);
+  p.idleFace = 1;
+  board.os.applySettings(p);
+  board.run(40000);
+  CHECK(board.os.topScreen() == &board.clock.dashboardFace() && strcmp(topApp(board), "clock") == 0);
+  CHECK(isBedside(board));  // fullscreen, dimmed like the bedside clock
+  CHECK(board.dev.display.pixel(2, 2) == board.os.theme().color.bedBg);
+  board.tap(160, 120);  // a tap leaves
+  CHECK(!isBedside(board) && board.os.topScreen() == &board.clock.root());
+  board.run(40000);  // idle again: back to the dashboard
+  CHECK(board.os.topScreen() == &board.clock.dashboardFace());
+  // "Off" wins over the face: nothing starts.
+  SimSession off(320, 240);
+  p = quickDim(off, 0);
+  p.idleFace = 1;
+  off.os.applySettings(p);
+  off.run(40000);
+  CHECK(!isBedside(off));
+}
+
+TEST(dashboard_renders_everywhere_matches_a_full_redraw_and_stays_still) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  for (const auto &sz : sizes) {
+    for (bool h24 : {true, false}) {
+      SimSession s(sz[0], sz[1]);
+      SystemSettings p = s.os.settings();
+      p.clock24h = h24;
+      s.os.applySettings(p);
+      s.run(40000);  // the weather glance is published
+      s.os.launch("clock", "dashboard");
+      s.run(300);
+      CHECK(s.os.topScreen() == &s.clock.dashboardFace());
+      for (int i = 0; i < 40 && s.os.localTime().second >= 45; ++i) s.run(1000);
+      const std::vector<Color> incremental = s.dev.display.framebuffer();
+      s.os.invalidateAll();
+      s.run(20);
+      CHECK(incremental == s.dev.display.framebuffer());
+      // Nothing moves: ten seconds later (inside the same minute) not one pixel was written.
+      s.dev.display.resetCounters();
+      s.run(10000);
+      CHECK_EQ(s.dev.display.pixelsWritten(), 0u);
+    }
+  }
+}
+
+TEST(dashboard_updates_only_what_changed_at_the_minute) {
+  SimSession s(320, 240);
+  s.run(40000);
+  s.os.launch("clock", "dashboard");
+  s.run(300);
+  while (s.os.localTime().second < 50) s.run(1000);
+  s.dev.display.resetCounters();
+  s.run(12000);  // across the minute change
+  CHECK(s.dev.display.pixelsWritten() > 0 && s.dev.display.pixelsWritten() < 320u * 240u / 2);
+}
+
+TEST(the_next_sun_event_reads_sunrise_before_dawn_sunset_by_day) {
+  // Melbourne, 16 November: sunrise 05:59, sunset 20:10.
+  SimSession night(320, 240, kEveningEpoch);  // 22:30
+  night.run(40000);
+  char text[40];
+  apps::describeNextSun(night.os, text, sizeof(text));
+  CHECK(strcmp(text, "Sunrise 05:59") == 0);
+  SimSession day(320, 240, kMorningEpoch);
+  day.run(40000);
+  apps::describeNextSun(day.os, text, sizeof(text));
+  CHECK(strcmp(text, "Sunset 20:10") == 0);
+  SystemSettings p = day.os.settings();
+  p.clock24h = false;
+  day.os.applySettings(p);
+  apps::describeNextSun(day.os, text, sizeof(text));
+  CHECK(strcmp(text, "Sunset 8:10 PM") == 0);
+  // Without a time or a place's sun there is no line.
+  SimSession none(320, 240, /*epoch=*/0, Appearance::Auto, false, /*online=*/false);
+  none.run(1000);
+  apps::describeNextSun(none.os, text, sizeof(text));
+  CHECK(text[0] == '\0');
+}
+
+TEST(bedside_face_shows_the_sun_line_and_withdraws_it_with_the_weather_place) {
+  SimSession s(320, 240, kEveningEpoch);
+  s.run(40000);
+  s.os.launch("clock", "bedside");
+  s.run(300);
+  const std::vector<Color> withSun = s.dev.display.framebuffer();
+  s.os.setSun(0, 0, 0);  // unknown again
+  s.run(2000);
+  CHECK(s.dev.display.framebuffer() != withSun);
+  CHECK(sameAsFullRedraw(s));
 }

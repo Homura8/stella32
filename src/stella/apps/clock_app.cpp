@@ -21,6 +21,7 @@ const AppInfo &ClockApp::info() const {
 
 void ClockApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "bedside") == 0 && !bedsideScreen_.isVisible()) ctx.push(bedsideScreen_);
+  if (route && strcmp(route, "dashboard") == 0 && !dashboardScreen_.isVisible()) ctx.push(dashboardScreen_);
 }
 
 void ClockApp::ClockScreen::layout(const Rect &content, const Theme &t) {
@@ -44,7 +45,7 @@ void ClockApp::ClockScreen::refresh(AppContext &ctx) {
   char timeText[sizeof(timeText_)], suffix[sizeof(suffix_)] = "", date[sizeof(dateText_)], chip[sizeof(chipText_)];
   ctx.formatTime(now, timeText, sizeof(timeText));
   if (now.valid && !ctx.settings().clock24h) snprintf(suffix, sizeof(suffix), "%s", now.hour < 12 ? "AM" : "PM");
-  formatLongDate(now, date, sizeof(date));
+  formatLongDate(now, date, sizeof(date), ctx.settings().dateOrder);
   if (now.valid) {
     snprintf(chip, sizeof(chip), "%s \xc2\xb7 %s", moonPhase(now.epoch).name, phaseName(ctx.theme().phase));
   } else {
@@ -156,17 +157,19 @@ void ClockApp::BedsideScreen::layout(const Rect &area, const Theme &t) {
                                     : Canvas::textWidth(*t.font.title, "PM"));
   clockFont_ = 4 * digit + Canvas::textWidth(*t.font.bedside, ":") + suffix <= inner.w ? t.font.bedside : t.font.display;
 
-  Rect r[8];
+  Rect r[9];
   column(inner,
          {px(t.font.body->lineHeight), flex(), px(clockFont_->ascent + t.dp(6)), px(t.dp(14)),
-          px(t.font.title->lineHeight), px(t.font.body->lineHeight), flex(), px(t.font.caption->lineHeight)},
+          px(t.font.title->lineHeight), px(t.font.body->lineHeight), px(t.font.caption->lineHeight), flex(),
+          px(t.font.caption->lineHeight)},
          t.m.gapS, r);
   date_ = r[0];
   clock_ = r[2];
   divider_ = r[3];
   glanceRow_ = r[4];
   alarmRow_ = r[5];
-  footer_ = r[7];
+  sunRow_ = r[6];
+  footer_ = r[8];
 
   moonR_ = t.dp(12);
   moon_ = Point{(int16_t)(inner.x + moonR_), (int16_t)(inner.y + moonR_ + t.dp(1))};
@@ -185,7 +188,7 @@ void ClockApp::BedsideScreen::refresh(AppContext &ctx) {
   char timeText[sizeof(timeText_)], suffix[sizeof(suffix_)] = "", date[sizeof(dateText_)], alarm[sizeof(alarmText_)] = "";
   ctx.formatTime(now, timeText, sizeof(timeText));
   if (now.valid && !ctx.settings().clock24h) snprintf(suffix, sizeof(suffix), "%s", now.hour < 12 ? "AM" : "PM");
-  formatLongDate(now, date, sizeof(date));
+  formatLongDate(now, date, sizeof(date), ctx.settings().dateOrder);
   bool hasAlarm = false;
   if (now.valid && status.nextAlarm > now.epoch) {
     const LocalTime at = ctx.localTimeAt(status.nextAlarm);
@@ -209,6 +212,12 @@ void ClockApp::BedsideScreen::refresh(AppContext &ctx) {
     memcpy(alarmText_, alarm, sizeof(alarm));
     hasAlarm_ = hasAlarm;
     ctx.invalidate(alarmRow_);
+  }
+  char sun[sizeof(sunText_)];
+  describeNextSun(ctx, sun, sizeof(sun));
+  if (strcmp(sun, sunText_)) {
+    memcpy(sunText_, sun, sizeof(sun));
+    ctx.invalidate(sunRow_);
   }
   if (strcmp(status.glance.text, glance_.text) || status.glance.icon != glance_.icon) {
     glance_ = status.glance;
@@ -234,7 +243,7 @@ void ClockApp::BedsideScreen::animate(AppContext &ctx, int frame) {
 }
 
 void ClockApp::BedsideScreen::onShow(AppContext &ctx) {
-  timeText_[0] = dateText_[0] = alarmText_[0] = 0;  // paint everything afresh
+  timeText_[0] = dateText_[0] = alarmText_[0] = sunText_[0] = 0;  // paint everything afresh
   glance_ = Glance{};
   frame_ = bedsideFrameAt(ctx.millis());
   refresh(ctx);
@@ -316,11 +325,119 @@ void ClockApp::BedsideScreen::draw(Canvas &c, const Theme &t) {
     c.drawTextIn(*t.font.body, alarmText_, Rect(line.x + icon + t.dp(6), line.y, line.w - icon - t.dp(6), line.h),
                  p.bedMuted);
   }
+  if (sunText_[0]) {
+    const int icon = t.dp(11);
+    const int w = icon + t.dp(5) + Canvas::textWidth(*t.font.caption, sunText_);
+    const Rect line = center(sunRow_, w < sunRow_.w ? w : sunRow_.w, sunRow_.h);
+    icons::sun(c, leading(line, icon), p.bedStar);
+    c.drawTextIn(*t.font.caption, sunText_, Rect(line.x + icon + t.dp(5), line.y, line.w - icon - t.dp(5), line.h),
+                 p.bedMuted);
+  }
   c.drawTextIn(*t.font.caption, "Tap anywhere to return", footer_, p.bedStar, Align::Center);
 }
 
 bool ClockApp::BedsideScreen::onEvent(const Event &e, AppContext &ctx) {
   if (e.type == EventType::Tap) ctx.pop();  // any tap leaves the bedside clock
+  return e.isPointer();
+}
+
+// ---------------------------------------------------------------- dashboard
+
+void ClockApp::DashboardScreen::layout(const Rect &area, const Theme &t) {
+  area_ = area;
+  const Rect inner = area.inset(t.m.margin, t.m.margin);
+  clockFont_ = t.font.hometime;
+  Rect r[8];
+  column(inner,
+         {px(clockFont_->ascent + t.dp(6)), px(t.font.body->lineHeight), flex(), px(t.m.control), px(t.m.control),
+          px(t.m.control), flex(), px(t.font.caption->lineHeight)},
+         t.m.gapS, r);
+  clock_ = r[0];
+  date_ = r[1];
+  for (int i = 0; i < kLines; ++i) lines_[i] = r[3 + i];
+  footer_ = r[7];
+}
+
+void ClockApp::DashboardScreen::refresh(AppContext &ctx) {
+  const LocalTime now = ctx.localTime();
+  const SystemStatus status = ctx.status();
+  char timeText[sizeof(timeText_)], suffix[sizeof(suffix_)] = "", date[sizeof(dateText_)];
+  char text[kLines][48] = {};
+  ctx.formatTime(now, timeText, sizeof(timeText));
+  if (now.valid && !ctx.settings().clock24h) snprintf(suffix, sizeof(suffix), "%s", now.hour < 12 ? "AM" : "PM");
+  formatLongDate(now, date, sizeof(date), ctx.settings().dateOrder);
+  snprintf(text[0], sizeof(text[0]), "%s", status.glance.text);
+  if (now.valid && status.nextAlarm > now.epoch) {
+    const LocalTime at = ctx.localTimeAt(status.nextAlarm);
+    char when[12], wait[24];
+    ctx.formatTime(at, when, sizeof(when));
+    describeWait((int)((status.nextAlarm - now.epoch + 59) / 60), wait, sizeof(wait));
+    snprintf(text[1], sizeof(text[1]), "%s%s \xc2\xb7 in %s", when, ctx.settings().clock24h ? "" : at.hour < 12 ? " AM" : " PM",
+             wait);
+  }
+  describeNextSun(ctx, text[2], sizeof(text[2]));
+  if (strcmp(timeText, timeText_) || strcmp(suffix, suffix_)) {
+    memcpy(timeText_, timeText, sizeof(timeText));
+    memcpy(suffix_, suffix, sizeof(suffix));
+    ctx.invalidate(clock_);
+  }
+  if (strcmp(date, dateText_)) {
+    memcpy(dateText_, date, sizeof(date));
+    ctx.invalidate(date_);
+  }
+  for (int i = 0; i < kLines; ++i) {
+    if (strcmp(text[i], lineText_[i]) || (i == 0 && status.glance.icon != weatherIcon_)) {
+      memcpy(lineText_[i], text[i], sizeof(text[i]));
+      if (i == 0) weatherIcon_ = status.glance.icon;
+      ctx.invalidate(lines_[i]);
+    }
+  }
+  timeKnown_ = now.valid;
+}
+
+void ClockApp::DashboardScreen::onShow(AppContext &ctx) {
+  timeText_[0] = dateText_[0] = 0;
+  for (auto &l : lineText_) l[0] = 0;
+  weatherIcon_ = nullptr;
+  refresh(ctx);
+}
+
+uint32_t ClockApp::DashboardScreen::onTick(AppContext &ctx) {
+  refresh(ctx);
+  const LocalTime now = ctx.localTime();
+  return now.valid ? (uint32_t)(60 - now.second) * 1000u + 50u : 1000u;
+}
+
+void ClockApp::DashboardScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  c.fill(p.bedBg);
+  const Font &face = *clockFont_;
+  const int baseline = clock_.y + face.ascent;
+  const int timeW = Canvas::textWidth(face, timeText_);
+  const int suffixW = suffix_[0] ? Canvas::textWidth(*t.font.title, suffix_) + t.dp(6) : 0;
+  const int x = clock_.centerX() - (timeW + suffixW) / 2;
+  c.drawText(face, timeText_, x, baseline, timeKnown_ ? p.bedClock : p.bedMuted);
+  if (suffix_[0]) c.drawText(*t.font.title, suffix_, x + timeW + t.dp(6), baseline, p.bedMuted);
+  c.drawTextIn(*t.font.body, dateText_, date_, p.bedMuted, Align::Center);
+
+  for (int i = 0; i < kLines; ++i) {
+    if (!lineText_[i][0]) continue;
+    const Rect pill = lines_[i];
+    c.fillRoundRect(pill, t.m.radiusControl, p.bedStar, 34);
+    const Rect inner = pill.inset(t.m.padding, 0);
+    const int icon = t.dp(i == 0 ? 20 : 14), gap = t.dp(8);
+    const Rect iconBox = center(leading(inner, icon), icon, icon);
+    if (i == 0 && weatherIcon_) weatherIcon_(c, iconBox, p.bedText);
+    else if (i == 1) icons::bell(c, iconBox, p.bedText);
+    else if (i == 2) icons::sun(c, iconBox, p.bedStar);
+    const Rect text(inner.x + icon + gap, inner.y, inner.w - icon - gap, inner.h);
+    c.drawTextIn(i == 0 ? *t.font.title : *t.font.body, lineText_[i], text, i == 0 ? p.bedText : p.bedMuted);
+  }
+  c.drawTextIn(*t.font.caption, "Tap anywhere to return", footer_, p.bedStar, Align::Center);
+}
+
+bool ClockApp::DashboardScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (e.type == EventType::Tap) ctx.pop();
   return e.isPointer();
 }
 

@@ -180,6 +180,12 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   portrait panel) the smaller `display` numerals are used.
   *Settings > Display > Bedside* (Off / Night / Always) chooses when it starts
   by itself; the Clock's *Bedside* button starts it by hand.
+- **Dashboard idle face:** the same black and dim ink as the bedside clock (no
+  sky, no stars, no motion): the time in the `hometime` font in `bedClock`, the
+  date in `bedMuted`, then up to three rounded lines on a faint `bedStar` wash
+  (the weather in `title`, the next alarm and the next sunrise or sunset in
+  `body`, each with its small icon), and "Tap anywhere to return" in `bedStar`.
+  The bedside clock gains the same sun line in `caption` under the alarm.
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

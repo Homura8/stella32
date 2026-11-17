@@ -39,7 +39,7 @@ int minutesUntil(const AlarmEntry &alarm, const LocalTime &now);
 // Index of the alarm that rings next, or -1; `minutes` receives the wait.
 int nextAlarm(const AlarmBook &book, const LocalTime &now, int &minutes);
 // "Once", "Every day", "Weekdays", "Weekends" or "Mon, Wed, Fri".
-void describeDays(uint8_t days, char *out, size_t capacity);
+void describeDays(uint8_t days, char *out, size_t capacity, bool weekStartsSunday = false);
 
 class AlarmsApp : public App {
  public:
@@ -108,7 +108,7 @@ class AlarmsApp : public App {
     Button save_, delete_;
     int index_ = -1;
     AlarmEntry entry_;
-    bool clock24h_ = true, meridiemPressed_ = false;
+    bool clock24h_ = true, meridiemPressed_ = false, sundayFirst_ = false;
     int dragColumn_ = -1, dragBase_ = 0, pressedDay_ = -1;
     char digits_[2][4] = {}, meridiemText_[4] = {0}, summaryText_[72] = {0};
   };

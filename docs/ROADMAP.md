@@ -92,8 +92,9 @@ aspect ratios (the suite already renders 240x320 and 320x240; AGENTS.md
 invariant 10). Persist in the settings record (bump the version; see
 `system_settings.cpp` for how older records migrate).
 
-**Small units and locale settings.** Temperature unit (°C/°F), week start,
-date order. Cheap, and it matters for friends.
+**Small units and locale settings** — built in 0.13.0 (Settings > Units): temperature
+unit (°C/°F), week start (Alarms' day chips; the Calendar later), date order.
+Wind stays in km/h and times follow the existing 24-hour setting.
 
 ### 2. Customisable Home
 
@@ -161,13 +162,14 @@ dropped on a factory reset, and every screen must still pass the 4-density
 render tests (AGENTS.md invariants 7 and 10). Persist with a version and a
 checksum (`storage/record.h` conventions).
 
-### 5. Dashboard idle face (the desk use)
+### 5. Dashboard idle face (the desk use) — first page built in 0.13.0
 
-Today the idle face is the bedside clock only. Add a choice in Settings >
-Display: **Bedside clock / Dashboard / Off**. The dashboard cycles widget
-pages (time + weather, calendar, network, pushed values) with the usual
-`kAppIdleFace` mechanism; it must stay calm (slow, repaint-minimal) and must
-not light up a dark room (it follows the ambient-light dimming).
+Built: Settings > Idle face (*Start*: Off / Night / Always, *Face*: Clock /
+Dashboard). The dashboard page shows the time, the date, the weather, the next
+alarm and the next sunrise or sunset, with no animation. It follows the
+dimming of every fullscreen face (a third of the level, and the ambient-light
+scale). To do: more pages that cycle slowly (calendar, network stats, values
+pushed from the remote page), which need their data sources first.
 
 ### 6. Bringing Celestia Nightstand across
 
