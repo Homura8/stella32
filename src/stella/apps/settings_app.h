@@ -54,8 +54,11 @@ class SettingsApp : public App {
     char joining_[33] = {0};
   };
 
+  // One glass card of labelled rows: brightness, night dimming, idle
+  // timeouts, and the way into calibration.
   class DisplayScreen : public Screen {
    public:
+    explicit DisplayScreen(SettingsApp &app) : app_(app) {}
     const char *title() const override { return "Display"; }
     void layout(const Rect &content, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
@@ -63,10 +66,36 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    Rect card_, brightnessLabel_, dimLabel_, offLabel_;
+    static constexpr int kRows = 5;
+    SettingsApp &app_;
+    Rect card_, rows_[kRows], labels_[kRows];
     Slider brightness_;
+    Toggle nightDim_;
     Segmented dim_, off_;
-    bool nightDim_ = false, night_ = false;  // the label says when night dimming applies
+    ListRow calibrate_;
+    char calibrateDetail_[24] = {0};
+    bool night_ = false;  // the night phase (by the clock) is on now
+  };
+
+  // Settings > Display > Calibrate: tune the panel until it matches a good
+  // reference screen. Colour: contrast, tone, dithering, with a test strip.
+  // Flicker: panel VCOM and frame rate, with a checkerboard test patch.
+  class CalibrateScreen : public Screen {
+   public:
+    const char *title() const override { return "Calibrate"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+
+   private:
+    void arrange();
+    Theme theme_{};
+    Rect content_, strip_, rows_[3], labels_[3], patch_, note_;
+    Segmented tabs_, tone_, refresh_;
+    Slider contrast_, vcom_;
+    Toggle dither_;
+    bool panelTrim_ = false;
   };
 
   class AppearanceScreen : public Screen {
@@ -78,9 +107,10 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    Rect note_, toneLabel_, nightCard_, skies_;
-    Segmented mode_, tone_;
-    Toggle nightDim_;
+    Rect note_, skies_, skyNote_;
+    Segmented mode_;
+    uint8_t skyPin_ = 0;
+    int pressedSky_ = -1;
   };
 
   class TimeScreen : public Screen {
@@ -121,6 +151,7 @@ class SettingsApp : public App {
   WifiScreen wifi_;
   TextEntryScreen password_;
   DisplayScreen display_;
+  CalibrateScreen calibrate_;
   AppearanceScreen appearance_;
   TimeScreen time_;
   AboutScreen about_;

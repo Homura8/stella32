@@ -11,9 +11,9 @@
 namespace stella {
 
 struct SystemSettings {
-  // v2 added nightDim, v3 colorTone. Older records are migrated by
-  // loadSettings().
-  static constexpr uint16_t kVersion = 3;
+  // v2 added nightDim, v3 colorTone, v4 the display and touch calibration.
+  // Older records are migrated by loadSettings().
+  static constexpr uint16_t kVersion = 4;
 
   Appearance appearance = Appearance::Auto;
   uint8_t brightness = 200;      // 16..255, perceived (see backlightDuty)
@@ -22,7 +22,23 @@ struct SystemSettings {
   bool clock24h = true;
   char timezone[48] = "UTC0";    // POSIX TZ string
   bool nightDim = true;          // dim the backlight during the night phase
-  ColorTone colorTone = ColorTone::Rich;  // palette strength for this panel
+  ColorTone colorTone = ColorTone::Soft;  // palette strength for this panel
+  // Display calibration (boards supply their own defaults; see CYD.ino).
+  uint8_t contrast = 0;          // 0..100, see Look::contrast
+  bool dither = true;            // smooth sky gradients
+  int8_t panelVcom = 0;          // Display::PanelTrim::vcom
+  uint8_t panelRefreshHz = 0;    // Display::PanelTrim::refreshHz (0 = default)
+  uint8_t skyPin = 0;            // 0 = the sky follows the time; 1..4 = dawn..night
+  // Touch correction applied to every touch point: x' = x * scaleX / 1024 + offsetX.
+  int16_t touchScaleX = 1024, touchOffsetX = 0, touchScaleY = 1024, touchOffsetY = 0;
+
+  Look look() const {
+    Look l;
+    l.tone = colorTone;
+    l.contrast = contrast;
+    l.dither = dither;
+    return l;
+  }
 
   // Clamp every field into its valid range (also used after loading).
   void sanitize();
@@ -43,7 +59,8 @@ uint8_t nightBrightness(uint8_t level);
 uint8_t backlightDuty(uint8_t level);
 
 // Loads and sanitizes; migrates older versions (the result is then Ok and the
-// caller should save it back).
+// caller should save it back). `out` holds the defaults on entry: migrated
+// records keep them for fields they did not have.
 RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migrated = nullptr);
 bool saveSettings(KeyValueStore *store, const SystemSettings &settings);
 

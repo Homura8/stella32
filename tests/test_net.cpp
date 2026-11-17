@@ -243,7 +243,7 @@ TEST(settings_v2_records_are_migrated) {
   bool migrated = false;
   CHECK(loadSettings(&store, s, &migrated) == RecordStatus::Ok && migrated);
   CHECK(s.appearance == Appearance::Light && s.brightness == 120 && !s.nightDim);
-  CHECK(strcmp(s.timezone, "AEST-10") == 0 && s.colorTone == ColorTone::Rich);  // new field: default
+  CHECK(strcmp(s.timezone, "AEST-10") == 0 && s.colorTone == ColorTone::Soft);  // new field: default
 }
 
 // Regression (CYD): night dimming was a hard cap at 40, so at night the

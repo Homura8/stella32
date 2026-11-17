@@ -160,6 +160,7 @@ struct SystemStatus {
   uint32_t framesRendered = 0;
   uint32_t lastFrameMs = 0;  // render time of the most recent frame
   uint32_t uiStackFree = 0, serviceStackFree = 0;  // lowest free stack seen, bytes
+  bool panelTrim = false;  // the display supports VCOM / refresh adjustment
 };
 
 class AppContext : public Invalidator {

@@ -31,7 +31,18 @@ void SystemSettings::sanitize() {
   if (sleepAfterSec > 7200) sleepAfterSec = 7200;
   timezone[sizeof(timezone) - 1] = '\0';
   if (!timezone[0]) strcpy(timezone, "UTC0");
-  if ((uint8_t)colorTone > (uint8_t)ColorTone::Vivid) colorTone = ColorTone::Rich;
+  if ((uint8_t)colorTone > (uint8_t)ColorTone::Vivid) colorTone = ColorTone::Soft;
+  if (contrast > 100) contrast = 100;
+  if (panelVcom < -30) panelVcom = -30;
+  if (panelVcom > 30) panelVcom = 30;
+  if (panelRefreshHz != 0 && (panelRefreshHz < 60 || panelRefreshHz > 120)) panelRefreshHz = 0;
+  if (skyPin > 4) skyPin = 0;
+  // A correction outside these bounds is a failed calibration: undo it.
+  if (touchScaleX < 819 || touchScaleX > 1280 || touchScaleY < 819 || touchScaleY > 1280 || touchOffsetX < -60 ||
+      touchOffsetX > 60 || touchOffsetY < -60 || touchOffsetY > 60) {
+    touchScaleX = touchScaleY = 1024;
+    touchOffsetX = touchOffsetY = 0;
+  }
 }
 
 const TimezonePreset *timezonePresets(int &count) {
@@ -61,6 +72,18 @@ struct SettingsV2 {
   bool nightDim;
 };
 
+// Frozen layout of version 3 (the 0.3.1 branch). Never edit.
+struct SettingsV3 {
+  Appearance appearance;
+  uint8_t brightness;
+  uint16_t dimAfterSec;
+  uint16_t sleepAfterSec;
+  bool clock24h;
+  char timezone[48];
+  bool nightDim;
+  ColorTone colorTone;
+};
+
 uint8_t nightBrightness(uint8_t level) {
   const int v = level * 45 / 100;
   return (uint8_t)(v < 16 ? (level < 16 ? level : 16) : v);
@@ -75,14 +98,14 @@ uint8_t backlightDuty(uint8_t level) {
 
 RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migrated) {
   if (migrated) *migrated = false;
-  SystemSettings loaded;
+  SystemSettings loaded = out;  // defaults for anything an old record lacks
   uint16_t found = 0;
   RecordStatus s = loadRecord(store, kNamespace, kKey, SystemSettings::kVersion, &loaded, sizeof(loaded), &found);
   if (s == RecordStatus::OldVersion && found == 1) {
     SettingsV1 v1;
     s = loadRecord(store, kNamespace, kKey, 1, &v1, sizeof(v1));
     if (s == RecordStatus::Ok) {
-      loaded = SystemSettings{};
+      loaded = out;
       loaded.appearance = v1.appearance;
       loaded.brightness = v1.brightness;
       loaded.dimAfterSec = v1.dimAfterSec;
@@ -95,7 +118,7 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
     SettingsV2 v2;
     s = loadRecord(store, kNamespace, kKey, 2, &v2, sizeof(v2));
     if (s == RecordStatus::Ok) {
-      loaded = SystemSettings{};
+      loaded = out;
       loaded.appearance = v2.appearance;
       loaded.brightness = v2.brightness;
       loaded.dimAfterSec = v2.dimAfterSec;
@@ -103,6 +126,21 @@ RecordStatus loadSettings(KeyValueStore *store, SystemSettings &out, bool *migra
       loaded.clock24h = v2.clock24h;
       memcpy(loaded.timezone, v2.timezone, sizeof(loaded.timezone));
       loaded.nightDim = v2.nightDim;
+      if (migrated) *migrated = true;
+    }
+  } else if (s == RecordStatus::OldVersion && found == 3) {
+    SettingsV3 v3;
+    s = loadRecord(store, kNamespace, kKey, 3, &v3, sizeof(v3));
+    if (s == RecordStatus::Ok) {
+      loaded = out;
+      loaded.appearance = v3.appearance;
+      loaded.brightness = v3.brightness;
+      loaded.dimAfterSec = v3.dimAfterSec;
+      loaded.sleepAfterSec = v3.sleepAfterSec;
+      loaded.clock24h = v3.clock24h;
+      memcpy(loaded.timezone, v3.timezone, sizeof(loaded.timezone));
+      loaded.nightDim = v3.nightDim;
+      loaded.colorTone = v3.colorTone;
       if (migrated) *migrated = true;
     }
   }

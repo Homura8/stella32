@@ -192,6 +192,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void pollTouch(uint32_t now);
   void updatePower(uint32_t now);
   void applyBrightness();
+  void applyPanelTrim(bool force);
   void superviseThreads(uint32_t now);
   AppSlot *slot(int index) { return index >= 0 && (size_t)index < appCount_ ? &apps_[index] : nullptr; }
   const AppSlot *slot(int index) const { return index >= 0 && (size_t)index < appCount_ ? &apps_[index] : nullptr; }
@@ -226,6 +227,8 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   PowerState power_ = PowerState::Active;
   uint32_t lastInteraction_ = 0;
   uint8_t appliedBrightness_ = 0;
+  SkyPhase timePhase_ = SkyPhase::Night;  // from the clock, even when the sky is pinned
+  Display::PanelTrim appliedTrim_;
   bool brightnessKnown_ = false;
 
   bool pointerToShell_ = false;

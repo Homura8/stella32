@@ -21,6 +21,8 @@ namespace {
 
 int failures = 0;
 
+void tapRect(SimSession &s, const Rect &r) { s.tap(r.centerX(), r.centerY()); }
+
 void shot(SimSession &s, const std::string &dir, const char *name) {
   const std::string path = dir + "/" + name + ".ppm";
   if (!s.dev.display.writePpm(path)) {
@@ -123,6 +125,28 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("clock");
     s.run(5 * 60 * 1000);
     save(16, "alert");
+    tapRect(s, s.os.alertButtonRect(0));
+
+    // Display calibration (both tabs) and touch calibration.
+    s.os.launch("settings");
+    s.run(100);
+    const Point display = s.settingsRow(1);
+    s.tap(display.x, display.y);
+    const Rect area = sc.inset(st.m.margin, st.m.gapS);
+    const int want = st.m.control + st.dp(4), fit = (area.h - 2 * st.dp(4)) / 5;
+    const int rowH = want <= fit ? want : fit < st.dp(32) ? st.dp(32) : fit;
+    s.tap(area.centerX(), area.y + st.dp(4) + 4 * rowH + rowH / 2);
+    s.run(2500);
+    save(17, "calibrate-colour");
+    s.tap(area.right() - area.w / 4, area.y + st.m.control / 2);
+    s.run(100);
+    save(18, "calibrate-flicker");
+    s.os.goHome();
+    s.os.launch("touch");
+    s.run(100);
+    s.tap(area.right() - st.dp(52), area.bottom() - st.m.control / 2);
+    s.run(100);
+    save(19, "touch-calibrate");
   }
 }
 

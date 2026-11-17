@@ -68,6 +68,7 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
     LOGW(kTag, "settings %s; using defaults", recordStatusName(loaded));
   }
   applyTimezone(settings_.timezone);
+  applyPanelTrim(true);
 
   size_t retainedSize = 0;
   void *retained = board.platform->retainedMemory(retainedSize);
@@ -284,13 +285,19 @@ void Runtime::formatTime(const LocalTime &t, char *out, size_t capacity) const {
 void Runtime::updateTheme(bool force) {
   const LocalTime lt = localTime();
   // Unknown time: assume night, the calmest palette for a bedside device.
-  const SkyPhase phase = lt.valid ? phaseForHour(lt.hour) : SkyPhase::Night;
+  timePhase_ = lt.valid ? phaseForHour(lt.hour) : SkyPhase::Night;
+  // The sky can be kept at one phase (Settings > Appearance).
+  const SkyPhase phase = settings_.skyPin ? (SkyPhase)(settings_.skyPin - 1) : timePhase_;
   const bool dark = resolveDark(settings_.appearance, phase);
   const Density density = densityFor(screen_.w, screen_.h);
-  if (!force && phase == theme_.phase && dark == theme_.color.dark && density == theme_.density &&
-      settings_.colorTone == theme_.tone)
+  const Look look = settings_.look();
+  const bool sameLook = look.tone == theme_.look.tone && look.contrast == theme_.look.contrast &&
+                        look.dither == theme_.look.dither;
+  if (!force && phase == theme_.phase && dark == theme_.color.dark && density == theme_.density && sameLook) {
+    if (board_.display) applyBrightness();  // night dimming follows the clock, not the pinned sky
     return;
-  theme_ = makeTheme(density, dark, phase, settings_.colorTone);
+  }
+  theme_ = makeTheme(density, dark, phase, settings_.look());
   content_ = Rect(screen_.x, screen_.y + theme_.m.statusBar, screen_.w, screen_.h - theme_.m.statusBar);
   if (board_.display) applyBrightness();
   GestureConfig g;
@@ -426,6 +433,12 @@ void Runtime::pollTouch(uint32_t now) {
   TouchSample sample;
   if (!board_.touch->sample(sample)) return;
   if (sample.pressed) {
+    // Calibration correction (Touch test > Calibrate), clamped to the screen.
+    const SystemSettings &cal = settings_;
+    int x = sample.x * cal.touchScaleX / 1024 + cal.touchOffsetX;
+    int y = sample.y * cal.touchScaleY / 1024 + cal.touchOffsetY;
+    sample.x = (int16_t)(x < 0 ? 0 : x >= screen_.w ? screen_.w - 1 : x);
+    sample.y = (int16_t)(y < 0 ? 0 : y >= screen_.h ? screen_.h - 1 : y);
     lastInteraction_ = now;
     if (power_ != PowerState::Active) {
       // A dark screen: the waking touch only wakes and never reaches an app.
@@ -512,7 +525,7 @@ void Runtime::updatePower(uint32_t now) {
 void Runtime::applyBrightness() {
   uint8_t level = settings_.brightness;
   // Bedside comfort: the night sky also caps the backlight.
-  if (settings_.nightDim && theme_.phase == SkyPhase::Night) level = nightBrightness(level);
+  if (settings_.nightDim && timePhase_ == SkyPhase::Night) level = nightBrightness(level);
   if (power_ == PowerState::Dimmed) level = level / 2 < 16 ? 16 : level / 2;
   level = backlightDuty(level);  // perceived level -> PWM duty
   if (power_ == PowerState::Off) level = 0;
@@ -540,11 +553,22 @@ Rect Runtime::toastRect() const {
   return Rect(screen_.centerX() - w / 2, screen_.bottom() - t.m.margin - h, w, h);
 }
 
+void Runtime::applyPanelTrim(bool force) {
+  Display *d = board_.display;
+  if (!d || !d->supportsPanelTrim()) return;
+  if (!force && settings_.panelVcom == appliedTrim_.vcom && settings_.panelRefreshHz == appliedTrim_.refreshHz) return;
+  appliedTrim_.vcom = settings_.panelVcom;
+  appliedTrim_.refreshHz = settings_.panelRefreshHz;
+  d->waitIdle();  // no pixel transfer may be in flight
+  d->setPanelTrim(appliedTrim_);
+}
+
 void Runtime::applySettings(const SystemSettings &s) {
   const bool timezoneChanged = strcmp(s.timezone, settings_.timezone) != 0;
   settings_ = s;
   settings_.sanitize();
   if (timezoneChanged) applyTimezone(settings_.timezone);
+  applyPanelTrim(false);
   settingsDirty_ = true;
   settingsSaveAt_ = millis() + kSettingsDebounceMs;
   applyBrightness();
@@ -568,6 +592,7 @@ SystemStatus Runtime::status() const {
   s.lastFrameMs = lastFrameMs_;
   s.uiStackFree = uiStackFree_.load();
   s.serviceStackFree = serviceStackFree_.load();
+  s.panelTrim = board_.display && board_.display->supportsPanelTrim();
   return s;
 }
 

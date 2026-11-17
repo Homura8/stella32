@@ -26,6 +26,19 @@ class Display {
   // the transfer is still running, but must first wait for any earlier
   // transfer to finish (one in flight at a time) and may modify the buffer
   // (e.g. byte-swap in place). waitIdle() blocks until nothing is in flight.
+  // Optional LCD adjustments for on-device calibration (Settings > Display >
+  // Calibrate); the defaults leave the panel as its driver set it up.
+  //  * vcom: common-voltage offset in panel steps. A mis-set VCOM makes LCDs
+  //    flicker, often more on one side; adjust while watching a checkerboard.
+  //  * refreshHz: frame rate (0 = driver default); the nearest supported
+  //    rate is used.
+  struct PanelTrim {
+    int8_t vcom = 0;
+    uint8_t refreshHz = 0;
+  };
+  virtual bool supportsPanelTrim() const { return false; }
+  virtual void setPanelTrim(const PanelTrim &trim) { (void)trim; }
+
   virtual bool supportsAsync() const { return false; }
   virtual void writePixelsAsync(const Rect &area, Color *pixels) { writePixels(area, pixels); }
   virtual void waitIdle() {}
