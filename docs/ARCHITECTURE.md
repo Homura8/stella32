@@ -393,7 +393,8 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 ## Roadmap
 
-Near-term work this foundation is designed for:
+The plan and its order live in `docs/ROADMAP.md`. In short, what this foundation
+is designed for:
 
 1. More boards (the T-Display S3 has buttons instead of touch) and an ESP-IDF
    port.

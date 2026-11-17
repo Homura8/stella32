@@ -198,6 +198,12 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
 19. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
+## Roadmap
+
+What comes next (a better Weather app, sunrise and sunset, a customisable Home,
+a remote page with wallpapers, bringing across Celestia Nightstand's calendar and
+integrations, a Bluetooth macro deck) is in [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Licence
 
 No licence has been chosen yet; all rights are reserved by the repository owner
