@@ -81,6 +81,15 @@ class KeyValueStore {
   virtual bool erase(const char *ns, const char *key) = 0;
 };
 
+// Optional tone output (a piezo or a small speaker). Non-blocking: tone(hz)
+// starts or changes a tone and returns at once; tone(0) is silence. The
+// runtime sequences alert chimes on the UI thread.
+class Sound {
+ public:
+  virtual ~Sound() = default;
+  virtual void tone(uint16_t hz) = 0;
+};
+
 // Everything a board port provides, gathered for Runtime::begin().
 struct Board {
   Display *display = nullptr;
@@ -89,6 +98,7 @@ struct Board {
   KeyValueStore *storage = nullptr;  // optional; settings are then not persisted
   WifiDriver *wifi = nullptr;        // optional
   HttpClient *http = nullptr;        // optional (requires wifi)
+  Sound *sound = nullptr;            // optional; alerts are silent without it
 };
 
 }  // namespace stella

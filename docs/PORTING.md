@@ -16,15 +16,19 @@ apps and the runtime do not change.
 3. **Touch.** Implement `stella::TouchInput::sample()`, returning screen
    coordinates via `mapTouch()` with the board's `TouchCalibration`. Use the
    *Touch test* app on the device to check the corner targets.
-4. **Platform and storage.** On ESP32 reuse `port/esp32/esp32_port.h`
-   (`Esp32Platform`, `NvsStore`, `WifiJob`).
-5. **Sketch.** Copy `examples/CYD/` to `examples/<Board>/` with its own
+4. **Platform, storage and network.** On ESP32 reuse
+   `port/esp32/esp32_port.h` (`Esp32Platform`, `NvsStore`, `Esp32WifiDriver`,
+   `Esp32HttpClient`).
+5. **Sound (optional).** Implement `stella::Sound::tone(hz)` (non-blocking;
+   0 = silence) for a buzzer or speaker; `CydSound` drives the CYD's speaker
+   pin with LEDC PWM. Without it, alerts are silent but still shown.
+6. **Sketch.** Copy `examples/CYD/` to `examples/<Board>/` with its own
    `tft_setup.h` (if it uses TFT_eSPI) and `sketch.yaml` profile, and add a CI
    compile step.
-6. **Simulate.** Add the resolution to the size list in
+7. **Simulate.** Add the resolution to the size list in
    `tests/test_runtime.cpp` (`every_screen_renders_at_every_size`) and, if it
    is a new density class, to `host/sim_main.cpp`. Review the screenshots.
-7. **Verify on hardware** before claiming support: boot, every screen, touch
+8. **Verify on hardware** before claiming support: boot, every screen, touch
    accuracy at the corners, backlight levels, an overnight run.
 
 ## Density classes

@@ -90,6 +90,39 @@ void capture(int width, int height, const std::string &root) {
       fresh.tap(key.centerX(), key.centerY());
     }
     saveFresh(12, "password");
+
+    // Alarms, the alarm editor, a running timer and the alert it raises.
+    s.os.launch("alarms");
+    s.run(100);
+    apps::AlarmEntry weekday;
+    weekday.hour = 6;
+    weekday.minute = 45;
+    weekday.days = apps::kWeekdays;
+    s.alarms.setAlarm(-1, weekday, s.os);
+    apps::AlarmEntry weekend;
+    weekend.hour = 9;
+    weekend.minute = 30;
+    weekend.days = apps::kWeekend;
+    weekend.enabled = 0;
+    s.alarms.setAlarm(-1, weekend, s.os);
+    s.run(2500);  // let the earlier toast fade
+    save(13, "alarms");
+    const Theme &st = s.os.theme();
+    const Rect sc = s.os.contentRect();
+    const int firstRow = sc.y + st.m.gapS + st.m.control + st.m.gapM + st.dp(4) + (st.m.row + st.dp(8)) / 2;
+    s.tap(sc.x + sc.w / 3, firstRow);
+    s.run(2500);
+    save(14, "alarm-edit");
+    s.os.goHome();
+    s.os.launch("timer");
+    s.run(100);
+    const int bottom = sc.bottom() - st.m.gapS;
+    s.tap(sc.right() - st.m.margin - sc.w / 6, bottom - st.m.control / 2);  // Start (5 min)
+    s.run(83 * 1000);
+    save(15, "timer");
+    s.os.launch("clock");
+    s.run(5 * 60 * 1000);
+    save(16, "alert");
   }
 }
 

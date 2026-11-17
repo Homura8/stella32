@@ -97,13 +97,48 @@ outcome in a `DataStatus` so the screen can explain stale data.
 | `App::onTopic` | a topic changed (any running app, foreground or not) |
 | `App::onInstall` | at boot, to register jobs and topics |
 | `App::onRoute` | launched with a route: `ctx.launch("settings", "wifi")` |
+| `App::onWake` | background timer for every app; return ms until the next call |
+| `App::onAlert` | the user answered one of the app's alerts, or it timed out |
 
 Navigation: `ctx.push(screen)` for detail views, `ctx.pop()` to go back (the
 status bar does this for the user), `ctx.launch(id)`, `ctx.goHome()`.
 
 System pieces apps can use: `ctx.network()` (Wi-Fi status, scan, join,
 forget), `TextEntryScreen` (text or password entry with the on-screen
-keyboard), `ctx.requestJob(job)` (refresh now).
+keyboard), `ctx.requestJob(job)` (refresh now), `ctx.requestTick()` (restart
+a screen's `onTick` after it returned `kNoTick`).
+
+## Time-based work and alerts
+
+Things that must happen whether or not the app is open (an alarm, a timer)
+use `onWake`, not `onTick` (which only runs while a screen is visible).
+Return the delay to the *nearest* deadline the app has; `ctx.scheduleWake(ms)`
+brings the next call forward (e.g. after the user starts a timer). Use the
+wall clock (`ctx.localTime()`) for times of day and `ctx.millis()` with
+`core/deadline.h` for durations.
+
+When something needs the user's attention, raise a system alert; it wakes the
+screen, plays the chime if asked, and appears over any app:
+
+```cpp
+Alert a;
+a.title = "Time's up";
+a.message = "5 min timer";
+a.icon = icons::stopwatch;
+a.primary = "Done";
+a.secondary = "Again";   // optional
+a.tag = kDoneTag;        // yours; identifies the alert in onAlert
+a.sound = true;
+a.timeoutMs = 2 * 60 * 1000;
+ctx.showAlert(a);
+
+void onAlert(uint16_t tag, int action, AppContext &ctx) override {
+  if (tag == kDoneTag && action == kAlertSecondary) start(ctx);
+}
+```
+
+The Alarms and Timer apps (`src/stella/apps/alarms_app.*`, `timer_app.*`)
+are complete examples.
 
 ## Rules of thumb
 

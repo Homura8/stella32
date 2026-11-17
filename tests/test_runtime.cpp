@@ -205,7 +205,7 @@ TEST(every_screen_renders_at_every_size) {
   const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
   for (const auto &sz : sizes) {
     SimSession s(sz[0], sz[1]);
-    for (const char *app : {"home", "clock", "weather", "settings", "touch"}) {
+    for (const char *app : {"home", "clock", "weather", "alarms", "timer", "settings", "touch"}) {
       s.os.launch(app);
       s.run(100);
       CHECK(!s.os.renderPending());

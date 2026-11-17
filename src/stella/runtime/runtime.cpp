@@ -18,6 +18,13 @@ constexpr const char *kTag = "runtime";
 constexpr uint32_t kToastMs = 2200;
 constexpr uint32_t kSettingsDebounceMs = 1500;
 
+// Alert chime: a soft rising C-E-G arpeggio, then a rest (Hz, ms).
+struct ChimeNote {
+  uint16_t hz, ms;
+};
+constexpr ChimeNote kChime[] = {{1047, 150}, {0, 70}, {1319, 150}, {0, 70}, {1568, 240}, {0, 1100}};
+constexpr uint8_t kChimeNotes = sizeof(kChime) / sizeof(kChime[0]);
+
 void applyTimezone(const char *posix) {
   setenv("TZ", posix, 1);
   tzset();
@@ -139,6 +146,10 @@ bool Runtime::start() {
   started_ = true;
   foreground_ = -1;
   launch(apps_[home_].app->info().id);
+  for (size_t i = 0; i < appCount_; ++i) {
+    apps_[i].wakeArmed = true;  // every app's first onWake() runs on the first step
+    apps_[i].wakeAt = now;
+  }
   return true;
 }
 
@@ -169,6 +180,9 @@ uint32_t Runtime::step() {
     invalidate(statusBarRect());
     updateTheme(false);
   }
+
+  runWakes(now);
+  updateAlert(millis());
 
   if (tickArmed_ && reached(now, nextTickAt_)) {
     if (Screen *s = topScreen()) {
@@ -213,6 +227,12 @@ uint32_t Runtime::step() {
                                               : config_.idlePollMs;
   if (tickArmed_) wait = minWait(wait, remainingMs(now, nextTickAt_));
   if (toastVisible_) wait = minWait(wait, remainingMs(now, toastUntil_));
+  for (size_t i = 0; i < appCount_; ++i)
+    if (apps_[i].wakeArmed) wait = minWait(wait, remainingMs(now, apps_[i].wakeAt));
+  if (alertCount_) {
+    if (alerts_[0].sound && board_.sound) wait = minWait(wait, remainingMs(now, chimeAt_));
+    if (alerts_[0].timeoutMs) wait = minWait(wait, remainingMs(now, alertShownAt_ + alerts_[0].timeoutMs));
+  }
   return wait;
 }
 
@@ -275,6 +295,7 @@ void Runtime::updateTheme(bool force) {
   g.slop = theme_.m.touchSlop;
   gestures_.configure(g);
   layoutTop();
+  if (alertCount_) layoutAlert();
   invalidateAll();
 }
 
@@ -423,6 +444,17 @@ Rect Runtime::backButtonRect() const {
 }
 
 void Runtime::dispatchPointer(const Event &e) {
+  if (alertCount_) {
+    // The alert is modal: only its buttons respond.
+    const int buttons = alerts_[0].secondary[0] ? 2 : 1;
+    for (int i = 0; i < buttons; ++i) {
+      if (alertButtons_[i].handle(e, *this)) {
+        closeAlert(i == 0 ? kAlertPrimary : kAlertSecondary);
+        return;
+      }
+    }
+    return;
+  }
   if (e.type == EventType::Press) pointerToShell_ = statusBarRect().contains(e.x, e.y);
   if (pointerToShell_) {
     if (e.type == EventType::LongPress) {
@@ -464,7 +496,7 @@ void Runtime::handleTopicEvent(uint16_t id) {
 // ------------------------------------------------------------------ power
 
 void Runtime::updatePower(uint32_t now) {
-  if (gestures_.active()) return;
+  if (gestures_.active() || alertCount_) return;  // an alert keeps the screen awake
   const uint32_t idle = elapsedMs(now, lastInteraction_);
   PowerState next = PowerState::Active;
   if (settings_.sleepAfterSec && idle >= settings_.sleepAfterSec * 1000u) next = PowerState::Off;
@@ -595,6 +627,7 @@ void Runtime::draw(Canvas &c) {
     c.restoreClip(previous);
   }
   if (toastVisible_) drawToast(c);
+  if (alertCount_) drawAlert(c);
 }
 
 void Runtime::drawStatusBar(Canvas &c) {
@@ -645,6 +678,205 @@ void Runtime::drawToast(Canvas &c) {
   if (!c.visible(r.inset(-glassOutset(theme_)))) return;
   paintGlass(c, theme_, r, r.h / 2);
   c.drawTextIn(*theme_.font.body, toastText_, r.inset(theme_.m.padding, 0), theme_.color.text, Align::Center);
+}
+
+}  // namespace stella
+
+namespace stella {
+
+// ------------------------------------------------------------------ background wake-ups
+
+int Runtime::callerIndex() const {
+  const App *app = callbackApp_ ? callbackApp_ : foreground();
+  for (size_t i = 0; i < appCount_; ++i)
+    if (apps_[i].app == app) return (int)i;
+  return -1;
+}
+
+void Runtime::scheduleWake(uint32_t delayMs) {
+  const int index = callerIndex();
+  if (index < 0) return;
+  AppSlot &s = apps_[index];
+  const uint32_t at = millis() + delayMs;
+  if (!s.wakeArmed || remainingMs(millis(), s.wakeAt) > delayMs) s.wakeAt = at;
+  s.wakeArmed = true;
+}
+
+void Runtime::runWakes(uint32_t now) {
+  for (size_t i = 0; i < appCount_; ++i) {
+    AppSlot &s = apps_[i];
+    if (!s.wakeArmed || !reached(now, s.wakeAt)) continue;
+    s.wakeArmed = false;  // scheduleWake() inside onWake() may re-arm it
+    App *previous = callbackApp_;
+    callbackApp_ = s.app;
+    const uint32_t next = s.app->onWake(*this);
+    callbackApp_ = previous;
+    if (next == kNoTick) continue;
+    const uint32_t t = millis();
+    if (!s.wakeArmed || remainingMs(t, s.wakeAt) > next) s.wakeAt = t + next;
+    s.wakeArmed = true;
+  }
+}
+
+// ------------------------------------------------------------------ alerts
+
+bool Runtime::showAlert(const Alert &alert) {
+  const int owner = callerIndex();
+  if (owner < 0) return false;
+  size_t index = alertCount_;
+  for (size_t i = 0; i < alertCount_; ++i)
+    if (alerts_[i].owner == owner && alerts_[i].tag == alert.tag) index = i;
+  if (index == alertCount_) {
+    if (alertCount_ >= kMaxAlerts) {
+      LOGW(kTag, "alert queue full; '%s' dropped", alert.title ? alert.title : "");
+      return false;
+    }
+    ++alertCount_;
+  }
+  PendingAlert &a = alerts_[index];
+  copyText(a.title, sizeof(a.title), alert.title ? alert.title : "");
+  copyText(a.message, sizeof(a.message), alert.message ? alert.message : "");
+  copyText(a.primary, sizeof(a.primary), alert.primary ? alert.primary : "OK");
+  copyText(a.secondary, sizeof(a.secondary), alert.secondary ? alert.secondary : "");
+  a.icon = alert.icon;
+  a.tag = alert.tag;
+  a.owner = (int8_t)owner;
+  a.sound = alert.sound;
+  a.timeoutMs = alert.timeoutMs;
+  if (index == 0) beginAlert(millis());  // new, or the one on screen changed
+  return true;
+}
+
+void Runtime::dismissAlert(uint16_t tag) {
+  const int owner = callerIndex();
+  for (size_t i = 0; i < alertCount_; ++i) {
+    if (alerts_[i].owner != owner || alerts_[i].tag != tag) continue;
+    for (size_t j = i + 1; j < alertCount_; ++j) alerts_[j - 1] = alerts_[j];
+    --alertCount_;
+    if (i == 0) {
+      if (board_.sound) board_.sound->tone(0);
+      invalidateAll();
+      if (alertCount_) beginAlert(millis());
+    }
+    return;
+  }
+}
+
+void Runtime::beginAlert(uint32_t now) {
+  alertShownAt_ = now;
+  chimeStep_ = 0;
+  chimeAt_ = now;
+  if (board_.sound && !alerts_[0].sound) board_.sound->tone(0);
+  // A finger already on the glass belongs to whatever was under it: cancel
+  // that gesture so the alert cannot be answered by accident.
+  if (gestures_.active()) {
+    gestures_.consumeCurrent();
+    Event cancel;
+    cancel.type = EventType::Release;
+    cancel.dragged = true;
+    cancel.x = cancel.y = cancel.startX = cancel.startY = -1;
+    if (Screen *s = topScreen()) {
+      App *previous = callbackApp_;
+      callbackApp_ = foreground();
+      s->onEvent(cancel, *this);
+      callbackApp_ = previous;
+    }
+    backPressed_ = false;
+  }
+  alertButtons_[0].pressed = alertButtons_[1].pressed = false;
+  layoutAlert();
+  lastInteraction_ = now;
+  if (power_ != PowerState::Active) {
+    power_ = PowerState::Active;
+    applyBrightness();
+  }
+  invalidateAll();
+  LOGI(kTag, "alert '%s' from %s", alerts_[0].title, apps_[alerts_[0].owner].app->info().id);
+}
+
+void Runtime::closeAlert(int action) {
+  if (!alertCount_) return;
+  const PendingAlert closed = alerts_[0];
+  for (size_t j = 1; j < alertCount_; ++j) alerts_[j - 1] = alerts_[j];
+  --alertCount_;
+  if (board_.sound) board_.sound->tone(0);
+  invalidateAll();
+  lastInteraction_ = millis();
+  if (alertCount_) beginAlert(millis());
+  App *previous = callbackApp_;
+  callbackApp_ = apps_[closed.owner].app;
+  callbackApp_->onAlert(closed.tag, action, *this);
+  callbackApp_ = previous;
+}
+
+void Runtime::updateAlert(uint32_t now) {
+  if (!alertCount_) return;
+  const PendingAlert &a = alerts_[0];
+  if (a.timeoutMs && elapsedMs(now, alertShownAt_) >= a.timeoutMs) {
+    closeAlert(kAlertTimedOut);
+    return;
+  }
+  if (a.sound && board_.sound && reached(now, chimeAt_)) {
+    const ChimeNote &note = kChime[chimeStep_];
+    board_.sound->tone(note.hz);
+    chimeAt_ = now + note.ms;
+    chimeStep_ = (uint8_t)((chimeStep_ + 1) % kChimeNotes);
+  }
+}
+
+void Runtime::layoutAlert() {
+  const Theme &t = theme_;
+  const PendingAlert &a = alerts_[0];
+  const int maxW = screen_.w - 2 * t.m.margin;
+  const int w = t.dp(300) < maxW ? t.dp(300) : maxW;
+  const int header = t.font.headline->lineHeight > t.dp(36) ? t.font.headline->lineHeight : t.dp(36);
+  const int message = a.message[0] ? 2 * t.font.body->lineHeight : 0;
+  const int h = 2 * t.m.padding + header + message + t.m.control + (message ? 2 : 1) * t.m.gapM;
+  alertCard_ = layout::center(screen_, w, h);
+  Rect parts[3];
+  layout::column(alertCard_.inset(t.m.padding, t.m.padding), {layout::px(header), layout::px(message), layout::px(t.m.control)},
+                 message ? t.m.gapM : 0, parts);
+  if (!message) parts[2] = Rect(parts[2].x, parts[1].y + t.m.gapM, parts[2].w, parts[2].h);
+  alertHeader_ = parts[0];
+  alertMessage_ = parts[1];
+  Button &primary = alertButtons_[0];
+  Button &secondary = alertButtons_[1];
+  primary.label = a.primary;
+  primary.style = ButtonStyle::Accent;
+  secondary.label = a.secondary;
+  secondary.style = ButtonStyle::Glass;
+  if (a.secondary[0]) {
+    Rect b[2];
+    layout::row(parts[2], {layout::flex(), layout::flex()}, t.m.gapM, b);
+    secondary.bounds = b[0];
+    primary.bounds = b[1];
+  } else {
+    primary.bounds = parts[2];
+    secondary.bounds = Rect();
+  }
+}
+
+void Runtime::drawAlert(Canvas &c) {
+  const Theme &t = theme_;
+  const Palette &p = t.color;
+  const PendingAlert &a = alerts_[0];
+  // A soft veil over everything, then the card.
+  c.fillRect(screen_, p.shadow, p.dark ? 150 : 96);
+  if (!c.visible(alertCard_.inset(-glassOutset(t)))) return;
+  // Nearly opaque, so whatever is underneath never competes with the text.
+  paintGlass(c, t, alertCard_, t.m.radiusCard);
+  c.fillRoundRect(alertCard_.inset(1), t.m.radiusCard - 1, p.surface, 236);
+  Rect title = alertHeader_;
+  if (a.icon) {
+    const int r = t.dp(18);
+    paintBubble(c, t, title.x + r, title.centerY(), r, (uint8_t)(apps_[a.owner].app->info().tint & 3));
+    a.icon(c, layout::center(Rect(title.x, title.y, 2 * r, title.h), t.dp(20), t.dp(20)), p.accent);
+    title = Rect(title.x + 2 * r + t.m.gapM, title.y, title.w - 2 * r - t.m.gapM, title.h);
+  }
+  c.drawTextIn(*t.font.headline, a.title, title, p.text);
+  if (a.message[0]) c.drawWrapped(*t.font.body, a.message, alertMessage_, p.textMuted, 2);
+  alertButtons_[0].draw(c, t);
+  if (a.secondary[0]) alertButtons_[1].draw(c, t);
 }
 
 }  // namespace stella

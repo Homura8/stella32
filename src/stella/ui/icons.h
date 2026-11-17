@@ -23,6 +23,11 @@ void wifi(Canvas &c, const Rect &box, Color color);
 void appearance(Canvas &c, const Rect &box, Color color);
 void check(Canvas &c, const Rect &box, Color color);
 void lock(Canvas &c, const Rect &box, Color color);
+void bell(Canvas &c, const Rect &box, Color color);
+void stopwatch(Canvas &c, const Rect &box, Color color);
+void plus(Canvas &c, const Rect &box, Color color);
+void chevronUp(Canvas &c, const Rect &box, Color color);
+void chevronDown(Canvas &c, const Rect &box, Color color);
 // Weather.
 void cloud(Canvas &c, const Rect &box, Color color);
 void partlyCloudy(Canvas &c, const Rect &box, Color color);

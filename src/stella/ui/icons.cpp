@@ -164,6 +164,57 @@ void lock(Canvas &c, const Rect &box, Color color) {
   c.strokeArc((int)f.cx, (int)f.Y(0.02f), r + (int)(f.stroke / 2), (int)(f.stroke + 0.5f), -90.f, 180.f, color);
 }
 
+void bell(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // Dome and flared body as one shape: the half-width grows down the bell.
+  const float top = f.Y(-0.30f), shoulder = f.Y(-0.10f), lip = f.Y(0.20f);
+  const float r = 0.22f * f.s;
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    const float dx = fabsf(px - f.cx);
+    float cov;
+    if (py < shoulder) {
+      const float d = sqrtf(dx * dx + (py - shoulder) * (py - shoulder) * 1.8f);
+      cov = clamp01(r + 0.5f - d);
+    } else {
+      const float half = r + (py - shoulder) * 0.38f;
+      cov = clamp01(half + 0.5f - dx) * clamp01(lip + 0.5f - py);
+    }
+    return py < top - 1.f ? 0.f : cov;
+  });
+  seg(c, f, -0.31f, 0.21f, 0.31f, 0.21f, color, 1.1f);
+  disc(c, f.cx, f.Y(0.31f), 0.075f * f.s, color);
+  disc(c, f.cx, f.Y(-0.33f), 0.05f * f.s, color);
+}
+
+void stopwatch(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  const Frame body{f.cx, f.Y(0.06f), f.s, f.stroke};
+  ring(c, body, 0.34f, color);
+  seg(c, f, 0.f, -0.29f, 0.f, -0.40f, color);
+  seg(c, f, -0.10f, -0.42f, 0.10f, -0.42f, color);
+  seg(c, f, 0.25f, -0.22f, 0.31f, -0.28f, color);
+  seg(c, f, 0.f, 0.06f, 0.f, -0.14f, color);
+  seg(c, f, 0.f, 0.06f, 0.12f, 0.12f, color);
+}
+
+void plus(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  seg(c, f, -0.26f, 0.f, 0.26f, 0.f, color);
+  seg(c, f, 0.f, -0.26f, 0.f, 0.26f, color);
+}
+
+void chevronUp(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  seg(c, f, -0.26f, 0.10f, 0.f, -0.14f, color);
+  seg(c, f, 0.f, -0.14f, 0.26f, 0.10f, color);
+}
+
+void chevronDown(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  seg(c, f, -0.26f, -0.10f, 0.f, 0.14f, color);
+  seg(c, f, 0.f, 0.14f, 0.26f, -0.10f, color);
+}
+
 namespace {
 
 // Soft cloud: three overlapping discs on a rounded base (union by max).

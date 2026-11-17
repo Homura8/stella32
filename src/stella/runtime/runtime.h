@@ -25,7 +25,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.2.0"
+#define STELLA_VERSION "0.3.0"
 #endif
 
 namespace stella {
@@ -60,6 +60,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   static constexpr size_t kMaxApps = 16;
   static constexpr size_t kMaxDepth = 6;
   static constexpr size_t kMaxTopics = 16;
+  static constexpr size_t kMaxAlerts = 4;
 
   Runtime();
   // Stops the service thread (host builds and tests; firmware never destroys it).
@@ -96,6 +97,10 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Screen *topScreen() const;
   const Renderer::Stats &lastFrame() const { return lastStats_; }
   bool renderPending() const { return !dirty_.empty(); }
+  // The alert on screen (tests and diagnostics).
+  bool alertShowing() const { return alertCount_ > 0; }
+  const char *alertTitle() const { return alertCount_ ? alerts_[0].title : ""; }
+  Rect alertButtonRect(int which) const { return which == 0 ? alertButtons_[0].bounds : alertButtons_[1].bounds; }
 
   // AppContext.
   const Theme &theme() const override { return theme_; }
@@ -111,6 +116,11 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   uint32_t millis() const override;
   LocalTime localTime() const override;
   void formatTime(const LocalTime &t, char *out, size_t capacity) const override;
+  void requestTick() override {
+    if (callbackApp_ && callbackApp_ != foreground()) return;
+    tickArmed_ = topScreen() != nullptr;
+    nextTickAt_ = millis();
+  }
   bool push(Screen &screen) override;
   void pop() override;
   void goHome() override;
@@ -122,6 +132,9 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void applySettings(const SystemSettings &settings) override;
   SystemStatus status() const override;
   NetworkControl &network() override { return wifi_; }
+  bool showAlert(const Alert &alert) override;
+  void dismissAlert(uint16_t tag) override;
+  void scheduleWake(uint32_t delayMs) override;
   void requestJob(const Job &job) override { jobs_.requestRun(job); }
   RecordStatus loadAppRecord(const char *key, uint16_t version, void *data, size_t size) override;
   bool saveAppRecord(const char *key, uint16_t version, const void *data, size_t size) override;
@@ -135,6 +148,20 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     Screen *stack[kMaxDepth] = {};
     uint8_t depth = 0;
     bool started = false;
+    bool wakeArmed = false;  // onWake() due at wakeAt
+    uint32_t wakeAt = 0;
+  };
+
+  struct PendingAlert {
+    char title[32];
+    char message[96];
+    char primary[20];
+    char secondary[20];
+    IconFn icon;
+    uint16_t tag;
+    int8_t owner;  // app index
+    bool sound;
+    uint32_t timeoutMs;
   };
 
   static void drawFrame(Canvas &canvas, void *self);
@@ -144,6 +171,13 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   void draw(Canvas &c);
   void drawStatusBar(Canvas &c);
   void drawToast(Canvas &c);
+  void drawAlert(Canvas &c);
+  void layoutAlert();
+  void beginAlert(uint32_t now);
+  void closeAlert(int action);
+  void updateAlert(uint32_t now);
+  void runWakes(uint32_t now);
+  int callerIndex() const;
   Rect statusBarRect() const { return Rect(screen_.x, screen_.y, screen_.w, theme_.m.statusBar); }
   Rect backButtonRect() const;
   Rect toastRect() const;
@@ -201,6 +235,12 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   char toastText_[64] = {0};
   uint32_t toastUntil_ = 0;
   bool toastVisible_ = false;
+  PendingAlert alerts_[kMaxAlerts] = {};
+  size_t alertCount_ = 0;
+  uint32_t alertShownAt_ = 0, chimeAt_ = 0;
+  uint8_t chimeStep_ = 0;
+  Rect alertCard_, alertHeader_, alertMessage_;
+  Button alertButtons_[2];
   int lastMinute_ = -1;
   bool started_ = false, serviceRunning_ = false;
   int uiWatch_ = -1, serviceWatch_ = -1;

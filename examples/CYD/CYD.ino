@@ -33,6 +33,8 @@ stella::apps::ClockApp clockApp;
 stella::apps::SettingsApp settingsApp;
 stella::apps::TouchTestApp touchTest;
 stella::apps::WeatherApp weather;
+stella::apps::AlarmsApp alarms;
+stella::apps::TimerApp timer;
 
 }  // namespace
 
@@ -54,6 +56,8 @@ void setup() {
   os.install(launcher);
   os.install(clockApp);
   os.install(weather);
+  os.install(alarms);
+  os.install(timer);
   os.install(settingsApp);
   os.install(touchTest);
   os.start();
