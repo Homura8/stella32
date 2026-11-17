@@ -25,8 +25,16 @@ struct WeatherDay {
   uint8_t rainChance = 0;
 };
 
+struct WeatherHour {
+  int64_t time = 0;  // the start of the hour, epoch seconds
+  int8_t tempC = 0;
+  uint8_t rainChance = 0;
+  int16_t code = -1;
+};
+
 struct WeatherReport {
   static constexpr int kDays = 4;
+  static constexpr int kHours = 12;  // from the current hour on
   bool valid = false;
   int16_t temperatureC = 0, feelsLikeC = 0;
   int16_t code = -1;
@@ -37,6 +45,8 @@ struct WeatherReport {
   uint8_t dayCount = 0;
   uint8_t place = 0;
   WeatherDay days[kDays];
+  uint8_t hourCount = 0;
+  WeatherHour hours[kHours];
 };
 
 struct WeatherSnapshot {
@@ -44,6 +54,17 @@ struct WeatherSnapshot {
   DataStatus status;
   uint8_t place = 0;  // place currently being fetched
 };
+
+// Will it rain in the next hours? Looks at the hourly chances: "likely" from
+// 50 %, "possible" from 30 %. `at` is the start of the first such hour, and
+// `now` is true when that hour is the current one.
+struct RainOutlook {
+  enum Kind : uint8_t { Unknown, Dry, Possible, Likely } kind = Unknown;
+  int64_t at = 0;
+  bool now = false;
+  uint8_t chance = 0;  // that hour's chance, or the highest chance when dry
+};
+RainOutlook rainOutlook(const WeatherReport &report, int64_t nowEpoch);
 
 // WMO weather code -> words and icon.
 const char *weatherLabel(int code);
@@ -85,6 +106,7 @@ class WeatherApp : public App {
   void onRoute(const char *route, AppContext &ctx) override;  // "places"
   uint32_t onWake(AppContext &ctx) override;
   WeatherSnapshot snapshot() const { return topic_.get(); }
+  Rect hourlyChip() const { return main_.chip(1); }  // the chip that opens the next hours (tests, screenshots)
 
  private:
   class MainScreen : public Screen {
@@ -96,6 +118,7 @@ class WeatherApp : public App {
     void onShow(AppContext &ctx) override;
     uint32_t onTick(AppContext &ctx) override;
     void refresh(AppContext &ctx);  // re-read the snapshot and invalidate
+    Rect chip(int i) const { return chips_[i]; }
 
    private:
     void describeFreshness(AppContext &ctx, char *out, size_t capacity) const;
@@ -107,8 +130,30 @@ class WeatherApp : public App {
     char statusText_[48] = {0};
     char sunRise_[8] = {0}, sunSet_[8] = {0};  // "6:04" and "8:41"; empty when unknown
     uint8_t sunKind_ = 0;                       // 0 normal, 1 the Sun stays up, 2 it stays down
+    char rainChip_[24] = {0};                   // "Rain ~3 pm", "Dry for 12 h"
+    bool rainPressed_ = false;
     char dayNames_[WeatherReport::kDays][8] = {};
     bool placePressed_ = false;
+  };
+
+  // The next hours: temperature and chance of rain for each, and one sentence
+  // about whether it will rain. Opened from the middle chip of the main screen.
+  class HourlyScreen : public Screen {
+   public:
+    explicit HourlyScreen(WeatherApp &app) : app_(app) {}
+    const char *title() const override { return "Next hours"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    void refresh(AppContext &ctx);
+
+   private:
+    WeatherApp &app_;
+    Rect summary_, chart_, details_;
+    WeatherReport report_;
+    char summaryText_[64] = {0}, detailText_[48] = {0};
+    char labels_[WeatherReport::kHours][6] = {};
   };
 
   class PlaceScreen : public Screen {
@@ -133,6 +178,7 @@ class WeatherApp : public App {
   Topic<WeatherSnapshot> topic_{topics::kWeather};
   WeatherService service_{topic_};
   MainScreen main_;
+  HourlyScreen hourly_;
   PlaceScreen places_;
   uint8_t place_ = 0;
 };

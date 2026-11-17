@@ -74,6 +74,11 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("weather");
     s.run(200);
     save(3, "weather");
+    tapRect(s, s.weather.hourlyChip());  // the next hours
+    s.run(300);
+    save(30, "weather-hours");
+    s.os.pop();
+    s.run(100);
     s.os.launch("settings");
     s.run(200);
     save(4, "settings");

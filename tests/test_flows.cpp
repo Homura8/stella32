@@ -162,3 +162,106 @@ TEST(background_apps_do_not_repaint) {
   const uint64_t limit = (uint64_t)320 * s.os.theme().m.statusBar * 4;
   CHECK(s.dev.display.pixelsWritten() <= limit);
 }
+
+// ------------------------------------------------------------------ the next hours
+
+using namespace stella::apps;
+
+namespace {
+WeatherReport hoursReport(const int chances[], int n, int64_t start) {
+  WeatherReport w;
+  w.valid = true;
+  w.hourCount = (uint8_t)n;
+  for (int i = 0; i < n; ++i) {
+    w.hours[i].time = start + i * 3600;
+    w.hours[i].rainChance = (uint8_t)chances[i];
+  }
+  return w;
+}
+}  // namespace
+
+TEST(rain_outlook_finds_the_first_wet_hour_and_ignores_hours_that_are_over) {
+  const int64_t base = 1794826800;  // 22:00
+  const int wet[] = {10, 20, 35, 60, 80};
+  WeatherReport w = hoursReport(wet, 5, base);
+  RainOutlook r = rainOutlook(w, base + 600);  // 22:10
+  CHECK(r.kind == RainOutlook::Likely && r.at == base + 3 * 3600 && !r.now && r.chance == 60);
+  // The same hours later: the dry ones are behind us, and the wet hour is now.
+  r = rainOutlook(w, base + 3 * 3600 + 120);
+  CHECK(r.kind == RainOutlook::Likely && r.now && r.at == base + 3 * 3600);
+  // Only "possible" chances (30-49 %).
+  const int maybe[] = {5, 10, 40, 20};
+  w = hoursReport(maybe, 4, base);
+  r = rainOutlook(w, base);
+  CHECK(r.kind == RainOutlook::Possible && r.at == base + 2 * 3600 && r.chance == 40);
+  // Dry: reports the highest chance seen.
+  const int dry[] = {5, 10, 25, 20};
+  w = hoursReport(dry, 4, base);
+  r = rainOutlook(w, base);
+  CHECK(r.kind == RainOutlook::Dry && r.chance == 25);
+  // No hours, or no report: unknown. A report entirely in the past is dry, never a stale warning.
+  WeatherReport none;
+  CHECK(rainOutlook(none, base).kind == RainOutlook::Unknown);
+  w = hoursReport(wet, 5, base);
+  CHECK(rainOutlook(w, base + 10 * 3600).kind == RainOutlook::Dry);
+}
+
+TEST(hourly_forecast_is_parsed_and_the_next_hours_screen_opens_from_its_chip) {
+  SimSession s(320, 240);
+  const WeatherReport &w = s.weather.snapshot().report;
+  CHECK(w.valid && w.hourCount == WeatherReport::kHours);
+  CHECK(w.hours[0].time == 1794826800 && w.hours[4].rainChance == 60 && w.hours[4].tempC == 15);
+  CHECK(w.hours[10].rainChance == 0 && w.hours[11].rainChance == 5);  // a JSON null is no chance, and does not shift the rest
+  // Regression: keys longer than the parser's old 23-character limit (the daily chance of rain was always 0).
+  CHECK(w.days[0].rainChance == 20 && w.days[1].rainChance == 80 && w.days[2].rainChance == 5);
+  s.os.launch("weather");
+  s.run(200);
+  const Rect chip = s.weather.hourlyChip();
+  s.tap(chip.centerX(), chip.centerY());
+  CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Next hours") == 0);
+  s.os.pop();
+  CHECK(s.os.topScreen()->title() == nullptr);  // back on the main screen
+}
+
+TEST(a_forecast_with_no_hours_is_still_accepted) {
+  SimSession s(320, 240);
+  s.dev.http.routes.insert(s.dev.http.routes.begin(),
+                           {"api.open-meteo.com",
+                            "{\"current\":{\"time\":1794828600,\"temperature_2m\":17.4,\"apparent_temperature\":15.9,"
+                            "\"relative_humidity_2m\":71,\"weather_code\":2,\"is_day\":1,\"wind_speed_10m\":13.7},"
+                            "\"daily\":{\"time\":[1794747600,1794834000,1794920400],\"weather_code\":[3,61,1],"
+                            "\"temperature_2m_max\":[21.3,18.9,24.6],\"temperature_2m_min\":[12.4,13.1,11.8],"
+                            "\"precipitation_probability_max\":[20,80,5]}}",
+                            200});
+  s.os.launch("weather");
+  s.run(200);
+  const Rect c = s.os.contentRect();
+  s.longPress(c.x + 60, c.y + 50);  // refresh now
+  s.run(1000);
+  const WeatherReport &w = s.weather.snapshot().report;
+  CHECK(w.valid && w.hourCount == 0);
+  const Rect chip = s.weather.hourlyChip();
+  s.tap(chip.centerX(), chip.centerY());  // it still opens, and says there is nothing yet
+  CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Next hours") == 0);
+}
+
+TEST(the_next_hours_screen_renders_at_every_size_in_both_clock_styles) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  for (const auto &sz : sizes) {
+    for (bool h24 : {true, false}) {
+      SimSession s(sz[0], sz[1]);
+      SystemSettings st = s.os.settings();
+      st.clock24h = h24;
+      s.os.applySettings(st);
+      s.os.launch("weather");
+      s.run(200);
+      const Rect chip = s.weather.hourlyChip();
+      s.tap(chip.centerX(), chip.centerY());
+      CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Next hours") == 0);
+      const std::vector<Color> incremental = s.dev.display.framebuffer();
+      s.os.invalidateAll();
+      s.run(20);
+      CHECK(incremental == s.dev.display.framebuffer());
+    }
+  }
+}
