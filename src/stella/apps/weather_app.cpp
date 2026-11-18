@@ -111,8 +111,9 @@ RainOutlook rainOutlook(const WeatherReport &w, int64_t nowEpoch) {
 // "3 pm" or "15:00" for the hour starting at `epoch`, in the clock's style.
 static void hourWords(AppContext &ctx, int64_t epoch, char *out, size_t capacity) {
   const LocalTime lt = ctx.localTimeAt(epoch);
-  if (ctx.settings().clock24h) snprintf(out, capacity, "%02d:00", lt.hour);
-  else snprintf(out, capacity, "%d %s", lt.hour % 12 == 0 ? 12 : lt.hour % 12, lt.hour < 12 ? "am" : "pm");
+  const unsigned hr = lt.hour < 0 ? 0u : lt.hour > 23 ? 23u : (unsigned)lt.hour;
+  if (ctx.settings().clock24h) snprintf(out, capacity, "%02u:00", hr);
+  else snprintf(out, capacity, "%u %s", hr % 12 == 0 ? 12u : hr % 12, hr < 12 ? "am" : "pm");
 }
 
 // ------------------------------------------------------------------ service
@@ -556,8 +557,9 @@ void WeatherApp::HourlyScreen::refresh(AppContext &ctx) {
   const bool h24 = ctx.settings().clock24h;
   for (int i = 0; i < report_.hourCount && i < WeatherReport::kHours; ++i) {
     const LocalTime lt = ctx.localTimeAt(report_.hours[i].time);
-    if (h24) snprintf(labels_[i], sizeof(labels_[i]), "%02d", lt.hour);
-    else snprintf(labels_[i], sizeof(labels_[i]), "%d%c", lt.hour % 12 == 0 ? 12 : lt.hour % 12, lt.hour < 12 ? 'a' : 'p');
+    const unsigned hr = lt.hour < 0 ? 0u : lt.hour > 23 ? 23u : (unsigned)lt.hour;
+    if (h24) snprintf(labels_[i], sizeof(labels_[i]), "%02u", hr);
+    else snprintf(labels_[i], sizeof(labels_[i]), "%u%c", hr % 12 == 0 ? 12u : hr % 12, hr < 12 ? 'a' : 'p');
   }
   if (isVisible()) ctx.invalidate(ctx.contentRect());
 }

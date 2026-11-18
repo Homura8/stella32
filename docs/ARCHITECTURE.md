@@ -113,6 +113,16 @@ or display I/O.
   (`net/http_request.*`: method, path and a form body of at most 512 bytes;
   header lines are inspected and dropped, so nothing grows), answers as soon
   as a request is complete and closes sockets that stay silent for 2.5 s.
+- **Requests are checked whole.** A request is built in a buffer sized with
+  room to spare and is refused, never sent, if it does not fit (Weather:
+  `WeatherService::buildUrl`; the update address is refused at start-up if it
+  is longer than its buffer). The host tests' fake network is as strict as the
+  real servers: `SimHttp::validateUrl` answers 400 to an address that is not
+  https, has a space, an empty parameter, an unknown or misspelt variable or
+  an out-of-range value (Open-Meteo's rules are encoded in
+  `host/host_board.cpp`). When a service gains a request, teach the fake the
+  server's rules and test every real request against it
+  (`tests/test_request_audit.cpp`).
 - **Freshness** (`service/data_status.h`): every data service keeps its last
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").

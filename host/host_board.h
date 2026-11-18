@@ -171,6 +171,10 @@ class SimHttp : public HttpClient {
   int requests = 0;
   int failWith = 0;  // non-zero: every request returns this
   std::string lastUrl;
+  std::string lastRejection;  // why the last request was refused with 400 (see validateUrl)
+  // The simulated servers are strict: a request a real server would refuse
+  // (cut off, misspelt, out of range) is answered 400 here too. Empty = fine.
+  static std::string validateUrl(const char *url);
   int manifestRequests = 0;  // requests whose URL mentions manifest.json
   int get(const char *url, uint32_t timeoutMs, size_t maxBodyBytes, HttpSink &sink) override;
 };
