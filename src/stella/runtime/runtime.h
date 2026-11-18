@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.13.1"
+#define STELLA_VERSION "0.14.0"
 #endif
 
 namespace stella {
@@ -141,6 +141,9 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   NetworkControl &network() override { return wifi_; }
   UpdateControl &update() override { return updater_; }
   RemoteControl &remote() override { return remote_; }
+  CalendarSourceControl &calendar() override { return calendarSource_; }
+  CalendarSource &calendarFeed() override { return calendarSource_; }
+  bool wallClock(int64_t &epochSeconds) override;
   void restartDevice() override {
     restartPending_ = true;
     restartAtMs_ = millis() + 900;
@@ -257,6 +260,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   WifiManager wifi_{network_, scan_};
   Topic<UpdateStatus> updateStatus_{topics::kUpdate};
   UpdateService updater_{updateStatus_};
+  CalendarSource calendarSource_;
   Topic<RemoteInfo> remoteInfo_{topics::kRemote};
   RemoteService remote_{remoteInfo_};
   HttpService http_;

@@ -11,6 +11,9 @@
 //   POST /api/wallpaper        the picture, streamed to flash (wallpaper.h)
 //   POST /api/wallpaper/remove forget the picture
 //   POST /api/veil             v=NN, how much to wash the picture back
+//   POST /api/calendar         the body is the https address of an iCalendar feed
+//   POST /api/calendar/remove  forget it
+//   POST /api/calendar/status  {"set":true,"host":"..."} (never the address itself)
 //
 // Plain HTTP on a home LAN: the PIN and the picture cross it unencrypted, so
 // this is for a network you trust. Wrong PINs lock the page for five minutes
@@ -24,6 +27,7 @@
 #include "../service/job_scheduler.h"
 #include "../service/topic.h"
 #include "../storage/record.h"
+#include "calendar_source.h"
 #include "http_request.h"
 #include "network_status.h"
 #include "wallpaper.h"
@@ -122,7 +126,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   explicit RemoteService(Topic<RemoteInfo> &topic) : topic_(topic) {}
   // Before the scheduler starts. Any of the devices may be null.
   void configure(RemoteServer *server, WallpaperStore *store, WifiDriver *rng, KeyValueStore *kv, JobScheduler *jobs,
-                 const Topic<NetworkStatus> *network);
+                 const Topic<NetworkStatus> *network, CalendarSourceControl *calendar = nullptr);
   bool wallpaperValid() const { return valid_.load(); }
 
   // RemoteControl.
@@ -161,6 +165,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   void save();
   void makePin();
   int authorize(const char *pin);  // 0 ok, 401 wrong, 429 locked
+  void handleCalendar(const char *path, const RemoteRequest &req, RemoteResponse &res);
   void publish();
   void json(RemoteResponse &r, const char *text);
 
@@ -171,6 +176,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   KeyValueStore *kv_ = nullptr;
   JobScheduler *jobs_ = nullptr;
   const Topic<NetworkStatus> *network_ = nullptr;
+  CalendarSourceControl *calendar_ = nullptr;
 
   mutable osal::Mutex lock_;  // guards pending_ and pin_
   Pending pending_;

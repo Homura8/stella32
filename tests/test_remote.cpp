@@ -75,12 +75,14 @@ struct Rig {
   Topic<NetworkStatus> net{topics::kNetwork};
   Topic<RemoteInfo> info{topics::kRemote};
   RemoteService service{info};
+  CalendarSource calendar;
   uint32_t now = 1000;
   explicit Rig(bool connected = true) {
     NetworkStatus n;
     n.present = n.connected = connected;
     net.publish(n);
-    service.configure(&server, &store, nullptr, &kv, nullptr, &net);
+    calendar.configure(&kv, nullptr);
+    service.configure(&server, &store, nullptr, &kv, nullptr, &net, &calendar);
   }
   void run(uint32_t ms = 0) {
     now += ms;
@@ -467,6 +469,59 @@ TEST(the_remote_screen_and_settings_row_render_at_every_size) {
     s.run(100);
     CHECK(sameAsFullRedraw(s));  // Settings' list with its new row
   }
+}
+
+// ------------------------------------------------------------------ calendar address
+
+TEST(the_calendar_address_is_set_checked_remembered_and_never_sent_back) {
+  Rig r;
+  const std::string url = "https://calendar.example/feeds/private-6f1c2d3e4a5b/basic.ics";
+  // Needs the PIN, like everything else.
+  CHECK_EQ(send(r.service, post("/api/calendar", "", url)).status, 401);
+  CHECK(!r.calendar.hasAddress());
+  CHECK_EQ(send(r.service, post("/api/calendar/status", "")).status, 401);
+  // Not acceptable: not https, a space, no host, too long.
+  const std::string bad[] = {"http://calendar.example/a.ics", "https://calendar.example/a b.ics", "https:///a.ics", "calendar.example",
+                             "", std::string("https://calendar.example/") + std::string(300, 'x')};
+  for (const std::string &b : bad) {
+    const Reply reply = send(r.service, post("/api/calendar", r.pin(), b));
+    CHECK_EQ(reply.status, 400);
+    CHECK(reply.body.find("error") != std::string::npos);
+  }
+  CHECK(!r.calendar.hasAddress());
+  // A good one, with the trailing newline a paste often brings.
+  CHECK_EQ(send(r.service, post("/api/calendar", r.pin(), url + "\n")).status, 200);
+  CHECK(r.calendar.hasAddress());
+  char copy[kCalendarUrlBytes];
+  CHECK(r.calendar.copyAddress(copy) && url == copy);
+  // The status names the host and nothing else: no path, no secret.
+  const Reply status = send(r.service, post("/api/calendar/status", r.pin()));
+  CHECK_EQ(status.status, 200);
+  CHECK(status.body.find("\"set\":true") != std::string::npos && status.body.find("calendar.example") != std::string::npos);
+  CHECK(status.body.find("private") == std::string::npos && status.body.find("basic.ics") == std::string::npos);
+  CHECK(send(r.service, get("/api/status")).body.find("calendar") == std::string::npos);  // nothing without the PIN
+  // It is remembered: a new source on the same store has it.
+  CalendarSource again;
+  again.configure(&r.kv, nullptr);
+  CHECK(again.hasAddress() && again.generation() == 0);
+  char host[64];
+  again.host(host, sizeof(host));
+  CHECK(strcmp(host, "calendar.example") == 0);
+  // Remove.
+  CHECK_EQ(send(r.service, post("/api/calendar/remove", r.pin())).status, 200);
+  CHECK(!r.calendar.hasAddress());
+  CalendarSource gone;
+  gone.configure(&r.kv, nullptr);
+  CHECK(!gone.hasAddress());
+  CHECK(send(r.service, post("/api/calendar/status", r.pin())).body.find("\"set\":false") != std::string::npos);
+}
+
+TEST(the_page_has_a_calendar_section_that_never_displays_the_address) {
+  const std::string page(kRemotePage);
+  CHECK(page.find("id=cal ") != std::string::npos && page.find("/api/calendar/status") != std::string::npos);
+  CHECK(page.find("/api/calendar/remove") != std::string::npos);
+  // The field is cleared after saving, and only the host is shown back.
+  CHECK(page.find("$('cal').value='';") != std::string::npos && page.find("s.host") != std::string::npos);
 }
 
 // Regression (owner, on the CYD): a wrong PIN left "Wrong PIN" at the bottom of the

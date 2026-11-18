@@ -45,6 +45,7 @@ stella::apps::ClockApp clockApp;
 stella::apps::SettingsApp settingsApp;
 stella::apps::TouchTestApp touchTest;
 stella::apps::WeatherApp weather;
+stella::apps::CalendarApp calendarApp;
 stella::apps::AlarmsApp alarms;
 stella::apps::TimerApp timer;
 stella::apps::StopwatchApp stopwatch;
@@ -99,6 +100,7 @@ void setup() {
   os.install(stopwatch);
   os.install(settingsApp);
   os.install(touchTest);
+  os.install(calendarApp);
   os.start();
 }
 

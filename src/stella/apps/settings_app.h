@@ -23,6 +23,7 @@ class SettingsApp : public App {
   // Where the choices of the Units and Idle face screens are (tests).
   Rect unitsChoice(int row, int i) const { return units_.choice(row, i); }
   Rect idleChoice(int row, int i) const { return idle_.choice(row, i); }
+  Rect calendarRow(int i) const { return calendar_.rowBounds(i); }
 
  private:
   class MainScreen : public Screen {
@@ -34,12 +35,12 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 10;
+    static constexpr int kRows = 11;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     SettingsApp &app_;
     Rect card_;
     ListView list_;
-    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0}, remoteDetail_[16] = {0}, unitsDetail_[8] = {0}, idleDetail_[16] = {0};
+    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0}, remoteDetail_[16] = {0}, unitsDetail_[8] = {0}, idleDetail_[16] = {0}, calendarDetail_[12] = {0};
   };
 
   class WifiScreen : public Screen {
@@ -310,6 +311,27 @@ class SettingsApp : public App {
     Segmented seg_[kMax];
   };
 
+  // Settings > Calendar: whether an address is set (and its host), a refresh and a
+  // remove. The address itself is private and is entered on the remote page.
+  class CalendarScreen : public Screen {
+   public:
+    explicit CalendarScreen(SettingsApp &app) : app_(app) {}
+    const char *title() const override { return "Calendar"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    Rect rowBounds(int i) const { return rows_[i]; }  // tests
+
+   private:
+    static constexpr int kRows = 3;
+    SettingsApp &app_;
+    Rect card_, rows_[kRows], hint_;
+    ListRow address_, fetch_, remove_;
+    char host_[48] = {0};
+    bool has_ = false;
+  };
+
   // Settings > Remote page: the web page on the home network (phone or PC, by
   // name or IP), its PIN, and the wallpaper it uploads. The PIN is shown only here.
   class RemoteScreen : public Screen {
@@ -382,6 +404,7 @@ class SettingsApp : public App {
   LightCalibrateScreen light_;
   UpdateScreen softwareUpdate_;
   RemoteScreen remote_;
+  CalendarScreen calendar_{*this};
   WhatsNewScreen whatsNew_;
   AboutScreen about_;
 };

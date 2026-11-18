@@ -113,7 +113,24 @@ or display I/O.
   (`net/http_request.*`: method, path and a form body of at most 512 bytes;
   header lines are inspected and dropped, so nothing grows), answers as soon
   as a request is complete and closes sockets that stay silent for 2.5 s.
-- **Calendars** (`net/ical.*`, `net/ical_calendar.*`; no app uses them yet).
+- **Calendar** (`apps/calendar_app.*`, `net/calendar_source.*`, `net/posix_zone.*`). The
+  address of an iCalendar feed is a private URL, so it is entered on the remote
+  page (POST `/api/calendar`, behind the PIN; `/api/calendar/status` returns only the
+  host) and kept in one versioned record (`cal/source`); Settings > Calendar shows
+  whether it is set (and the host), fetches now and removes it, and nothing logs it
+  or sends it back. `CalendarSource` is the thread-safe holder (UI thread, the
+  remote handler and the service thread all touch it) and a change asks the job to
+  run. `CalendarService` is a job on the service thread: it streams the feed
+  (https, up to 2 MB, 60 s) through `ICalParser` into one `ICalCalendar`, wipes its
+  copy of the address, expands the next 30 days in the *device's* zone and
+  publishes a `CalendarSnapshot` (16 occurrences, `DataStatus`, counts of what could
+  not be read). The device zone comes from `PosixZoneResolver`, which reads the
+  POSIX TZ string of the settings into the same rule pair a VTIMEZONE gives, because
+  libc's `mktime` reads process-wide state the UI thread uses. A failing or
+  non-calendar feed keeps the last good agenda with the reason on the freshness
+  line; a new address never shows the old one's events. Static RAM for all of it is
+  about 12 KB (parser 2.7, events 4.6, snapshots and screen the rest).
+- **Calendar parsing** (`net/ical.*`, `net/ical_calendar.*`).
   `ICalParser` reads an iCalendar file as a stream, like `JsonParser`: any
   chunk size, one unfolded line of at most 320 bytes held at a time (a longer
   line such as DESCRIPTION is cut and counted), at most eight nested parts, up
@@ -122,7 +139,7 @@ or display I/O.
   clock change without a tz database). Each finished VEVENT goes to an
   `ICalSink` and is forgotten. `ICalCalendar` is the sink an app would use: it
   keeps only events that can matter for a window (past one-offs stream by and
-  are counted), holds a series as one entry (32 events, ~6 KB; overflow is
+  are counted), holds a series as one entry (24 events, ~4.6 KB; overflow is
   counted in `dropped()`), and `occurrences(from, to, resolver, out, max)`
   expands DAILY/WEEKLY/MONTHLY/YEARLY rules (INTERVAL, COUNT, UNTIL, BYDAY with
   ordinals, BYMONTHDAY, BYMONTH, WKST, EXDATE) and applies RECURRENCE-ID

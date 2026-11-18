@@ -120,7 +120,8 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
   // The first daily check waits a couple of minutes, so boot, Wi-Fi and the
   // first weather fetch get the network (and its TLS lease) first.
   if (updater_.enabled()) jobs_.add(updater_, millis(), 2u * 60u * 1000u);
-  remote_.configure(board.remote, board.wallpaper, board.wifi, board.storage, &jobs_, &network_);
+  calendarSource_.configure(board.storage, &jobs_);
+  remote_.configure(board.remote, board.wallpaper, board.wifi, board.storage, &jobs_, &network_, &calendarSource_);
   jobs_.add(remote_, millis(), 500);
   reloadWallpaper();
   // A freshly updated image runs on probation: it is confirmed after a healthy
@@ -155,6 +156,10 @@ bool Runtime::install(App &app) {
   ++appCount_;
   app.onInstall(*this);
   return true;
+}
+
+bool Runtime::wallClock(int64_t &epochSeconds) {
+  return board_.platform && board_.platform->wallClock(epochSeconds);
 }
 
 bool Runtime::addJob(Job &job, uint32_t firstDelayMs) {

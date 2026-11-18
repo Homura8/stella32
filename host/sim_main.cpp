@@ -342,6 +342,21 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("clock", "dashboard");
     s.run(300);
     save(37, "dashboard");
+    // The Calendar: first with no address, then with the simulator's feed.
+    s.os.goHome();
+    s.os.launch("calendar");
+    s.run(300);
+    save(38, "calendar-empty");
+    s.os.goHome();
+    s.os.launch("settings", "calendar");
+    s.run(200);
+    save(40, "settings-calendar");
+    s.os.calendar().setAddress("https://calendar.example/feeds/home/basic.ics");
+    s.run(3000);
+    s.os.goHome();
+    s.os.launch("calendar");
+    s.run(300);
+    save(39, "calendar");
   }
 }
 
