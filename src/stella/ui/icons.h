@@ -12,6 +12,7 @@ namespace icons {
 void sparkle(Canvas &c, const Rect &box, Color color);  // Celestia four-point star
 void clock(Canvas &c, const Rect &box, Color color);
 void gear(Canvas &c, const Rect &box, Color color);
+void reset(Canvas &c, const Rect &box, Color color);  // a circular arrow
 void touch(Canvas &c, const Rect &box, Color color);
 void back(Canvas &c, const Rect &box, Color color);
 void chevronRight(Canvas &c, const Rect &box, Color color);

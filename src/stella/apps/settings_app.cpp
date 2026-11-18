@@ -114,6 +114,7 @@ void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "units") == 0) ctx.push(units_);
   if (route && strcmp(route, "idle") == 0) ctx.push(idle_);
   if (route && strcmp(route, "calendar") == 0) ctx.push(calendar_);
+  if (route && strcmp(route, "reset") == 0) ctx.push(reset_);
 }
 
 // ------------------------------------------------------------------ main list
@@ -181,7 +182,8 @@ void SettingsApp::MainScreen::drawRow(Canvas &c, const Theme &t, int index, cons
                    {"Units", icons::gear, 0, s.unitsDetail_},
                    {"Screensaver", icons::moon, 1, s.idleDetail_},
                    {"Calendar", icons::calendar, 2, s.calendarDetail_},
-                   {"Web page", icons::wifi, 2, s.remoteDetail_}};
+                   {"Web page", icons::wifi, 2, s.remoteDetail_},
+                   {"Reset", icons::reset, 0, "Erase everything"}};
   ListRow r;
   r.bounds = row;
   r.title = rows[index].title;
@@ -202,10 +204,68 @@ bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   const int index = list_.handle(e, ctx);
   if (index < 0) return false;
   Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_,
-                            nullptr, &app_.units_, &app_.idle_, &app_.calendar_, &app_.remote_};
+                            nullptr, &app_.units_, &app_.idle_, &app_.calendar_, &app_.remote_, &app_.reset_};
   if (targets[index]) ctx.push(*targets[index]);
   else ctx.launch("home", "customise");
   return true;
+}
+
+// ------------------------------------------------------------------ reset
+
+void SettingsApp::ResetScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  Rect r[2];
+  column(area, {flex(), px(t.m.control)}, t.m.gapM, r);
+  card_ = r[0];
+  const Rect inner = card_.inset(t.m.padding, t.m.padding);
+  Rect parts[2];
+  column(inner, {px(t.font.title->lineHeight), flex()}, t.dp(6), parts);
+  heading_ = parts[0];
+  body_ = parts[1];
+  Rect b[2];
+  row(r[1], {flex(), flex()}, t.m.gapM, b);
+  cancel_.bounds = b[0];
+  erase_.bounds = b[1];
+  cancel_.label = "Keep everything";
+  cancel_.style = ButtonStyle::Accent;
+  erase_.label = erasing_ ? "Erasing\xe2\x80\xa6" : "Erase";
+  erase_.enabled = cancel_.enabled = !erasing_;
+}
+
+void SettingsApp::ResetScreen::onShow(AppContext &) {
+  erasing_ = false;  // coming back after a Cancel starts again
+  erase_.label = "Erase";
+  erase_.enabled = cancel_.enabled = true;
+}
+
+void SettingsApp::ResetScreen::draw(Canvas &c, const Theme &t) {
+  const Palette &p = t.color;
+  paintGlass(c, t, card_, t.m.radiusCard);
+  c.drawTextIn(*t.font.title, erasing_ ? "Erasing\xe2\x80\xa6" : "Erase everything?", heading_, p.text);
+  c.drawWrapped(*t.font.body,
+                erasing_ ? "Everything saved here is being erased. The device restarts as new."
+                         : "This erases your Wi-Fi network, settings, alarms, calendar address and wallpaper, then "
+                           "restarts as new. The software stays.",
+                body_, p.textMuted, 7);
+  cancel_.draw(c, t);
+  erase_.draw(c, t);
+}
+
+bool SettingsApp::ResetScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (erasing_) return e.isPointer();  // nothing more to do; swallow touches until the restart
+  if (cancel_.handle(e, ctx)) {
+    ctx.pop();
+    return true;
+  }
+  if (erase_.handle(e, ctx)) {
+    erasing_ = true;
+    erase_.label = "Erasing\xe2\x80\xa6";
+    erase_.enabled = cancel_.enabled = false;
+    ctx.invalidate(ctx.contentRect());
+    ctx.resetDevice();  // erased and restarted a moment later, once this has been drawn
+    return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ sound and light

@@ -155,6 +155,10 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
     restartPending_ = true;
     restartAtMs_ = millis() + 900;
   }
+  void resetDevice() override {
+    resetPending_ = true;
+    restartDevice();
+  }
   bool showAlert(const Alert &alert) override;
   void previewChime() override;
   void setSun(int64_t sunrise, int64_t sunset, uint8_t polar) override;
@@ -331,7 +335,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   Button alertButtons_[2];
   int lastMinute_ = -1;
   bool started_ = false, serviceRunning_ = false;
-  bool updateUnconfirmed_ = false, restartPending_ = false;
+  bool updateUnconfirmed_ = false, restartPending_ = false, resetPending_ = false;
   uint32_t confirmAtMs_ = 0, restartAtMs_ = 0;
   int uiWatch_ = -1, serviceWatch_ = -1;
   std::atomic<bool> restartRequested_{false};

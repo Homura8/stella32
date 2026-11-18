@@ -272,6 +272,13 @@ uint32_t Runtime::step() {
     LOGI(kTag, "update confirmed");
   }
   if (restartPending_ && reached(now, restartAtMs_)) {
+    if (resetPending_) {
+      // Erased at the last moment, so nothing saves a record in between.
+      LOGI(kTag, "erasing everything saved");
+      if (board_.wallpaper) board_.wallpaper->erase();
+      if (board_.storage && !board_.storage->eraseAll()) LOGE(kTag, "the saved data could not all be erased");
+      resetPending_ = false;
+    }
     LOGI(kTag, "restarting on request");
     board_.platform->restart();
     restartPending_ = false;  // a simulated board returns

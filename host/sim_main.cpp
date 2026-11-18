@@ -393,6 +393,11 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("calendar");
     s.run(300);
     save(39, "calendar");
+    // Settings > Reset, the question before everything saved is erased.
+    s.os.goHome();
+    s.os.launch("settings", "reset");
+    s.run(200);
+    save(45, "settings-reset");
   }
 }
 

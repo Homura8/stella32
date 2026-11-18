@@ -150,7 +150,7 @@ Point SimSession::settingsRow(int i) const {
   const Theme &t = os.theme();
   const Rect c = os.contentRect();
   // Settings' list shrinks its rows when all of them do not fit (see MainScreen::layout).
-  constexpr int kRows = 11;
+  constexpr int kRows = 12;
   const int areaH = c.h - 2 * t.m.gapS;
   int rowH = kRows * t.m.row <= areaH ? t.m.row : areaH / kRows;
   if (rowH < t.dp(32)) rowH = t.dp(32);

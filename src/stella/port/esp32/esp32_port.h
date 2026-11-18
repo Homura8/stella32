@@ -14,6 +14,7 @@
 #include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
+#include <nvs.h>
 #include <esp_timer.h>
 #include <mbedtls/pk.h>
 #include <time.h>
@@ -119,6 +120,40 @@ class NvsStore : public KeyValueStore {
     if (!p.begin(ns, false)) return false;
     const bool ok = p.remove(key);
     p.end();
+    return ok;
+  }
+  // Every namespace in the partition except the radio's own calibration data
+  // (phy, nvs.*): those are not the person's and are rebuilt by the chip anyway.
+  // Bluetooth bonds go too, which is what a reset should do.
+  bool eraseAll() override {
+    constexpr int kMax = 32;
+    char names[kMax][16];
+    int count = 0;
+    nvs_iterator_t it = nullptr;
+    esp_err_t err = nvs_entry_find("nvs", nullptr, NVS_TYPE_ANY, &it);
+    while (err == ESP_OK && it) {
+      nvs_entry_info_t info;
+      nvs_entry_info(it, &info);
+      bool known = strcmp(info.namespace_name, "phy") == 0 || strncmp(info.namespace_name, "nvs.", 4) == 0;
+      for (int i = 0; i < count && !known; ++i) known = strcmp(names[i], info.namespace_name) == 0;
+      if (!known && count < kMax) {
+        strncpy(names[count], info.namespace_name, sizeof(names[count]) - 1);
+        names[count][sizeof(names[count]) - 1] = '\0';
+        ++count;
+      }
+      err = nvs_entry_next(&it);
+    }
+    nvs_release_iterator(it);
+    bool ok = true;
+    for (int i = 0; i < count; ++i) {
+      nvs_handle_t handle;
+      if (nvs_open(names[i], NVS_READWRITE, &handle) != ESP_OK) {
+        ok = false;
+        continue;
+      }
+      ok = nvs_erase_all(handle) == ESP_OK && nvs_commit(handle) == ESP_OK && ok;
+      nvs_close(handle);
+    }
     return ok;
   }
 };
