@@ -196,6 +196,13 @@ personal (stops, subjects, coordinates, URLs) is committed.
 
 ### 7. Bluetooth Low Energy: a macro deck (RAM is the constraint)
 
+**First step built (opt-in `cyd-ble` build):** the Deck app with six media-key pads,
+pairing status and Forget, a `HidDevice` HAL, a NimBLE driver and a simulator radio;
+see `docs/ARCHITECTURE.md`, "Bluetooth deck". Still to do from the plan below:
+keyboard shortcuts and layouts edited on the remote page (store key codes per button),
+measuring the heap on a device with Wi-Fi and a TLS fetch running, and deciding
+whether the build can become the default.
+
 The owner's most-wanted extra: the touchscreen as a **macro pad** for a PC
 (media keys, mute, screenshot, open a terminal) over BLE HID. The CYD's USB
 port is serial-only, so BLE is the only way to act as a keyboard.
