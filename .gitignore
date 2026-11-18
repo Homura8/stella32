@@ -2,6 +2,9 @@
 secrets.h
 **/secrets.h
 
+# A gift build's own words (examples/CYD/gift.example.h is the template): a name in them stays on your computer.
+examples/CYD/gift.h
+
 # Build output
 build/
 build-*/

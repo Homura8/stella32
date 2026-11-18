@@ -208,6 +208,12 @@ bool Runtime::start() {
   foreground_ = -1;
   launch(apps_[home_].app->info().id);
   for (size_t i = 0; i < appCount_; ++i) {
+    if (apps_[i].app->launchAtBoot()) {  // an app that wants to be seen first (a greeting)
+      launch(apps_[i].app->info().id);
+      break;
+    }
+  }
+  for (size_t i = 0; i < appCount_; ++i) {
     apps_[i].wakeArmed = true;  // every app's first onWake() runs on the first step
     apps_[i].wakeAt = now;
   }
@@ -272,6 +278,13 @@ uint32_t Runtime::step() {
     LOGI(kTag, "update confirmed");
   }
   if (restartPending_ && reached(now, restartAtMs_)) {
+    if (resetPending_) {
+      // Erased at the last moment, so nothing saves a record in between.
+      LOGI(kTag, "erasing everything saved");
+      if (board_.wallpaper) board_.wallpaper->erase();
+      if (board_.storage && !board_.storage->eraseAll()) LOGE(kTag, "the saved data could not all be erased");
+      resetPending_ = false;
+    }
     LOGI(kTag, "restarting on request");
     board_.platform->restart();
     restartPending_ = false;  // a simulated board returns

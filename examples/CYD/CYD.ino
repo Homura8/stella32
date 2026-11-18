@@ -11,8 +11,24 @@
 //
 // Faster rendering: uncomment to use DMA transfers (verify on your board).
 // #define STELLA_CYD_DMA 1
+//
+// A gift build (one device for one person): a message that opens first thing
+// until it has been read to the end, then lives on Home as an app. Remove the
+// "//" below, copy gift.example.h to gift.h and put your words in it (see that
+// file). The words are saved on the device the first time, so they stay through
+// every later update. Or use
+//   arduino-cli compile --profile cyd --build-property "compiler.cpp.extra_flags=-DSTELLA_GIFT=1" examples/CYD
+// #define STELLA_GIFT 1
 #include <Stella.h>
 #include <stella/boards/cyd/cyd_board.h>
+
+#if STELLA_GIFT
+#if __has_include("gift.h")
+#include "gift.h"
+#else
+#include "gift.example.h"
+#endif
+#endif
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -53,6 +69,9 @@ stella::apps::CalendarApp calendarApp;
 stella::apps::AlarmsApp alarms;
 stella::apps::TimerApp timer;
 stella::apps::StopwatchApp stopwatch;
+// The Greeting app is in every build but out of sight until the device has words for it (a gift
+// build offers them below); that keeps the message through an update to an ordinary build.
+stella::apps::GreetingApp greeting;
 
 }  // namespace
 
@@ -110,6 +129,10 @@ void setup() {
 #endif
   os.install(values);
   os.install(calendarApp);
+#if STELLA_GIFT
+  greeting.offer(giftContent());  // saved on the device; it opens first until it has been read to the end
+#endif
+  os.install(greeting);
   os.start();
 }
 

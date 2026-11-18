@@ -100,6 +100,9 @@ class KeyValueStore {
   virtual int read(const char *ns, const char *key, void *out, size_t capacity) = 0;
   virtual bool write(const char *ns, const char *key, const void *data, size_t size) = 0;
   virtual bool erase(const char *ns, const char *key) = 0;
+  // Forget everything this device has saved (the Reset in Settings). False when
+  // that is not supported or something could not be removed.
+  virtual bool eraseAll() { return false; }
 };
 
 // Optional tone output (a piezo or a small speaker). Non-blocking: tone(hz)

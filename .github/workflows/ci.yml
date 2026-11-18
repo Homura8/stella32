@@ -47,5 +47,7 @@ jobs:
         run: arduino-cli compile --profile cyd-huge --warnings default examples/CYD
       - name: Compile the Bluetooth Deck build (adds the NimBLE-Arduino library)
         run: arduino-cli compile --profile cyd-ble --warnings default examples/CYD
+      - name: Compile a gift build (opens on a message, see examples/CYD/gift.example.h)
+        run: arduino-cli compile --profile cyd --warnings default --build-property "compiler.cpp.extra_flags=-DSTELLA_GIFT=1" examples/CYD
       - name: Compile the optional DMA rendering path
         run: arduino-cli compile --profile cyd --warnings default --build-property "compiler.cpp.extra_flags=-DSTELLA_CYD_DMA=1" examples/CYD

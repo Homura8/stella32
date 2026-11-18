@@ -62,6 +62,20 @@ void clock(Canvas &c, const Rect &box, Color color) {
   seg(c, f, 0.f, 0.f, 0.17f, 0.08f, color);
 }
 
+void reset(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  const float start = 40.f, sweep = 285.f, endDeg = start + sweep;
+  const float r = 0.36f;
+  c.strokeArc((int)f.cx, (int)f.cy, (int)(r * f.s + 0.5f), (int)(f.stroke + 0.5f), start, sweep, color);
+  // An arrowhead at the end of the arc, pointing the way it runs (clockwise).
+  const float a = endDeg * 3.14159265f / 180.f;
+  const float tx = r * sinf(a), ty = -r * cosf(a);  // the tip, on the arc
+  const float dx = cosf(a), dy = sinf(a);            // the direction of travel
+  const float nx = -dy, ny = dx;                      // across it
+  seg(c, f, tx, ty, tx - 0.17f * dx + 0.13f * nx, ty - 0.17f * dy + 0.13f * ny, color);
+  seg(c, f, tx, ty, tx - 0.17f * dx - 0.13f * nx, ty - 0.17f * dy - 0.13f * ny, color);
+}
+
 void gear(Canvas &c, const Rect &box, Color color) {
   const Frame f = frame(box);
   ring(c, f, 0.27f, color);

@@ -530,6 +530,54 @@ older version is reported so the owner can migrate it. System settings are one
 record, written 1.5 s after the last change so slider drags do not wear flash.
 Apps get their own namespace (`AppContext::saveAppRecord`).
 
+**Reset** (*Settings > Reset*) is the way back to a new install. The screen says what
+goes and asks once (the safe button, *Keep everything*, is the highlighted one); *Erase*
+calls `AppContext::resetDevice()`. The runtime shows "Erasing..." for the usual restart
+pause and then, at the moment of the restart (so nothing saves a record in between),
+erases the wallpaper (`WallpaperStore::erase`) and everything in the key-value store
+(`KeyValueStore::eraseAll`) and restarts. On the ESP32 `eraseAll` empties every NVS
+namespace except the radio's own calibration (`phy`, `nvs.*`), Bluetooth bonds included;
+the firmware, and which of the two app slots runs, are untouched. The device then boots
+as a first run: no Wi-Fi, default settings, and the "Choose your time zone" invitation.
+
+## Gift builds and the Greeting app
+
+A device can be made for one person. `apps/greeting_app.*` is a generic *Greeting* app:
+a starry first page (a big line and a softer one, sparkles that twinkle with the bedside
+clock's timing) and then short pages read one at a time (Back / Next, a dot per page,
+*Done* on the last). `GreetingContent` is how a build author writes the words (string
+literals, no heap); `examples/CYD/gift.example.h` is the template. The words never need
+to be in the repository: a copy named `gift.h` next to `CYD.ino` is used when it exists
+and is git-ignored.
+
+**The app is in every build but stays out of sight until the device has words for it**
+(it is flagged hidden: not on Home, never opened by itself). A gift build
+(`#define STELLA_GIFT 1` in `CYD.ino`, or `-DSTELLA_GIFT=1`) *offers* its words
+(`GreetingApp::offer`); the first time the device starts with them (or with different
+ones) it **saves them in its own storage** (`greeting/head` plus one record per page, each
+under the 1 KB record limit, pages first and the head last with a checksum, so a power
+cut leaves nothing half-read). From then on the device has the words itself, so
+**the message survives an over-the-air update to an ordinary build** (which installs the
+same dormant app and finds them). Only a Reset removes them (a reset device is a new one);
+flashing the gift build again puts them back. Settings records are kept through updates, as
+before.
+
+An app may ask to open first, instead of Home, with `App::launchAtBoot()`; the Greeting
+app answers *yes while it has words and is pending*. Pending is one byte in the app's own
+record: a device that has never shown it is pending; **finishing the last page clears
+it**; **opening the app sets it again**, so a device unplugged while it is open (or before
+it was finished) shows it again at the next start; **new or changed words** make it pending
+too. The app stays on Home as its own name so it can be reopened.
+
+`tests/test_greeting.cpp` covers all of that (including an update to a build with no words
+of its own and a torn set) and that every page fits at the four screen sizes and no word,
+a web address say, is cut at 320 px and wider. Limits: name 15 characters, headline 47, wish
+79, up to six pages of 183; longer text is cut. (The words sit in RAM in every build, about 1.2 KB, so the limits are
+kept small: the optional DMA build is within a few hundred bytes of the chip's static RAM.)
+
+An update from Settings > About installs the published (ordinary) firmware, which keeps
+the message as above. `STELLA_UPDATE_URL ""` in `secrets.h` switches the update check off.
+
 ## Memory budget (CYD build, Arduino-ESP32 3.3.12)
 
 | Item | Size |

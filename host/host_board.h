@@ -116,12 +116,20 @@ class MemoryStore : public KeyValueStore {
   int read(const char *ns, const char *key, void *out, size_t capacity) override;
   bool write(const char *ns, const char *key, const void *data, size_t size) override;
   bool erase(const char *ns, const char *key) override;
+  bool eraseAll() override {
+    values_.clear();
+    ++eraseAlls_;
+    return true;
+  }
+  size_t count() const { return values_.size(); }
+  int eraseAlls() const { return eraseAlls_; }
   size_t writes() const { return writes_; }
   std::vector<uint8_t> *raw(const char *ns, const char *key);  // for corruption tests
 
  private:
   std::map<std::string, std::vector<uint8_t>> values_;
   size_t writes_ = 0;
+  int eraseAlls_ = 0;
 };
 
 // Simulated access points: joining succeeds with the right password after a

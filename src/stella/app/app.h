@@ -153,6 +153,9 @@ class App {
     (void)ctx;
     return kNoTick;
   }
+  // True if this app should open first when the system starts, instead of Home (a build made
+  // for one purpose, such as a greeting that has not been seen yet). Asked once, after onInstall().
+  virtual bool launchAtBoot() const { return false; }
   // The user answered one of this app's alerts (kAlertPrimary/Secondary) or
   // it timed out (kAlertTimedOut). Not called for dismissAlert().
   virtual void onAlert(uint16_t tag, int action, AppContext &ctx) {
@@ -252,6 +255,10 @@ class AppContext : public Invalidator {
   virtual CalendarSourceControl &calendar() = 0;
   // Restart the device shortly (after a short pause so the screen can say so).
   virtual void restartDevice() = 0;
+  // Erase everything saved on this device (settings, Wi-Fi, alarms, wallpaper, keys) and restart,
+  // so it starts again as a new install. The software itself stays. Nothing asks first: the caller
+  // (Settings > Reset) has already confirmed.
+  virtual void resetDevice() = 0;
   // Show a system alert owned by the calling app; one with the same tag is
   // replaced. Alerts queue (a few) while another is showing. False if full.
   virtual bool showAlert(const Alert &alert) = 0;

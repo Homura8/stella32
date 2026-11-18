@@ -11,6 +11,7 @@
 
 #include <string>
 
+#include "gift.example.h"
 #include "sim_session.h"
 #include "stella/app/text_entry.h"
 #include "stella/core/sha256.h"
@@ -393,6 +394,34 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("calendar");
     s.run(300);
     save(39, "calendar");
+    // Settings > Reset, the question before everything saved is erased.
+    SimSession resetSession(width, height, evening ? kEveningEpoch : kMorningEpoch);  // a clean Settings stack
+    resetSession.os.launch("settings", "reset");
+    resetSession.run(200);
+    snprintf(name, sizeof(name), "45-settings-reset-%s", suffix);
+    shot(resetSession, dir, name);
+    // The gift build: the message that opens first, and its pages.
+    SimOptions giftOptions;
+    giftOptions.epoch = evening ? kEveningEpoch : kMorningEpoch;
+    giftOptions.gift = &giftContent();
+    SimSession gift(width, height, giftOptions);
+    auto saveGift = [&](int index, const char *screen) {
+      snprintf(name, sizeof(name), "%02d-%s-%s", index, screen, suffix);
+      shot(gift, dir, name);
+    };
+    gift.run(100);
+    saveGift(46, "greeting");
+    tapRect(gift, gift.greeting.continueRect());
+    gift.run(100);
+    saveGift(47, "greeting-page");
+    for (int i = 0; i < 3; ++i) {
+      tapRect(gift, gift.greeting.nextRect());
+      gift.run(100);
+    }
+    saveGift(48, "greeting-address");
+    tapRect(gift, gift.greeting.nextRect());
+    gift.run(100);
+    saveGift(49, "greeting-last");
   }
 }
 

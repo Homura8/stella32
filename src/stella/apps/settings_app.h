@@ -24,6 +24,10 @@ class SettingsApp : public App {
   Rect unitsChoice(int row, int i) const { return units_.choice(row, i); }
   Rect idleChoice(int row, int i) const { return idle_.choice(row, i); }
   Rect calendarRow(int i) const { return calendar_.rowBounds(i); }
+  // Settings > Reset (tests, screenshots).
+  Rect resetEraseRect() const { return reset_.eraseRect(); }
+  Rect resetCancelRect() const { return reset_.cancelRect(); }
+  bool resetErasing() const { return reset_.erasing(); }
 
  private:
   class MainScreen : public Screen {
@@ -35,7 +39,7 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 11;
+    static constexpr int kRows = 12;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     SettingsApp &app_;
     Rect card_;
@@ -372,6 +376,24 @@ class SettingsApp : public App {
     ListView list_;
   };
 
+  // Settings > Reset: says what will go, asks once, then erases everything saved and restarts.
+  class ResetScreen : public Screen {
+   public:
+    const char *title() const override { return "Reset"; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    bool erasing() const { return erasing_; }
+    Rect eraseRect() const { return erase_.bounds; }
+    Rect cancelRect() const { return cancel_.bounds; }
+
+   private:
+    Rect card_, heading_, body_;
+    Button cancel_, erase_;
+    bool erasing_ = false;
+  };
+
   class AboutScreen : public Screen {
    public:
     explicit AboutScreen(SettingsApp &app) : app_(app) {}
@@ -394,6 +416,7 @@ class SettingsApp : public App {
   };
 
   MainScreen main_;
+  ResetScreen reset_;
   WifiScreen wifi_;
   SetupScreen setup_;
   TextEntryScreen password_;

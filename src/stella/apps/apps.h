@@ -5,6 +5,7 @@
 #include "calendar_app.h"
 #include "clock_app.h"
 #include "deck_app.h"
+#include "greeting_app.h"
 #include "launcher.h"
 #include "settings_app.h"
 #include "stopwatch_app.h"
