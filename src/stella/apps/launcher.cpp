@@ -70,7 +70,7 @@ void LauncherApp::syncLayout(AppContext &ctx) {
 void LauncherApp::save(AppContext &ctx) { ctx.saveAppRecord("layout", HomeLayoutRecord::kVersion, &layout_, sizeof(layout_)); }
 
 void LauncherApp::onTopic(uint16_t topicId, AppContext &ctx) {
-  if (topicId == topics::kNetwork) home_.refreshText(ctx);
+  if (topicId == topics::kNetwork || topicId == topics::kUpdate) home_.refreshText(ctx);
 }
 
 int LauncherApp::HomeScreen::pageCount() const {
@@ -246,9 +246,14 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   const NetworkStatus net = ctx.network().status();
   const bool wifiSetup = net.present && net.state == WifiState::NotConfigured;
   const bool zoneAsk = !wifiSetup && net.present && net.connected && !ctx.status().zoneChosen;
-  const bool setup = wifiSetup || zoneAsk;
-  if (setup != setupNote_ || zoneAsk != noteZone_) {
+  // An update: offered (until the person has looked at it), installing, or waiting for a restart.
+  const UpdateStatus up = ctx.update().status();
+  const bool offered = up.state == UpdateState::Available && strcmp(up.version, seenOffer_) != 0;
+  const bool updateNote = !wifiSetup && !zoneAsk && (offered || up.state == UpdateState::Downloading || up.state == UpdateState::Ready);
+  const bool setup = wifiSetup || zoneAsk || updateNote;
+  if (setup != setupNote_ || zoneAsk != noteZone_ || updateNote != noteUpdate_) {
     noteZone_ = zoneAsk;
+    noteUpdate_ = updateNote;
     setupNote_ = setup;
     arrange();
     if (page_ >= pageCount()) page_ = 0;
@@ -260,6 +265,17 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   } else if (zoneAsk) {
     snprintf(title, sizeof(title), "Choose your time zone");
     snprintf(text, sizeof(text), "So the clock and weather match you");
+  } else if (updateNote) {
+    if (up.state == UpdateState::Downloading) {
+      snprintf(title, sizeof(title), "Installing the update");
+      snprintf(text, sizeof(text), "%u%% \xc2\xb7 keep it powered", (unsigned)up.percent);
+    } else if (up.state == UpdateState::Ready) {
+      snprintf(title, sizeof(title), "Update ready");
+      snprintf(text, sizeof(text), "Restart to use %.15s", up.version);
+    } else {
+      snprintf(title, sizeof(title), "Update available");
+      snprintf(text, sizeof(text), "StellaOS %.15s is ready to install", up.version);
+    }
   } else if (now.valid) {
     const MoonPhase moon = moonPhase(now.epoch);
     snprintf(title, sizeof(title), "%s", moon.name);
@@ -336,7 +352,7 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
     const int r = t.m.icon / 2 + t.dp(2);
     if (notePressed_) c.fillRoundRect(note_, t.m.radiusCard, p.accent, 40);
     paintBubble(c, t, inner.x + r, inner.centerY(), r, setupNote_ ? 2 : 1);
-    (noteZone_ ? icons::clock : setupNote_ ? icons::wifi : icons::moon)(c, center(Rect(inner.x, inner.y, 2 * r, inner.h), t.dp(16), t.dp(16)),
+    (noteUpdate_ ? icons::sparkle : noteZone_ ? icons::clock : setupNote_ ? icons::wifi : icons::moon)(c, center(Rect(inner.x, inner.y, 2 * r, inner.h), t.dp(16), t.dp(16)),
                                              p.accent);
     inner = Rect(inner.x + 2 * r + t.m.gapM, inner.y, inner.w - 2 * r - t.m.gapM, inner.h);
     Rect lines[2];
@@ -370,7 +386,13 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
 bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
   const Theme &t = ctx.theme();
   if (setupNote_ && trackPress(note_, e, notePressed_, ctx, note_.inset(-glassOutset(t)))) {
-    ctx.launch("settings", noteZone_ ? "time" : "wifi");
+    if (noteUpdate_) {
+      const UpdateStatus up = ctx.update().status();
+      if (up.state == UpdateState::Available) copyText(seenOffer_, sizeof(seenOffer_), up.version);  // looked at: no more nudges for it
+      ctx.launch("settings", "update");
+    } else {
+      ctx.launch("settings", noteZone_ ? "time" : "wifi");
+    }
     return true;
   }
   if (!pager_.empty()) {

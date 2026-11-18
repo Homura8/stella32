@@ -115,6 +115,10 @@ void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "idle") == 0) ctx.push(idle_);
   if (route && strcmp(route, "calendar") == 0) ctx.push(calendar_);
   if (route && strcmp(route, "reset") == 0) ctx.push(reset_);
+  if (route && strcmp(route, "update") == 0) {  // Settings > About > Software update, with About to go back to
+    ctx.push(about_);
+    ctx.push(softwareUpdate_);
+  }
 }
 
 // ------------------------------------------------------------------ main list

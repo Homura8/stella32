@@ -27,7 +27,7 @@ int failures = 0;
 
 void tapRect(SimSession &s, const Rect &r) { s.tap(r.centerX(), r.centerY()); }
 
-// A pretend update server: version 0.9.0, a 1.3 MB image (the simulated
+// A pretend update server: version 99.0.0 (always newer than the running one), a 1.3 MB image (the simulated
 // firmware accepts the "signature" of all 0x5a bytes).
 void serveUpdate(SimSession &s) {
   std::string image(1300000, 'x');
@@ -38,7 +38,7 @@ void serveUpdate(SimSession &s) {
   toHex(digest, 32, hex);
   std::string rs;
   for (int i = 0; i < 32; ++i) rs += "5a";
-  const std::string manifest = std::string("{\"version\":\"0.9.0\",\"url\":\"https://updates.example/stella32.bin\",\"size\":") +
+  const std::string manifest = std::string("{\"version\":\"99.0.0\",\"url\":\"https://updates.example/stella32.bin\",\"size\":") +
                                std::to_string(image.size()) + ",\"sha256\":\"" + hex + "\",\"sig_r\":\"" + rs +
                                "\",\"sig_s\":\"" + rs + "\"}";
   s.dev.firmware.slotSize = 1966080;  // the 1.9 MB app slot of the OTA layout
@@ -240,6 +240,10 @@ void capture(int width, int height, const std::string &root) {
       tapRect(s, action);
       s.run(3000);
       save(24, "update-available");
+      s.os.goHome();  // Home says so too, without a trip through Settings
+      s.run(300);
+      save(50, "home-update");
+      s.os.launch("settings");
       tapRect(s, action);
       s.run(9000);
       save(25, "update-ready");

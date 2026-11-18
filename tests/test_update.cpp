@@ -603,3 +603,79 @@ TEST(a_failed_install_leaves_no_crumb) {
   uint8_t stage = 0, percent = 0;
   CHECK(!update_crumb::take(&s.dev.platform, stage, percent));
 }
+
+// ---------------------------------------------------------------- Home tells you
+
+namespace {
+const char *topTitleOf(SimSession &s) { return s.os.topScreen() && s.os.topScreen()->title() ? s.os.topScreen()->title() : ""; }
+void tapNote(SimSession &s) {
+  const Rect r = s.launcher.noteBounds();
+  s.tap(r.centerX(), r.centerY());
+}
+}  // namespace
+
+TEST(home_says_when_an_update_is_ready_and_a_tap_opens_the_update_screen) {
+  SimSession s(320, 240);
+  s.os.goHome();
+  s.run(300);
+  CHECK(!has(s.launcher.noteTitle(), "Update"));  // nothing offered: the usual card
+  serve(s, Offer{});
+  CHECK(runCheck(s).state == UpdateState::Available);
+  s.os.goHome();
+  s.run(300);
+  CHECK(strcmp(s.launcher.noteTitle(), "Update available") == 0);
+  CHECK(has(s.launcher.noteText(), "99.0.0"));
+  tapNote(s);
+  s.run(200);
+  CHECK(strcmp(s.os.foreground()->info().id, "settings") == 0 && strcmp(topTitleOf(s), "Software update") == 0);
+  // Nothing was installed by looking: the person decides there.
+  CHECK(s.os.update().status().state == UpdateState::Available);
+  CHECK(!s.dev.firmware.finished);
+  // Back on Home the card has said its piece and does not nag about the same version again.
+  s.os.goHome();
+  s.run(300);
+  CHECK(!has(s.launcher.noteTitle(), "Update"));
+}
+
+TEST(home_follows_an_install_and_asks_for_the_restart) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  runCheck(s);
+  s.os.goHome();
+  s.run(300);
+  s.os.update().install();  // (the simulated download is over within one step, so "Installing" cannot be caught here)
+  s.run(8000);
+  CHECK(s.os.update().status().state == UpdateState::Ready);
+  CHECK(strcmp(s.launcher.noteTitle(), "Update ready") == 0);
+  CHECK(has(s.launcher.noteText(), "Restart"));
+  tapNote(s);
+  s.run(200);
+  CHECK(strcmp(topTitleOf(s), "Software update") == 0);  // where Restart now is
+  CHECK_EQ(s.dev.platform.restarts(), 0);                // a tap on Home never restarts the device
+}
+
+TEST(a_seen_offer_returns_for_a_newer_version_and_the_time_zone_question_comes_first) {
+  SimSession s(320, 240);
+  serve(s, Offer{});
+  runCheck(s);
+  s.os.goHome();
+  s.run(300);
+  tapNote(s);  // looked at 99.0.0
+  s.os.goHome();
+  s.run(300);
+  CHECK(!has(s.launcher.noteTitle(), "Update"));
+  Offer newer;
+  newer.version = "99.1.0";
+  serve(s, newer);
+  runCheck(s);
+  s.os.goHome();
+  s.run(300);
+  CHECK(strcmp(s.launcher.noteTitle(), "Update available") == 0 && has(s.launcher.noteText(), "99.1.0"));
+  // A new device is asked for its time zone before anything else.
+  SimSession fresh(320, 240, kEveningEpoch, Appearance::Auto, false, true, false, /*newDevice=*/true);
+  serve(fresh, Offer{});
+  runCheck(fresh);
+  fresh.os.goHome();
+  fresh.run(300);
+  CHECK(strcmp(fresh.launcher.noteTitle(), "Choose your time zone") == 0);
+}
