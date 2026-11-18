@@ -8,4 +8,5 @@
 #include "stopwatch_app.h"
 #include "timer_app.h"
 #include "touch_test.h"
+#include "values_app.h"
 #include "weather_app.h"

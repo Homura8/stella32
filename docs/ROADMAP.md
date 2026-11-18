@@ -221,7 +221,7 @@ Bluedroid). Plan:
 
 - **mDNS** (`stella.local`), needed by the remote page.
 - **ESP-NOW** between CYDs (e.g. a friend's pair sharing a note or a timer).
-- **Push API** (above) enabling: PC stats (CPU, temperatures, now playing)
+- **Push API** (built in 0.15.0: `POST /api/push`, the Values app) enabling: PC stats (CPU, temperatures, now playing)
   from a small script, Home Assistant / MQTT values and tap-to-toggle buttons,
   GitHub CI status for the owner's repositories.
 - **Guest Wi-Fi QR code** screen (needs a small QR encoder; check size).

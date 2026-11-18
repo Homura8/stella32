@@ -88,6 +88,18 @@ void back(Canvas &c, const Rect &box, Color color) {
   seg(c, f, -0.14f, 0.f, 0.12f, 0.30f, color, 1.2f);
 }
 
+void bars(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // Three rising bars on a baseline.
+  const float left[3] = {-0.30f, -0.07f, 0.16f}, top[3] = {0.05f, -0.12f, -0.32f};
+  const int w = (int)(0.16f * f.s + 0.5f) < 2 ? 2 : (int)(0.16f * f.s + 0.5f);
+  const int bottom = (int)f.Y(0.32f);
+  for (int i = 0; i < 3; ++i) {
+    const int x = (int)f.X(left[i]), y = (int)f.Y(top[i]);
+    c.fillRoundRect(Rect(x, y, w, bottom - y), w / 2 + 1, color);
+  }
+}
+
 void chevronRight(Canvas &c, const Rect &box, Color color) {
   const Frame f = frame(box);
   seg(c, f, -0.10f, -0.26f, 0.14f, 0.f, color);

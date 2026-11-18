@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.13.0"
+#define STELLA_VERSION "0.15.0"
 #endif
 
 namespace stella {
@@ -141,6 +141,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   NetworkControl &network() override { return wifi_; }
   UpdateControl &update() override { return updater_; }
   RemoteControl &remote() override { return remote_; }
+  PushedValues pushedValues() const override { return pushedValues_.get(); }
   void restartDevice() override {
     restartPending_ = true;
     restartAtMs_ = millis() + 900;
@@ -259,6 +260,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   UpdateService updater_{updateStatus_};
   Topic<RemoteInfo> remoteInfo_{topics::kRemote};
   RemoteService remote_{remoteInfo_};
+  Topic<PushedValues> pushedValues_{topics::kValues};
   HttpService http_;
   TopicBase *topics_[kMaxTopics] = {};
   size_t topicCount_ = 0;

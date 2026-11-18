@@ -467,3 +467,153 @@ TEST(the_remote_screen_and_settings_row_render_at_every_size) {
     CHECK(sameAsFullRedraw(s));  // Settings' list with its new row
   }
 }
+
+// ------------------------------------------------------------------ pushed values
+
+namespace {
+PushedValues pushed(const char *body, PushResult *result = nullptr, uint32_t now = 1000, PushedValues state = PushedValues{}) {
+  const PushResult r = applyPush(state, body, strlen(body), now);
+  if (result) *result = r;
+  return state;
+}
+}  // namespace
+
+TEST(push_pairs_are_parsed_updated_ordered_and_removed) {
+  PushResult r;
+  PushedValues v = pushed("cpu=37%&temp=61C\nfan=1200 rpm\r\nram = 12.3 GB ", &r);
+  CHECK(r.accepted == 4 && r.rejected == 0 && v.count == 4);
+  CHECK(strcmp(v.items[0].key, "cpu") == 0 && strcmp(v.items[0].value, "37%") == 0);
+  CHECK(strcmp(v.items[3].key, "ram") == 0 && strcmp(v.items[3].value, "12.3 GB") == 0);  // spaces trimmed
+  CHECK(strcmp(v.items[2].value, "1200 rpm") == 0);
+  // The same key again updates in place (order kept) and refreshes its time.
+  v = pushed("temp=70C", &r, 5000, v);
+  CHECK(v.count == 4 && strcmp(v.items[1].key, "temp") == 0 && strcmp(v.items[1].value, "70C") == 0);
+  CHECK_EQ(v.items[1].updatedMs, 5000u);
+  CHECK_EQ(v.items[0].updatedMs, 1000u);
+  // An empty value removes the key; the others close up.
+  v = pushed("cpu=", &r, 6000, v);
+  CHECK(r.accepted == 1 && v.count == 3 && strcmp(v.items[0].key, "temp") == 0);
+  v = pushed("nothere=", &r, 6000, v);  // removing what is not there is fine
+  CHECK(r.accepted == 1 && v.count == 3);
+  CHECK(v.generation >= 4);
+}
+
+TEST(push_rejects_what_is_not_a_clean_pair_and_bounds_everything) {
+  PushResult r;
+  PushedValues v = pushed("novalue&=x&bad/key=1&a very long key name here=1&ok=1", &r);
+  CHECK(r.accepted == 1 && r.rejected == 4 && v.count == 1 && strcmp(v.items[0].key, "ok") == 0);
+  v = pushed("", &r);
+  CHECK(r.accepted == 0 && r.rejected == 0 && v.count == 0 && v.generation == 0);
+  // % escapes only where two hex digits follow; a plus stays a plus; an '=' may be in a value.
+  v = pushed("a=50%&b=1%2B1&c=%41%42&d=+3&e=x=y&f=100%2", &r);
+  CHECK(v.count == 6);
+  CHECK(strcmp(v.items[0].value, "50%") == 0 && strcmp(v.items[1].value, "1+1") == 0 && strcmp(v.items[2].value, "AB") == 0);
+  CHECK(strcmp(v.items[3].value, "+3") == 0 && strcmp(v.items[4].value, "x=y") == 0 && strcmp(v.items[5].value, "100%2") == 0);
+  // Control characters (even decoded ones) are dropped; invalid UTF-8 is refused; long text is cut cleanly.
+  v = pushed("a=he%0Allo\x01&b=\xff\xfe&c=caf\xc3\xa9 caf\xc3\xa9 caf\xc3\xa9 caf\xc3\xa9 caf\xc3\xa9 caf\xc3\xa9", &r);
+  CHECK(r.accepted == 2 && r.rejected == 1);
+  CHECK(strcmp(v.items[0].value, "hello") == 0);
+  const size_t n = strlen(v.items[1].value);
+  CHECK(n < kPushValueBytes && (unsigned char)v.items[1].value[n - 1] != 0xC3);  // not cut inside an 'é'
+  // A hostile body: no crash, never more than eight, nothing overflows.
+  std::string big;
+  for (int i = 0; i < 500; ++i) big += "k" + std::to_string(i) + "=" + std::string(60, 'x') + "&";
+  v = pushed(big.c_str(), &r);
+  CHECK(v.count == kMaxPushedValues);
+  for (int i = 0; i < v.count; ++i) CHECK(strlen(v.items[i].key) < kPushKeyBytes && strlen(v.items[i].value) < kPushValueBytes);
+}
+
+TEST(a_full_set_replaces_the_value_that_has_been_quiet_longest) {
+  PushedValues v;
+  PushResult r;
+  for (int i = 0; i < kMaxPushedValues; ++i) {
+    const std::string pair = "k" + std::to_string(i) + "=v";
+    v = pushed(pair.c_str(), &r, 1000 + i * 1000, v);
+  }
+  v = pushed("k3=fresh", &r, 20000, v);  // k3 is current again, so k0 is now the quietest
+  v = pushed("new=1", &r, 21000, v);
+  CHECK(v.count == kMaxPushedValues);
+  bool hasK0 = false, hasNew = false;
+  for (int i = 0; i < v.count; ++i) {
+    hasK0 |= strcmp(v.items[i].key, "k0") == 0;
+    hasNew |= strcmp(v.items[i].key, "new") == 0;
+  }
+  CHECK(!hasK0 && hasNew);
+  CHECK(strcmp(v.items[kMaxPushedValues - 1].key, "new") == 0);  // new keys go to the end
+}
+
+TEST(the_push_endpoint_needs_the_pin_and_publishes_to_the_values_topic) {
+  Rig r;
+  Topic<PushedValues> topic{topics::kValues};
+  r.service.setValuesTopic(&topic);
+  CHECK_EQ(send(r.service, post("/api/push", "", "cpu=37%")).status, 401);
+  CHECK_EQ(topic.get().count, 0);
+  const Reply ok = send(r.service, post("/api/push", r.pin(), "cpu=37%&temp=61C&bad"));
+  CHECK_EQ(ok.status, 200);
+  CHECK(ok.body.find("\"accepted\":2") != std::string::npos && ok.body.find("\"rejected\":1") != std::string::npos);
+  PushedValues v = topic.get();
+  CHECK(v.count == 2 && strcmp(v.items[0].value, "37%") == 0);
+  r.run(2000);  // time passes on the service thread; the next push is stamped later
+  send(r.service, post("/api/push", r.pin(), "cpu=40%"));
+  CHECK(strcmp(topic.get().items[0].value, "40%") == 0 && topic.get().items[0].updatedMs > v.items[0].updatedMs);
+  CHECK_EQ(send(r.service, post("/api/push", r.pin(), "nonsense")).status, 400);
+  CHECK_EQ(send(r.service, post("/api/push", r.pin(), "")).status, 400);
+  CHECK_EQ(topic.get().count, 2);  // nothing changed
+  CHECK_EQ(send(r.service, post("/api/push/clear", "")).status, 401);
+  CHECK_EQ(send(r.service, post("/api/push/clear", r.pin())).status, 200);
+  CHECK_EQ(topic.get().count, 0);
+  // A body that is too long for a form is refused by the connection.
+  CHECK_EQ(send(r.service, post("/api/push", r.pin(), std::string(900, 'x'))).status, 413);
+}
+
+TEST(without_a_values_screen_push_says_so) {
+  Rig r;  // no topic given
+  CHECK_EQ(send(r.service, post("/api/push", r.pin(), "a=1")).status, 503);
+}
+
+TEST(the_values_app_shows_tiles_dims_the_quiet_ones_and_keeps_a_calm_screen) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  for (const auto &sz : sizes) {
+    SimSession s(sz[0], sz[1]);
+    s.os.remote().setEnabled(true);
+    s.run(1500);  // the remote server comes up
+    CHECK(s.dev.remote.up);
+    s.os.launch("values");
+    s.run(300);
+    CHECK_EQ(s.values.tileCount(), 0);  // the instructions
+    const std::vector<Color> empty = s.dev.display.framebuffer();
+    for (int count : {1, 3, 4, 7, 8}) {
+      std::string body = "clear=";
+      send(*s.dev.remote.handler, post("/api/push/clear", pinOf(s)));
+      body.clear();
+      for (int i = 0; i < count; ++i) body += "Sensor " + std::to_string(i) + "=" + std::to_string(20 + i) + (i % 2 ? "%" : " C") + "&";
+      CHECK_EQ(send(*s.dev.remote.handler, post("/api/push", pinOf(s), body)).status, 200);
+      s.run(300);
+      CHECK_EQ(s.values.tileCount(), count);
+      for (int i = 0; i < count; ++i) {
+        const Rect t = s.values.tile(i);
+        CHECK(t.x >= 0 && t.right() <= sz[0] && t.bottom() <= sz[1] && t.w > 0 && t.h >= s.os.theme().dp(32));
+        for (int j = i + 1; j < count; ++j) CHECK(t.intersect(s.values.tile(j)).empty());  // none overlap
+      }
+      const std::vector<Color> inc = s.dev.display.framebuffer();
+      s.os.invalidateAll();
+      s.run(20);
+      CHECK(inc == s.dev.display.framebuffer());
+    }
+    CHECK(s.dev.display.framebuffer() != empty);
+    // Quiet for ten minutes: the tile dims and says so; a fresh push brightens it.
+    send(*s.dev.remote.handler, post("/api/push/clear", pinOf(s)));
+    send(*s.dev.remote.handler, post("/api/push", pinOf(s), "cpu=37%"));
+    s.run(300);
+    const std::vector<Color> fresh = s.dev.display.framebuffer();
+    s.dev.platform.advance(11 * 60 * 1000);
+    s.run(40000);
+    CHECK(s.dev.display.framebuffer() != fresh);
+    send(*s.dev.remote.handler, post("/api/push", pinOf(s), "cpu=38%"));
+    s.run(300);
+    // Idle: nothing is repainted.
+    s.dev.display.resetCounters();
+    s.run(5000);
+    CHECK_EQ(s.dev.display.pixelsWritten(), 0u);
+  }
+}

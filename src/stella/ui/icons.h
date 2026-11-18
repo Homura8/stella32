@@ -20,6 +20,7 @@ void info(Canvas &c, const Rect &box, Color color);
 void moon(Canvas &c, const Rect &box, Color color);
 void sun(Canvas &c, const Rect &box, Color color);
 void wifi(Canvas &c, const Rect &box, Color color);
+void bars(Canvas &c, const Rect &box, Color color);  // live values
 void appearance(Canvas &c, const Rect &box, Color color);
 void check(Canvas &c, const Rect &box, Color color);
 void lock(Canvas &c, const Rect &box, Color color);

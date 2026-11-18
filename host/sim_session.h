@@ -41,6 +41,7 @@ class SimSession {
   apps::SettingsApp settings;
   apps::TouchTestApp touchTest;
   apps::WeatherApp weather;
+  apps::ValuesApp values;
   apps::AlarmsApp alarms;
   apps::TimerApp timer;
   apps::StopwatchApp stopwatch;

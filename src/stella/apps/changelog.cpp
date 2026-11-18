@@ -7,6 +7,7 @@ namespace {
 // Newest first. Add an entry when STELLA_VERSION goes up; a test checks the
 // top one matches the running version.
 const ChangelogEntry kChangelog[] = {
+    {"0.15.0", {"Values: live numbers", "Sent by a script on your Wi-Fi", "See Settings, Remote page", nullptr}},
     {"0.13.0",
      {"Units: \xc2\xb0" "C/\xc2\xb0" "F, week, date", "Idle face: clock or dashboard",
       "Sunrise/sunset on bedside", nullptr}},

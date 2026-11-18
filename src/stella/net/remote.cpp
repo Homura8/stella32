@@ -296,7 +296,7 @@ void RemoteService::handleRemote(const RemoteRequest &req, RemoteResponse &res) 
     return;
   }
   const bool known = strcmp(path, "/api/check") == 0 || strcmp(path, "/api/wallpaper/remove") == 0 ||
-                     strcmp(path, "/api/veil") == 0;
+                     strcmp(path, "/api/veil") == 0 || strcmp(path, "/api/push") == 0 || strcmp(path, "/api/push/clear") == 0;
   if (!known) {
     res.status = 404;
     json(res, "{\"error\":\"not found\"}");
@@ -313,6 +313,8 @@ void RemoteService::handleRemote(const RemoteRequest &req, RemoteResponse &res) 
   } else if (strcmp(path, "/api/wallpaper/remove") == 0) {
     removeWallpaper();
     json(res, "{\"ok\":true}");
+  } else if (strncmp(path, "/api/push", 9) == 0) {
+    handlePush(path, req, res);
   } else {  // /api/veil
     char value[8];
     const char *eq = strchr(req.body, '=');
@@ -325,6 +327,30 @@ void RemoteService::handleRemote(const RemoteRequest &req, RemoteResponse &res) 
     setVeil((uint8_t)v);
     json(res, "{\"ok\":true}");
   }
+}
+
+// Live values from a script: they go into the Values app, in RAM only.
+void RemoteService::handlePush(const char *path, const RemoteRequest &req, RemoteResponse &res) {
+  if (!values_) {
+    res.status = 503;
+    json(res, "{\"error\":\"no values screen on this device\"}");
+    return;
+  }
+  if (strcmp(path, "/api/push/clear") == 0) {
+    pushed_ = PushedValues{};
+    ++pushed_.generation;
+    values_->publish(pushed_);
+    json(res, "{\"ok\":true}");
+    return;
+  }
+  const PushResult r = applyPush(pushed_, req.body, req.bodyLen, now_);
+  if (r.accepted == 0) {
+    res.status = 400;
+    json(res, "{\"error\":\"send name=value pairs, e.g. cpu=37%\"}");
+    return;
+  }
+  values_->publish(pushed_);
+  res.length = (size_t)snprintf(res.body, res.capacity, "{\"ok\":true,\"accepted\":%d,\"rejected\":%d}", r.accepted, r.rejected);
 }
 
 // ---------------------------------------------------------------- upload

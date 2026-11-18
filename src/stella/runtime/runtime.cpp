@@ -40,6 +40,8 @@ Runtime::Runtime() {
   topics_[topicCount_++] = &scan_;
   topics_[topicCount_++] = &updateStatus_;
   topics_[topicCount_++] = &remoteInfo_;
+  topics_[topicCount_++] = &pushedValues_;
+  remote_.setValuesTopic(&pushedValues_);
 }
 
 Runtime::~Runtime() {
