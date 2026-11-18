@@ -357,3 +357,19 @@ TEST(the_weather_follows_the_time_zone_until_a_city_is_chosen) {
   s.run(2000);
   CHECK(s.dev.http.lastUrl == picked);
 }
+
+TEST(every_app_name_on_home_fits_its_tile_at_every_size) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  for (const auto &sz : sizes) {
+    SimSession s(sz[0], sz[1]);
+    s.os.goHome();
+    s.run(300);
+    const Theme &t = s.os.theme();
+    for (int slot = 0; slot < 12; ++slot) {
+      const char *name = s.launcher.tileName(slot);
+      if (!name) continue;
+      const Rect r = s.launcher.tileBounds(slot);
+      CHECK(Canvas::textWidth(*t.font.caption, name) <= r.w - 2 * apps::LauncherApp::labelInset(t));
+    }
+  }
+}

@@ -39,10 +39,12 @@ class LauncherApp : public App {
   const HomeLayoutRecord &layout() const { return layout_; }
   // Where things are on the Home screen (for tests and screenshots).
   Rect tileBounds(int slot) const { return home_.tileRect(slot); }
+  const char *tileName(int slot) const { return home_.tileName(slot); }  // null when the slot is empty
   Rect timeBounds() const { return home_.timeRect(); }
   Rect pagerPrev() const { return home_.prevRect(); }
   Rect pagerNext() const { return home_.nextRect(); }
   bool headerFits() const { return home_.wordsFit(); }
+  static int labelInset(const Theme &t) { return t.dp(2); }  // a tile's name may use all but this much of its width
   Rect noteBounds() const { return home_.noteRect(); }  // the invitation under the apps (tests, screenshots)
   Rect greetingRect() const { return home_.greetingRect(); }
   Rect dateRect() const { return home_.dateRect(); }
@@ -58,6 +60,10 @@ class LauncherApp : public App {
     uint32_t onTick(AppContext &ctx) override;
     void refreshText(AppContext &ctx);
     Rect tileRect(int slot) const { return tile(slot); }
+    const char *tileName(int slot) const {
+      const int index = page_ * perPage() + slot;
+      return slot < perPage() && index < (int)apps_.size() ? apps_[index]->name : nullptr;
+    }
     Rect timeRect() const { return time_; }
     Rect prevRect() const { return prev_; }
     Rect nextRect() const { return next_; }

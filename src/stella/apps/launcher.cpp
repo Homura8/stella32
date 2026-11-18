@@ -93,6 +93,13 @@ void LauncherApp::HomeScreen::arrange() {
   columns_ = t.density == Density::Regular ? 5 : 4;
   gap_ = t.m.gapM;
   const int count = (int)apps_.size();
+  // Fewer, wider tiles rather than a name cut off: every name must fit its tile.
+  int widest = 0;
+  for (int i = 0; i < count; ++i) {
+    const int w = Canvas::textWidth(*t.font.caption, apps_[i]->name);
+    if (w > widest) widest = w;
+  }
+  while (columns_ > 2 && (area_.w - t.m.gapM * (columns_ - 1)) / columns_ - 2 * t.dp(2) < widest) --columns_;
   // While Wi-Fi setup is pending the note must stay visible: one row, paged.
   rows_ = count > columns_ && !setupNote_ ? 2 : 1;
   // Square tiles, as wide as the columns allow.
@@ -316,6 +323,7 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
     if (index == pressed_) c.fillRoundRect(r, t.m.radiusCard, p.accent, 40);
     Rect parts[2];
     column(r.inset(t.dp(6), t.dp(8)), {flex(), px(t.font.caption->lineHeight)}, t.dp(4), parts);
+    parts[1] = Rect(r.x + labelInset(t), parts[1].y, r.w - 2 * labelInset(t), parts[1].h);  // names may use nearly the whole tile
     const int radius = (parts[0].h < parts[0].w ? parts[0].h : parts[0].w) / 2;
     paintBubble(c, t, parts[0].centerX(), parts[0].centerY(), radius, app.tint);
     if (app.icon) app.icon(c, center(parts[0], radius, radius), p.accent);
