@@ -266,3 +266,57 @@ TEST(a_torn_set_of_saved_words_is_ignored_and_a_gift_build_puts_it_right) {
   CHECK(fixed.greeting.hasWords());
   CHECK(strcmp(fixed.greeting.words().pages[1], giftContent().pages[1]) == 0);
 }
+
+namespace {
+SystemSettings brightWithIdleDim(SimSession &s, uint16_t dimAfterSec) {
+  SystemSettings st = s.os.settings();
+  st.brightness = 200;
+  st.nightDim = false;        // the sky's own cap is a separate setting, off here so the levels compare cleanly
+  st.autoBrightness = false;  // and so is the light sensor
+  st.dimAfterSec = dimAfterSec;
+  st.sleepAfterSec = 0;
+  return st;
+}
+}  // namespace
+
+TEST(the_message_is_as_bright_as_any_screen_not_cut_to_a_third_like_an_idle_face) {
+  SimSession s(320, 240, gift());
+  s.os.applySettings(brightWithIdleDim(s, 0));
+  s.run(200);
+  const uint8_t greeting = s.dev.display.backlight();
+  readToTheEnd(s);
+  s.run(200);
+  CHECK(strcmp(foregroundId(s), "home") == 0);
+  const uint8_t home = s.dev.display.backlight();
+  CHECK_EQ((int)greeting, (int)home);  // the same level as an ordinary screen
+  s.os.launch("clock", "bedside");     // the idle face really is dimmer
+  s.run(200);
+  CHECK(s.dev.display.backlight() < home);
+}
+
+TEST(the_message_does_not_dim_while_it_is_being_read_but_home_still_does) {
+  SimSession s(320, 240, gift());
+  s.os.applySettings(brightWithIdleDim(s, 30));
+  s.run(200);
+  const uint8_t full = s.dev.display.backlight();
+  s.run(120000);  // two minutes with nobody touching: far longer than the idle dim
+  CHECK_EQ((int)s.dev.display.backlight(), (int)full);
+  // Reading goes on: a tap on Continue and the next page are just as bright.
+  tapRect(s, s.greeting.continueRect());
+  s.run(200);
+  CHECK_EQ((int)s.dev.display.backlight(), (int)full);
+  // Elsewhere the idle dim is unchanged.
+  readToTheEnd(s);
+  s.os.applySettings(brightWithIdleDim(s, 30));
+  s.run(60000);
+  CHECK(s.dev.display.backlight() < full);
+}
+
+TEST(the_screen_off_setting_still_applies_to_the_message) {
+  SimSession s(320, 240, gift());
+  SystemSettings st = brightWithIdleDim(s, 30);
+  st.sleepAfterSec = 300;
+  s.os.applySettings(st);
+  s.run(400000);
+  CHECK_EQ((int)s.dev.display.backlight(), 0);
+}

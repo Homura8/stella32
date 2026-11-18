@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.17.0"
+#define STELLA_VERSION "0.17.1"
 #endif
 
 namespace stella {
@@ -246,6 +246,10 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   // The rectangle the screen lays out in: the content area, or the whole
   // display for a fullscreen screen.
   Rect areaFor(const Screen *s) const { return s && s->fullscreen() ? screen_ : content_; }
+  bool topKeepsBright() const {
+    const Screen *s = topScreen();
+    return s && s->keepsBright();
+  }
   bool topFullscreen() const {
     const Screen *s = topScreen();
     return s && s->fullscreen();

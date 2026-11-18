@@ -420,6 +420,11 @@ Dimmed is half the level, *Dim at night* 45% of it, so the slider keeps
 working at night. The CYD drives its backlight with 20 kHz PWM (the Arduino
 `analogWrite` default of 1 kHz can be seen as flicker).
 
+A fullscreen screen is an idle face (the bedside clock): its backlight is a third of the
+level. One that is meant to be *read* (the Greeting app) returns `Screen::keepsBright()`:
+it gets the full level, and the idle dim (Dimmed) leaves it alone while it is up; the
+screen-off setting, *Dim at night* and the light sensor still apply.
+
 ## Calibration
 
 Panels and touch controllers differ from batch to batch, so both are tuned on

@@ -64,6 +64,11 @@ class Screen {
   // runs low (it is for an idle face such as the bedside clock). The screen
   // handles its own events, including leaving (usually: any tap -> pop()).
   virtual bool fullscreen() const { return false; }
+  // A fullscreen screen that is meant to be read, not an idle face (a greeting): the backlight is
+  // not cut to a third for it, and the idle dim leaves it alone while it is up (the screen-off
+  // setting still applies). The person's brightness, the night dimming and the light sensor
+  // still decide how bright "full" is.
+  virtual bool keepsBright() const { return false; }
   // True between onShow and onHide (maintained by the runtime).
   bool isVisible() const { return visible_; }
   void setVisible(bool visible) { visible_ = visible; }  // runtime only
