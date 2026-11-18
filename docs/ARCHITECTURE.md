@@ -198,7 +198,7 @@ no Deck tile.
 - **Tests:** `SimHid` plays the radio and the computer (`connect()`, `disconnect()`),
   so `tests/test_deck.cpp` covers the radio's lifetime, the keys sent, forgetting,
   a failing radio, every size and the idle repaint, and a board without Bluetooth.
-## Pushed values (the Values app)
+## Pushed values (the Stats app)
 
 Scripts on the home network can show live numbers on the device: `POST /api/push` on
 the remote page (behind the PIN, `X-Stella-Pin`) takes `name=value` pairs separated by
@@ -211,7 +211,7 @@ control characters dropped and `%XX` decoded only where two hex digits follow (s
 stays `50%`); a full set replaces the value that has been quiet longest; the body is the
 connection's usual 512-byte form limit. The values live in RAM only, in a
 `Topic<PushedValues>` (id 5) published by `RemoteService` from the service thread, and
-each remembers when it last arrived. The Values app (`apps/values_app.*`) shows one tile
+each remembers when it last arrived. The Stats app (`apps/values_app.*`, app id `values`; it is `kAppOptional`, so it is off Home until turned on in *Settings > Home screen*) shows one tile
 per value (the grid fits the count: one, 2x2, 3x2 or 4x2), picks the largest font each
 value fits, and dims a tile that has been quiet ten minutes with "12 min ago". With no
 values it shows how to send them. It repaints only when something arrives or a minute
@@ -241,8 +241,8 @@ sunrise, "Sunset 20:10" by day; `describeNextSun`, from `SystemStatus::sunrise`
 The Clock app has a second idle face, the **dashboard**: the time, the date and
 up to three quiet lines (the weather glance, the next alarm, the next sun
 event) on the same dim black, with no animation, so it writes nothing between
-minutes and only the changed line at a minute change. *Settings > Idle face*
-chooses when it starts (*Start*: Off, Night, Always) and which face (*Face*:
+minutes and only the changed line at a minute change. *Settings > Screensaver*
+chooses when it starts (*Show*: Never, At night, Always) and which face (*Style*:
 Clock, Dashboard).
 
 An app flagged `kAppIdleFace` offers such a face. After the idle dim, if the
@@ -303,7 +303,7 @@ rejected (covered sensor), and auto dim cannot be switched on without one.
 
 ## Remote page and wallpaper
 
-*Settings > Remote page* turns on a small web server on the **home network**
+*Settings > Web page* turns on a small web server on the **home network**
 (not the setup access point), so a phone or PC reaches the device by name
 (`stella-xxxx.local`, from mDNS; the last four hex digits of the MAC keep
 several devices apart) or by IP, without joining anything. It is **off until the
@@ -432,7 +432,7 @@ the device and stored in the system settings (record v5):
   board sketches set their panel's defaults through `RuntimeConfig::defaults`,
   which also fill fields an older settings record lacks and are what each
   calibration tab's *Reset* restores (`AppContext::defaultSettings()`).
-- **Touch** (*Touch test > Calibrate*): four crosses are tapped with the
+- **Touch** (*Settings > Display > Touch > Calibrate*): four crosses are tapped with the
   correction switched off; a least-squares fit per axis gives a scale and
   offset that the runtime applies to every touch before gestures. Implausible
   fits (over 20% scale or 60 px offset) are rejected.

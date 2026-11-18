@@ -16,22 +16,24 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.15.0 (the Values app: numbers pushed from a script), 0.14.0 (the Calendar app: events from an iCal feed, set on the remote page), 0.13.1 (remote page fix, gentler wallpaper defaults), 0.13.0 (units: °C/°F, week start, date order; a dashboard idle face; sunrise/sunset on the bedside clock), 0.12.0 (a web page on your Wi-Fi, wallpaper from your phone), 0.11.1 (the weather request fixed), 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
+| Version | 0.16.0 (polish for newcomers: a header that is never cut off, clearer names, 36 time zones and ~57 weather places, a time-zone prompt on first run, a getting-started guide, a random-input stability test), 0.15.0 (the Stats app: numbers pushed from a script), 0.14.0 (the Calendar app: events from an iCal feed, set on the remote page), 0.13.1 (remote page fix, gentler wallpaper defaults), 0.13.0 (units: °C/°F, week start, date order; a dashboard idle face; sunrise/sunset on the bedside clock), 0.12.0 (a web page on your Wi-Fi, wallpaper from your phone), 0.11.1 (the weather request fixed), 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
 | Host tests | 219 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.48 MB flash (75% of a 1.9 MB update slot), 84 KB static RAM (25%) |
 | On hardware | First runs on a CYD by the owner (0.3.0): boots, Wi-Fi, Weather; colour, brightness and paging feedback addressed in 0.3.1 (not yet re-checked on the device). |
 
-Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *bedside* mode
+Built-in apps: **Home** (launcher), **Clock** (with a starry, dim *night clock*
 that starts by itself after the idle dim at night), **Weather** (Open-Meteo, no
 API key; sunrise and sunset worked out on the device, the next 12 hours and a
 "rain from about 3 pm" outlook), **Alarms** (weekday or one-off, snooze), **Timer**, **Stopwatch**
-(laps), **Settings** (Wi-Fi, display, sound & light, appearance, time, about) and **Touch test** (calibration aid).
+(laps), **Settings** (Wi-Fi, display, sound & light, appearance, time, about, Home screen, units, screensaver, calendar, web page); the **Touch test** is under *Settings > Display > Touch*. Optional, off Home until turned on in *Settings > Home screen*: **Stats** (live numbers from your computer) and **Calendar**.
 Wi-Fi is set up on the device itself (scan, pick a network, type the password
 on the on-screen keyboard) or from a phone (*Settings > Wi-Fi > Phone*: join
 "Stella-Setup" and a web page takes the network and password). Alarms and timers ring through a system alert over
 whatever app is open, with a soft chime on a speaker plugged into the CYD's
 *SPEAK* connector.
+
+New to the device? Read [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 ## Quick start
 
@@ -111,7 +113,7 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
 
 1. Boot log shows `Stella 0.6.0 on ESP32-2432S028R (CYD), 320x240 compact`;
    the home screen appears without flicker or colour inversion.
-2. *Touch test*: taps land on the four corner targets.
+2. *Settings > Display > Touch*: taps land on the four corner targets.
 3. Every built-in screen matches `docs/screenshots/320x240/`.
 4. *Set up Wi-Fi*: the scan lists nearby networks; joining with the
    on-screen keyboard connects, survives a restart, and *Forget* clears it.
@@ -125,7 +127,7 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
    survive a reset. The brightness slider changes evenly over its whole
    range, also at night ("dimmed for the night"), and the backlight does not
    flicker (20 kHz PWM).
-7. *Settings > Display > Calibrate*: with
+7. *Settings > Display > Colours*: with
    `docs/screenshots/320x240/17-calibrate-tone-day.png` (and `-night`) open
    on a good monitor, fine-tune *Contrast* (light and dark mode separately),
    *White level* and *Warmth* until the grey ramp, text and background match;
@@ -134,8 +136,8 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
    defaults unless the screen shimmers.
    The home screen's ‹ › buttons page through apps while *Set up Wi-Fi* shows;
    tapping a sky in *Appearance* keeps it.
-8. *Bedside clock*: with *Settings > Display > Bedside* on *Night*, leave the
-   device idle at night (or open *Clock > Bedside*): the screen switches to a
+8. *Bedside clock*: with *Settings > Screensaver > Show* on *At night*, leave the
+   device idle at night (or open *Clock > Night clock*): the screen switches to a
    black sky with faint stars (a few twinkle every 4 s), a sleepy crescent
    moon, a big lilac clock, the date, the weather ("17° Partly cloudy", once
    Wi-Fi has fetched it) and "06:45 · in 8 h 15 min" when an alarm is set;
@@ -165,7 +167,7 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     Software update, on by default) the device also looks by itself two
     minutes after boot and then once a day: Settings' About row says
     "Update 0.6.2" without anything being installed.
-12. *Touch test > Calibrate*: tap the four crosses with the stylus; touches
+12. *Settings > Display > Touch > Calibrate*: tap the four crosses with the stylus; touches
    then land under the pen. Leaving the test clears its trail.
 13. The `health` log line (once a minute) shows `stack ui`/`svc` headroom; it
    should stay above ~1 KB, also right after a weather refresh (TLS).
@@ -207,7 +209,7 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     20:00), and the night dimming and bedside clock start with it. Check
     Settings > About > Software on the day of a change; if the sky looks an
     hour out, check Settings > Time (zone) and the Weather place.
-21. *Remote page and wallpaper*: Settings > Remote page, switch it on; the
+21. *Remote page and wallpaper*: Settings > Web page, switch it on; the
     screen shows an address (stella-xxxx.local, and the IP) and a PIN. On a
     phone or PC on the same Wi-Fi open the address, enter the PIN, pick a
     photo (it is cropped, softened, darkened and reduced to 256 colours in the

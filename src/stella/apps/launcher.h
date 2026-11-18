@@ -39,9 +39,15 @@ class LauncherApp : public App {
   const HomeLayoutRecord &layout() const { return layout_; }
   // Where things are on the Home screen (for tests and screenshots).
   Rect tileBounds(int slot) const { return home_.tileRect(slot); }
+  const char *tileName(int slot) const { return home_.tileName(slot); }  // null when the slot is empty
   Rect timeBounds() const { return home_.timeRect(); }
   Rect pagerPrev() const { return home_.prevRect(); }
   Rect pagerNext() const { return home_.nextRect(); }
+  bool headerFits() const { return home_.wordsFit(); }
+  static int labelInset(const Theme &t) { return t.dp(2); }  // a tile's name may use all but this much of its width
+  Rect noteBounds() const { return home_.noteRect(); }  // the invitation under the apps (tests, screenshots)
+  Rect greetingRect() const { return home_.greetingRect(); }
+  Rect dateRect() const { return home_.dateRect(); }
 
  private:
   class HomeScreen : public Screen {
@@ -54,11 +60,25 @@ class LauncherApp : public App {
     uint32_t onTick(AppContext &ctx) override;
     void refreshText(AppContext &ctx);
     Rect tileRect(int slot) const { return tile(slot); }
+    const char *tileName(int slot) const {
+      const int index = page_ * perPage() + slot;
+      return slot < perPage() && index < (int)apps_.size() ? apps_[index]->name : nullptr;
+    }
     Rect timeRect() const { return time_; }
     Rect prevRect() const { return prev_; }
     Rect nextRect() const { return next_; }
+    Rect greetingRect() const { return greeting_; }
+    Rect dateRect() const { return date_; }
+    Rect noteRect() const { return note_; }
+    bool wordsFit() const { return chooseWords(theme_).fits; }  // the header text is not cut off
 
    private:
+    struct Words {
+      const char *greeting = "", *date = "";
+      const Font *greetingFont = nullptr, *dateFont = nullptr;
+      bool fits = true;
+    };
+    Words chooseWords(const Theme &t) const;
     int perPage() const { return columns_ * rows_; }
     int pageCount() const;
     Rect tile(int slot) const;
@@ -71,9 +91,11 @@ class LauncherApp : public App {
     Theme theme_{};
     Rect area_, header_, time_, greeting_, date_, grid_, dots_, note_;
     Rect pager_, prev_, next_;  // page buttons (resistive panels make swiping hard)
+    bool pagerBelow_ = false;   // in the row of page dots, when the header is too narrow for them
     int columns_ = 3, rows_ = 2, gap_ = 8, page_ = 0, pressed_ = -1;
-    char timeText_[16] = {0}, greetingText_[32] = {0}, dateText_[48] = {0}, noteTitle_[32] = {0}, noteText_[48] = {0};
-    bool setupNote_ = false, notePressed_ = false;  // note invites Wi-Fi setup
+    char timeText_[16] = {0}, greetingText_[32] = {0}, greetingShort_[16] = {0}, dateShort_[24] = {0}, dateText_[48] = {0}, noteTitle_[32] = {0}, noteText_[48] = {0};
+    bool setupNote_ = false, notePressed_ = false;  // the note invites something: Wi-Fi setup or choosing a time zone
+    bool noteZone_ = false;                          // ... and this is the time zone one
     bool twelveHour_ = false;                       // the time has an AM/PM
     bool prevPressed_ = false, nextPressed_ = false;
   };

@@ -243,7 +243,7 @@ TEST(idle_face_screen_sets_when_and_which_face) {
   SimSession s(320, 240);
   s.os.launch("settings", "idle");  // Settings > Idle face (the last row of the list)
   s.run(100);
-  CHECK(s.os.topScreen() && strcmp(s.os.topScreen()->title(), "Idle face") == 0);
+  CHECK(s.os.topScreen() && strcmp(s.os.topScreen()->title(), "Screensaver") == 0);
   CHECK(s.os.settings().bedside == 1 && s.os.settings().idleFace == 0);
   const Rect always = s.settings.idleChoice(0, 2);  // Start: Off | Night | Always
   s.tap(always.centerX(), always.centerY());

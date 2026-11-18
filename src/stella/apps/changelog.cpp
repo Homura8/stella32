@@ -7,13 +7,14 @@ namespace {
 // Newest first. Add an entry when STELLA_VERSION goes up; a test checks the
 // top one matches the running version.
 const ChangelogEntry kChangelog[] = {
-    {"0.15.0", {"Values: live numbers", "Sent by a script on your Wi-Fi", "See Settings, Remote page", nullptr}},
-    {"0.14.0", {"Calendar: your next events", "Address: on the remote page", "Settings, then Calendar", nullptr}},
-    {"0.13.1", {"Remote page: no stale error", "Gentler wallpaper defaults", nullptr}},
+    {"0.16.0", {"Clearer names and menus", "Header text never cut off", "Asks for your time zone", nullptr}},
+    {"0.15.0", {"Stats: live numbers", "Sent by a script on your Wi-Fi", "Turn on: Settings, Home screen", nullptr}},
+    {"0.14.0", {"Calendar: your next events", "Address: on the web page", "Settings, then Calendar", nullptr}},
+    {"0.13.1", {"Web page: no stale error", "Gentler wallpaper defaults", nullptr}},
     {"0.13.0",
-     {"Units: \xc2\xb0" "C/\xc2\xb0" "F, week, date", "Idle face: clock or dashboard",
+     {"Units: \xc2\xb0" "C/\xc2\xb0" "F, week, date", "Screensaver: clock/dashboard",
       "Sunrise/sunset on bedside", nullptr}},
-    {"0.12.0", {"A web page on your Wi-Fi", "Wallpaper from your phone", "Settings, then Remote page", nullptr}},
+    {"0.12.0", {"A web page on your Wi-Fi", "Wallpaper from your phone", "Settings, then Web page", nullptr}},
     {"0.11.1", {"Weather works again", "(0.9.0 to 0.11.0 sent a", "request that was cut short)", nullptr}},
     {"0.11.0", {"The sky follows the real sun", "Dimming and bedside follow it", nullptr}},
     {"0.10.0",

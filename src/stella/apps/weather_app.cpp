@@ -30,6 +30,57 @@ const WeatherPlace kPlaces[] = {
     {"New York", 40.71f, -74.01f, "EST5EDT,M3.2.0,M11.1.0"},
     {"Los Angeles", 34.05f, -118.24f, "PST8PDT,M3.2.0,M11.1.0"},
     {"Greenwich", 51.48f, 0.0f, "UTC0"},
+    // More places, appended so that a saved choice keeps its number. `timezone` makes a place
+    // the first guess for someone who picked that zone in Settings > Time.
+    {"Adelaide", -34.93f, 138.60f, "ACST-9:30ACDT,M10.1.0,M4.1.0/3"},
+    {"Amsterdam", 52.37f, 4.90f, nullptr},
+    {"Anchorage", 61.22f, -149.90f, "AKST9AKDT,M3.2.0,M11.1.0"},
+    {"Athens", 37.98f, 23.73f, "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+    {"Bangkok", 13.76f, 100.50f, "<+07>-7"},
+    {"Beijing", 39.90f, 116.40f, "CST-8"},
+    {"Berlin", 52.52f, 13.40f, nullptr},
+    {"Buenos Aires", -34.60f, -58.38f, nullptr},
+    {"Cairo", 30.04f, 31.24f, "EET-2EEST,M4.5.5/0,M10.5.4/24"},
+    {"Canberra", -35.28f, 149.13f, nullptr},
+    {"Chicago", 41.88f, -87.63f, "CST6CDT,M3.2.0,M11.1.0"},
+    {"Darwin", -12.46f, 130.84f, "ACST-9:30"},
+    {"Delhi", 28.61f, 77.21f, "IST-5:30"},
+    {"Denver", 39.74f, -104.99f, "MST7MDT,M3.2.0,M11.1.0"},
+    {"Dhaka", 23.81f, 90.41f, "<+06>-6"},
+    {"Dubai", 25.20f, 55.27f, "<+04>-4"},
+    {"Dublin", 53.35f, -6.26f, nullptr},
+    {"Fiji (Suva)", -18.14f, 178.44f, "<+12>-12"},
+    {"Halifax", 44.65f, -63.57f, "AST4ADT,M3.2.0,M11.1.0"},
+    {"Hobart", -42.88f, 147.33f, nullptr},
+    {"Hong Kong", 22.32f, 114.17f, nullptr},
+    {"Honolulu", 21.31f, -157.86f, "HST10"},
+    {"Houston", 29.76f, -95.37f, nullptr},
+    {"Istanbul", 41.01f, 28.98f, nullptr},
+    {"Jakarta", -6.21f, 106.85f, nullptr},
+    {"Johannesburg", -26.20f, 28.05f, "SAST-2"},
+    {"Karachi", 24.86f, 67.01f, "PKT-5"},
+    {"Kathmandu", 27.72f, 85.32f, "<+0545>-5:45"},
+    {"Kuala Lumpur", 3.14f, 101.69f, nullptr},
+    {"Lagos", 6.52f, 3.38f, "WAT-1"},
+    {"Lisbon", 38.72f, -9.14f, "WET0WEST,M3.5.0/1,M10.5.0"},
+    {"Madrid", 40.42f, -3.70f, nullptr},
+    {"Manila", 14.60f, 120.98f, nullptr},
+    {"Mexico City", 19.43f, -99.13f, "CST6"},
+    {"Moscow", 55.76f, 37.62f, "MSK-3"},
+    {"Mumbai", 19.08f, 72.88f, nullptr},
+    {"Nairobi", -1.29f, 36.82f, "EAT-3"},
+    {"Phoenix", 33.45f, -112.07f, "MST7"},
+    {"Rome", 41.90f, 12.50f, nullptr},
+    {"San Francisco", 37.77f, -122.42f, nullptr},
+    {"Sao Paulo", -23.55f, -46.63f, "<-03>3"},
+    {"Seoul", 37.57f, 126.98f, nullptr},
+    {"St John's", 47.56f, -52.71f, "NST3:30NDT,M3.2.0,M11.1.0"},
+    {"Stockholm", 59.33f, 18.07f, nullptr},
+    {"Taipei", 25.03f, 121.57f, nullptr},
+    {"Tehran", 35.69f, 51.39f, "<+0330>-3:30"},
+    {"Toronto", 43.65f, -79.38f, nullptr},
+    {"Vancouver", 49.28f, -123.12f, "PST8PDT,M3.2.0,M11.1.0"},
+    {"Wellington", -41.29f, 174.78f, nullptr},
 };
 constexpr int kPlaceCount = (int)(sizeof(kPlaces) / sizeof(kPlaces[0]));
 constexpr uint16_t kPlaceVersion = 1;
@@ -230,10 +281,9 @@ const AppInfo &WeatherApp::info() const {
 
 void WeatherApp::onInstall(ServiceHost &host) {
   uint8_t saved = 0;
-  place_ = host.loadRecordFor(info().id, "place", kPlaceVersion, &saved, sizeof(saved)) == RecordStatus::Ok &&
-                   saved < kPlaceCount
-               ? saved
-               : defaultPlaceFor(host.systemSettings().timezone);
+  placeChosen_ = host.loadRecordFor(info().id, "place", kPlaceVersion, &saved, sizeof(saved)) == RecordStatus::Ok &&
+                 saved < kPlaceCount;
+  place_ = placeChosen_ ? saved : defaultPlaceFor(host.systemSettings().timezone);
   service_.setPlace(place_);
   service_.attach(host.http());
   host.attachTopic(topic_);
@@ -267,7 +317,20 @@ bool WeatherApp::publishGlance(AppContext &ctx) {
 // Apps that were never opened get no topic notifications, so the glance is
 // also published from here: soon while there is nothing yet, then every 10 min
 // (which also withdraws data that has grown too old).
+// Until a city has been chosen, the weather is for the time zone's city: choosing a zone in
+// Settings > Time then gives a newcomer their own weather without a second step.
+void WeatherApp::followZone(AppContext &ctx) {
+  if (placeChosen_) return;
+  const uint8_t wanted = defaultPlaceFor(ctx.settings().timezone);
+  if (wanted == place_) return;
+  place_ = wanted;
+  service_.setPlace(place_);
+  ctx.requestJob(service_);
+  publishSun(ctx);
+}
+
 uint32_t WeatherApp::onWake(AppContext &ctx) {
+  followZone(ctx);
   publishSun(ctx);
   return publishGlance(ctx) ? 10u * 60u * 1000u : 30u * 1000u;
 }
@@ -292,7 +355,11 @@ void WeatherApp::onRoute(const char *route, AppContext &ctx) {
 }
 
 void WeatherApp::choosePlace(uint8_t place, AppContext &ctx) {
-  if (place == place_) return;
+  placeChosen_ = true;  // from now on the city is the person's, whatever the time zone says
+  if (place == place_) {
+    ctx.saveAppRecord("place", kPlaceVersion, &place_, sizeof(place_));
+    return;
+  }
   place_ = place;
   ctx.saveAppRecord("place", kPlaceVersion, &place_, sizeof(place_));
   service_.setPlace(place_);
@@ -401,7 +468,10 @@ void WeatherApp::MainScreen::updateSun(AppContext &ctx) {
   }
 }
 
-void WeatherApp::MainScreen::onShow(AppContext &ctx) { refresh(ctx); }
+void WeatherApp::MainScreen::onShow(AppContext &ctx) {
+  app_.followZone(ctx);
+  refresh(ctx);
+}
 
 uint32_t WeatherApp::MainScreen::onTick(AppContext &ctx) {
   char status[sizeof(statusText_)];

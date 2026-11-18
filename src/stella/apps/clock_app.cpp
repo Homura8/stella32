@@ -35,7 +35,7 @@ void ClockApp::ClockScreen::layout(const Rect &content, const Theme &t) {
   date_ = parts[2];
   chip_ = parts[3];
   bedside_.bounds = center(parts[4], t.dp(132), t.m.control - t.dp(2));
-  bedside_.label = "Bedside";
+  bedside_.label = "Night clock";
   bedside_.icon = icons::moon;
   bedside_.style = ButtonStyle::Quiet;
 }

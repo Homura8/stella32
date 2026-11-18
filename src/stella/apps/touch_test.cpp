@@ -37,7 +37,7 @@ bool fitTouchAxis(const int *measured, const int *target, int n, int16_t &scale1
 }
 
 const AppInfo &TouchTestApp::info() const {
-  static const AppInfo kInfo{"touch", "Touch test", icons::touch, 0, 0};
+  static const AppInfo kInfo{"touch", "Touch test", icons::touch, 0, kAppHidden};  // opened from Settings > Display > Touch;
   return kInfo;
 }
 
@@ -172,7 +172,7 @@ bool TouchTestApp::TouchScreen::onEvent(const Event &e, AppContext &ctx) {
         finishCalibration(ctx);
       } else {
         snprintf(text_, sizeof(text_), "Tap the centre of the cross \xc2\xb7 %d of 4", step_ + 1);
-        ctx.invalidate(pad_);
+        ctx.invalidate(ctx.contentRect());  // the pad is nearly all of it, and its edges and the crosshair reach past it
         ctx.invalidate(readout_);
       }
     }
@@ -181,7 +181,7 @@ bool TouchTestApp::TouchScreen::onEvent(const Event &e, AppContext &ctx) {
   if (e.type == EventType::LongPress) {
     clear();
     snprintf(text_, sizeof(text_), "Cleared");
-    ctx.invalidate(pad_);
+    ctx.invalidate(ctx.contentRect());  // the pad is nearly all of it, and its edges and the crosshair reach past it
     ctx.invalidate(readout_);
     return true;
   }
@@ -191,9 +191,8 @@ bool TouchTestApp::TouchScreen::onEvent(const Event &e, AppContext &ctx) {
     head_ = (head_ + 1) % kTrail;
     if (count_ < kTrail) ++count_;
     // Older dots fade one step: the whole trail changes, so repaint the pad.
-    ctx.invalidate(pad_);
+    ctx.invalidate(ctx.contentRect());  // the pad is nearly all of it, and its edges and the crosshair reach past it
     snprintf(text_, sizeof(text_), "x %d  y %d", e.x, e.y);
-    ctx.invalidate(readout_);
     return true;
   }
   return false;

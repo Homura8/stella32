@@ -169,9 +169,12 @@ TEST(about_opens_whats_new_and_it_renders_at_every_size) {
 TEST(home_shows_every_app_in_install_order_by_default) {
   SimSession s(320, 240);
   const HomeLayoutRecord &l = s.launcher.layout();
-  const char *expected[] = {"clock", "weather", "alarms", "timer", "stopwatch", "settings", "touch", "values", "calendar"};
-  CHECK_EQ(l.count, 9);
-  for (int i = 0; i < 9; ++i) CHECK(strcmp(l.items[i].id, expected[i]) == 0 && l.items[i].visible);
+  // The Touch test is not on Home at all (Settings > Display > Touch opens it); Stats is
+  // there to be turned on but starts off; everything else shows.
+  const char *expected[] = {"clock", "weather", "alarms", "timer", "stopwatch", "settings", "values", "calendar"};
+  CHECK_EQ(l.count, 8);
+  for (int i = 0; i < 8; ++i) CHECK(strcmp(l.items[i].id, expected[i]) == 0);
+  for (int i = 0; i < 8; ++i) CHECK_EQ(l.items[i].visible != 0, strcmp(l.items[i].id, "values") != 0);
 }
 
 TEST(hiding_and_moving_apps_changes_home_and_is_saved) {
@@ -229,7 +232,7 @@ TEST(a_saved_layout_is_merged_with_the_apps_that_exist) {
   // The saved order first (the unknown app dropped, the duplicate ignored), the rest appended.
   CHECK(strcmp(l.items[0].id, "timer") == 0 && !l.items[0].visible);
   CHECK(strcmp(l.items[1].id, "clock") == 0 && l.items[1].visible);
-  CHECK_EQ(l.count, 5);  // clock, timer, stopwatch, settings, touch
+  CHECK_EQ(l.count, 4);  // timer, clock, then stopwatch and settings (the hidden Touch test never shows)
   for (int i = 2; i < l.count; ++i) CHECK(l.items[i].visible);
 }
 
@@ -270,5 +273,103 @@ TEST(the_editor_and_settings_list_render_at_every_size) {
     s.os.invalidateAll();
     s.run(20);
     CHECK(b == s.dev.display.framebuffer());
+  }
+}
+
+// What a person new to the OS sees: a Home with the useful apps, no developer tools, and the
+// optional ones one tap away in Settings.
+TEST(a_new_person_sees_only_useful_apps_and_finds_the_touch_test_in_settings) {
+  SimSession s(320, 240);
+  // On Home: no Touch test, no Stats (it starts off); the others are there.
+  for (int i = 0; i < 8; ++i) {
+    const Rect tile = s.launcher.tileBounds(i);
+    if (tile.empty()) continue;
+    s.tap(tile.centerX(), tile.centerY());
+    CHECK(strcmp(s.os.foreground()->info().id, "touch") != 0 && strcmp(s.os.foreground()->info().id, "values") != 0);
+    s.os.goHome();
+    s.run(100);
+  }
+  // Settings > Display > Touch opens it (and it is still launchable by name).
+  s.os.launch("settings");
+  s.run(100);
+  const Point display = s.settingsRow(1);
+  s.tap(display.x, display.y);
+  const Theme &t = s.os.theme();
+  const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
+  const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 6;
+  const int rowH = want <= fit ? want : fit < t.dp(32) ? t.dp(32) : fit;
+  s.tap(area.centerX(), area.y + t.dp(4) + 5 * rowH + rowH / 2);  // the sixth row: Touch
+  CHECK(strcmp(s.os.foreground()->info().id, "touch") == 0);
+  // Stats can be turned on from the Home screen editor, where it starts off.
+  s.os.goHome();
+  s.os.launch("home", "customise");
+  s.run(200);
+  bool listed = false;
+  for (int i = 0; i < s.launcher.layout().count; ++i)
+    if (strcmp(s.launcher.layout().items[i].id, "values") == 0) listed = !s.launcher.layout().items[i].visible;
+  CHECK(listed);
+}
+
+// A person new to the OS: after Wi-Fi, Home asks once for a time zone (the clock and the
+// weather follow it), and the weather is for that zone's city until a city is chosen.
+TEST(a_new_device_asks_for_a_time_zone_once) {
+  SimSession s(320, 240, kEveningEpoch, Appearance::Auto, false, /*online=*/true, /*withDeck=*/false, /*newDevice=*/true);
+  s.os.goHome();
+  s.run(500);
+  CHECK(!s.os.status().zoneChosen);
+  tapRect(s, s.launcher.noteBounds());  // "Choose your time zone"
+  CHECK(strcmp(foregroundId(s.os), "settings") == 0);
+  CHECK(strcmp(topTitle(s.os), "Time") == 0);
+  CHECK(s.os.status().zoneChosen);  // opening the screen is enough: it has been seen
+  uint8_t chosen = 0;
+  CHECK(loadRecord(&s.dev.storage, "sys", "setup", 1, &chosen, sizeof(chosen)) == RecordStatus::Ok && chosen == 1);
+  // Home no longer asks: its note is the moon again, and tapping it does nothing.
+  s.os.goHome();
+  s.run(500);
+  tapRect(s, s.launcher.noteBounds());
+  CHECK(strcmp(foregroundId(s.os), "home") == 0);
+}
+
+TEST(a_device_with_settings_already_saved_is_never_asked_for_a_zone) {
+  SimSession s(320, 240);  // the simulator's ordinary device does not ask
+  CHECK(s.os.status().zoneChosen);
+}
+
+TEST(the_weather_follows_the_time_zone_until_a_city_is_chosen) {
+  SimSession s(320, 240);
+  CHECK(strstr(s.dev.http.lastUrl.c_str(), "latitude=-37.81") != nullptr);  // Melbourne
+  SystemSettings st = s.os.settings();
+  snprintf(st.timezone, sizeof(st.timezone), "%s", "JST-9");
+  s.os.applySettings(st);
+  s.os.launch("weather");
+  s.run(2000);
+  CHECK(strstr(s.dev.http.lastUrl.c_str(), "latitude=35.68") != nullptr);  // Tokyo, with no step in between
+  // A city picked by hand stays, whatever the zone does afterwards.
+  s.os.launch("weather", "places");
+  const Rect c = s.os.contentRect();
+  const Theme &t = s.os.theme();
+  s.tap(c.centerX(), c.y + t.m.gapS + t.dp(4) + 0 * t.dp(30) + t.dp(15));  // row 0
+  s.run(500);
+  const std::string picked = s.dev.http.lastUrl;
+  st.timezone[0] = 'E'; st.timezone[1] = 'S'; st.timezone[2] = 'T'; st.timezone[3] = '5'; st.timezone[4] = 0;
+  s.os.applySettings(st);
+  s.os.launch("weather");
+  s.run(2000);
+  CHECK(s.dev.http.lastUrl == picked);
+}
+
+TEST(every_app_name_on_home_fits_its_tile_at_every_size) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  for (const auto &sz : sizes) {
+    SimSession s(sz[0], sz[1]);
+    s.os.goHome();
+    s.run(300);
+    const Theme &t = s.os.theme();
+    for (int slot = 0; slot < 12; ++slot) {
+      const char *name = s.launcher.tileName(slot);
+      if (!name) continue;
+      const Rect r = s.launcher.tileBounds(slot);
+      CHECK(Canvas::textWidth(*t.font.caption, name) <= r.w - 2 * apps::LauncherApp::labelInset(t));
+    }
   }
 }

@@ -88,6 +88,15 @@ bool Runtime::begin(const Board &board, const RuntimeConfig &config) {
       saveRecord(board.storage, "sys", "seen", 1, now, sizeof(now));
     }
   }
+  {
+    // A new device asks for its time zone once; one that already had settings never needs to.
+    zoneChosen_ = true;
+    if (config.askTimeZone) {
+      uint8_t chosen = 0;
+      const RecordStatus setupStatus = loadRecord(board.storage, "sys", "setup", 1, &chosen, sizeof(chosen));
+      zoneChosen_ = setupStatus == RecordStatus::Ok ? chosen != 0 : loaded == RecordStatus::Ok;
+    }
+  }
   applyTimezone(settings_.timezone);
   applyPanelTrim(true);
   applyVolume();
@@ -715,6 +724,13 @@ void Runtime::applySettings(const SystemSettings &s) {
   invalidate(statusBarRect());
 }
 
+void Runtime::confirmTimeZone() {
+  if (zoneChosen_) return;
+  zoneChosen_ = true;
+  const uint8_t chosen = 1;
+  saveRecord(board_.storage, "sys", "setup", 1, &chosen, sizeof(chosen));
+}
+
 SystemStatus Runtime::status() const {
   SystemStatus s;
   s.board = board_.platform->boardName();
@@ -740,6 +756,7 @@ SystemStatus Runtime::status() const {
   s.uiStackFree = uiStackFree_.load();
   s.serviceStackFree = serviceStackFree_.load();
   s.panelTrim = board_.display && board_.display->supportsPanelTrim();
+  s.zoneChosen = zoneChosen_;
   s.sunrise = sunRise_;
   s.sunset = sunSet_;
   s.sunPolar = sunPolar_;

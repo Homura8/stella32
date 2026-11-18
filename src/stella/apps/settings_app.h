@@ -104,13 +104,13 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 5;
+    static constexpr int kRows = 6;
     SettingsApp &app_;
     Rect card_, rows_[kRows], labels_[kRows];
     Slider brightness_;
     Toggle nightDim_;
     Segmented dim_, off_;
-    ListRow calibrate_;
+    ListRow calibrate_, touch_;  // screen colours; touch test and calibration
     char calibrateDetail_[24] = {0};
     bool night_ = false;  // the night phase (by the clock) is on now
   };
@@ -208,7 +208,7 @@ class SettingsApp : public App {
   // Each tab's Reset returns its values to the board's defaults.
   class CalibrateScreen : public Screen {
    public:
-    const char *title() const override { return "Calibrate"; }
+    const char *title() const override { return "Colours"; }
     void layout(const Rect &content, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
     bool onEvent(const Event &e, AppContext &ctx) override;
@@ -286,7 +286,8 @@ class SettingsApp : public App {
     using Row = ChoiceRow;
     using Get = int (*)(const SystemSettings &s, int row);
     using Set = void (*)(SystemSettings &s, int row, int value);
-    void init(const char *title, const Row *rows, int count, Get get, Set set) {
+    void init(const char *title, const Row *rows, int count, Get get, Set set, const char *note = nullptr) {
+      note_text_ = note;
       title_ = title;
       rows_ = rows;
       count_ = count;
@@ -303,6 +304,8 @@ class SettingsApp : public App {
    private:
     static constexpr int kMax = 3;
     const char *title_ = "";
+    const char *note_text_ = nullptr;  // a few words under the card saying what it does
+    Rect note_;
     const Row *rows_ = nullptr;
     int count_ = 0;
     Get get_ = nullptr;
@@ -332,11 +335,11 @@ class SettingsApp : public App {
     bool has_ = false;
   };
 
-  // Settings > Remote page: the web page on the home network (phone or PC, by
+  // Settings > Web page: the web page on the home network (phone or PC, by
   // name or IP), its PIN, and the wallpaper it uploads. The PIN is shown only here.
   class RemoteScreen : public Screen {
    public:
-    const char *title() const override { return "Remote page"; }
+    const char *title() const override { return "Web page"; }
     void layout(const Rect &content, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
     bool onEvent(const Event &e, AppContext &ctx) override;

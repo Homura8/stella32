@@ -263,3 +263,34 @@ TEST(home_header_fits_in_both_clock_styles_at_every_size) {
     }
   }
 }
+
+// Regression (owner, on the CYD): with the page buttons beside the greeting the date and
+// the sky name were cut off ("Mon 16 Nov · n..."). The header now never cuts a word: it
+// picks the biggest size that fits, then shorter forms, and a screen too narrow for the
+// buttons beside the words gets them below the apps instead.
+TEST(home_header_words_are_never_cut_off_at_any_size_clock_style_or_hour) {
+  const int sizes[][2] = {{240, 320}, {320, 240}, {480, 320}, {800, 480}};
+  // Morning, afternoon, evening and night greetings; a date with a long month.
+  const int64_t base = kMorningEpoch - 10 * 3600 - 15 * 60;  // Mon 16 Nov 00:00 in Melbourne
+  for (const auto &sz : sizes) {
+    for (bool h24 : {true, false}) {
+      for (int hour : {6, 14, 19, 23}) {
+        for (int apps : {0, 1}) {  // 0: the pager is needed (many apps); 1: it is not (Wi-Fi note one row)
+          SimSession s(sz[0], sz[1], base + hour * 3600 + 30 * 60, Appearance::Auto, false, /*online=*/apps == 0);
+          SystemSettings st = s.os.settings();
+          st.clock24h = h24;
+          s.os.applySettings(st);
+          s.run(400);
+          CHECK(s.launcher.headerFits());
+          CHECK(s.launcher.greetingRect().w > 0 && s.launcher.dateRect().w > 0);
+          // The page buttons never overlap the words, wherever they are.
+          if (!s.launcher.pagerNext().empty()) {
+            CHECK(s.launcher.pagerNext().intersect(s.launcher.dateRect()).empty());
+            CHECK(s.launcher.pagerPrev().intersect(s.launcher.greetingRect()).empty());
+            CHECK(s.launcher.pagerNext().right() <= sz[0] && s.launcher.pagerNext().bottom() <= sz[1]);
+          }
+        }
+      }
+    }
+  }
+}

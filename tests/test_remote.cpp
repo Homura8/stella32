@@ -425,7 +425,7 @@ TEST(the_remote_screen_enables_the_server_shows_the_pin_and_controls_the_wash) {
   SimSession s(320, 240);
   s.os.launch("settings", "remote");
   s.run(300);
-  CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Remote page") == 0);
+  CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Web page") == 0);
   CHECK(!s.os.remote().status().enabled && pinOf(s).size() == 6);
   tapRect(s, remoteRow(s, 0));  // the switch
   s.run(600);

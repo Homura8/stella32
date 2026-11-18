@@ -41,7 +41,7 @@ class ValuesApp : public App {
     PushedValues values_;
     char ageText_[kMaxPushedValues][14] = {};
     bool stale_[kMaxPushedValues] = {};
-    char hint_[120] = {0};
+    char hint_[160] = {0};
   };
 
   ValuesScreen screen_;

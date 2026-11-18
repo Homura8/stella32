@@ -25,6 +25,14 @@ const char *greetingFor(const LocalTime &t) {
   return "Good night";
 }
 
+const char *greetingShortFor(const LocalTime &t) {
+  if (!t.valid) return "Hello";
+  if (t.hour >= 5 && t.hour < 12) return "Morning";
+  if (t.hour >= 12 && t.hour < 17) return "Afternoon";
+  if (t.hour >= 17 && t.hour < 22) return "Evening";
+  return "Night";
+}
+
 MoonPhase moonPhase(int64_t epochSeconds) {
   static const char *const kNames[] = {"New moon",  "Waxing crescent", "First quarter", "Waxing gibbous",
                                        "Full moon", "Waning gibbous",  "Last quarter",  "Waning crescent"};

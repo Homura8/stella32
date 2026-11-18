@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.15.0"
+#define STELLA_VERSION "0.16.0"
 #endif
 
 namespace stella {
@@ -56,6 +56,10 @@ struct RuntimeConfig {
   // HTTPS URL of the update manifest (see net/firmware_update.h); updates need
   // this, a second app slot and a signing key built into Board::firmware.
   const char *updateManifestUrl = nullptr;
+  // A device with no saved settings is new: once it is online, Home invites its owner to
+  // choose a time zone (the clock and the weather follow it). Tests and boards that are
+  // set up by their owner turn this off.
+  bool askTimeZone = true;
 };
 
 enum class PowerState : uint8_t { Active, Dimmed, Off };
@@ -142,6 +146,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   UpdateControl &update() override { return updater_; }
   RemoteControl &remote() override { return remote_; }
   HidDevice *hid() override { return board_.hid; }
+  void confirmTimeZone() override;
   PushedValues pushedValues() const override { return pushedValues_.get(); }
   CalendarSourceControl &calendar() override { return calendarSource_; }
   CalendarSource &calendarFeed() override { return calendarSource_; }
@@ -310,6 +315,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   uint8_t appliedScale_ = 255;  // the ambient fraction of the brightness in use, slewed
   bool lightWarm_ = false;
   bool whatsNewPending_ = false;
+  bool zoneChosen_ = true;  // false only on a new device, until Settings > Time has been opened
   bool wallpaperOn_ = false;
   uint8_t wallpaperVeil_ = kDefaultWallpaperVeil;
   uint16_t wallpaperPalette_[wallpaper::kColors] = {};

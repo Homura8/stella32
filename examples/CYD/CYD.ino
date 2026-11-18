@@ -87,6 +87,7 @@ void setup() {
   config.defaults.ledPin[1] = 16;
   config.defaults.ledPin[2] = 17;
   config.defaults.ledInverted = true;
+  config.askTimeZone = true;  // a new device invites its owner to choose a time zone
   config.defaults.colorTone = stella::ColorTone::Rich;
   config.defaults.contrastLight = 86;
   config.defaults.contrastDark = 74;
