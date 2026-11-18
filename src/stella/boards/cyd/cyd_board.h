@@ -15,6 +15,7 @@
 
 #include "../../hal/hal.h"
 #include "../../input/touch_calibration.h"
+#include "../../port/esp32/esp32_hid.h"  // STELLA_HAS_BLE: 1 when the NimBLE-Arduino library is present
 #include "../../port/esp32/esp32_port.h"
 
 // DMA display transfers with double-buffered rendering: the next chunk is
@@ -285,7 +286,11 @@ class CydBoard {
     sound_.begin();
   }
   Board board() {
-    return Board{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_, &led_, &light_, &remote_, &wallpaper_};
+    Board b{&display_, &touch_, &platform_, &storage_, &wifi_, &http_, &sound_, &setup_, &firmware_, &led_, &light_, &remote_, &wallpaper_};
+#if STELLA_HAS_BLE
+    b.hid = &hid_;
+#endif
+    return b;
   }
   // The ECDSA P-256 public key (PEM) that update manifests must be signed with.
   void setUpdateKey(const char *pem) { firmware_.setPublicKey(pem); }
@@ -309,6 +314,9 @@ class CydBoard {
   CydLight light_;
   esp32::Esp32RemoteServer remote_;
   esp32::Esp32WallpaperStore wallpaper_;
+#if STELLA_HAS_BLE
+  esp32::Esp32Hid hid_;
+#endif
   esp32::Esp32SetupServer setup_;
   esp32::Esp32Firmware firmware_;
   Color buffer_[Profile::kWidth * Profile::kRenderRows];

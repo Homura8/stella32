@@ -238,6 +238,9 @@ class AppContext : public Invalidator {
   virtual UpdateControl &update() = 0;
   // The web page on the home network and the wallpaper it uploads (Settings > Remote page).
   virtual RemoteControl &remote() = 0;
+  // The Bluetooth keyboard, or nullptr when this build has none. The runtime switches it off while
+  // an update downloads, so an app must not assume it stays on.
+  virtual HidDevice *hid() = 0;
   // The live values scripts have pushed (net/values.h); empty until something arrives.
   virtual PushedValues pushedValues() const = 0;
   virtual CalendarSourceControl &calendar() = 0;

@@ -343,6 +343,18 @@ void capture(int width, int height, const std::string &root) {
     s.run(300);
     save(37, "dashboard");
 
+    // The Deck, on a board with Bluetooth: waiting for the computer to pair, then connected.
+    SimSession deck(width, height, evening ? kEveningEpoch : kMorningEpoch, Appearance::Auto, false, true, true);
+    auto saveDeck = [&](int index, const char *screen) {
+      snprintf(name, sizeof(name), "%02d-%s-%s", index, screen, suffix);
+      shot(deck, dir, name);
+    };
+    deck.os.launch("deck");
+    deck.run(400);
+    saveDeck(41, "deck-pairing");
+    deck.dev.hid.connect();
+    deck.run(900);
+    saveDeck(42, "deck");
     // The Values app: the instructions first, then a script's numbers.
     s.os.goHome();
     s.os.launch("values");

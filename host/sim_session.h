@@ -24,7 +24,7 @@ class SimSession {
   // online = true pre-provisions the simulated "Starlight" network, so Wi-Fi
   // connects and the weather fixture loads during construction.
   SimSession(int width, int height, int64_t epoch = kEveningEpoch, Appearance appearance = Appearance::Auto,
-             bool threaded = false, bool online = true);
+             bool threaded = false, bool online = true, bool withDeck = false);
 
   // Run the UI loop for `ms` of simulated time, honouring its sleep requests.
   void run(uint32_t ms);
@@ -43,6 +43,7 @@ class SimSession {
   apps::SettingsApp settings;
   apps::TouchTestApp touchTest;
   apps::WeatherApp weather;
+  apps::DeckApp deck;  // installed only when the board has Bluetooth (withDeck)
   apps::ValuesApp values;
   apps::CalendarApp calendar;
   apps::AlarmsApp alarms;

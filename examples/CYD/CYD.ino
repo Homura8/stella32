@@ -45,6 +45,9 @@ stella::apps::ClockApp clockApp;
 stella::apps::SettingsApp settingsApp;
 stella::apps::TouchTestApp touchTest;
 stella::apps::WeatherApp weather;
+#if STELLA_HAS_BLE
+stella::apps::DeckApp deck;  // only in the cyd-ble build (needs the NimBLE-Arduino library)
+#endif
 stella::apps::ValuesApp values;
 stella::apps::CalendarApp calendarApp;
 stella::apps::AlarmsApp alarms;
@@ -101,6 +104,9 @@ void setup() {
   os.install(stopwatch);
   os.install(settingsApp);
   os.install(touchTest);
+#if STELLA_HAS_BLE
+  os.install(deck);
+#endif
   os.install(values);
   os.install(calendarApp);
   os.start();

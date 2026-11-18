@@ -164,6 +164,40 @@ or display I/O.
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
 
+## Bluetooth deck (opt-in)
+
+The Deck app turns the touchscreen into a media-key pad for a computer (the CYD's
+USB port is serial only, so BLE is the only way to act as a keyboard). It is an
+**opt-in build** because a BLE host costs flash and RAM: the `cyd-ble` profile of
+`examples/CYD/sketch.yaml` adds the NimBLE-Arduino library, and the sketch installs
+the Deck only when that library is present (`STELLA_HAS_BLE`, defined by
+`port/esp32/esp32_hid.h` from `__has_include`). The default build is unchanged and has
+no Deck tile.
+
+- **HAL:** `hal/hid.h` is `HidDevice`: `start(name)`, `stop()`, `state()` (Off,
+  Advertising, Connected, Failed), `sendKey`, `sendConsumer`, `bondCount`,
+  `forgetBonds`. `Board::hid` is optional; apps reach it through `AppContext::hid()`.
+- **The radio runs only while the Deck is showing:** `onShow` starts it, `onHide`
+  stops it (and `NimBLEDevice::deinit(true)` returns the whole stack's memory), and
+  the runtime also stops it while an update downloads, because the radio shares
+  memory and the antenna with the download. The stack's callbacks run on its own
+  task and only set atomics (`state_`, `bonds_`); the UI polls `state()` twice a
+  second (`DeckScreen::onTick`), so nothing in the app runs on the stack's task.
+- **Pairing:** Just Works with bonding and LE Secure Connections; the computer lists
+  "StellaOS Deck", bonds with it, and the bond stays in NVS until *Forget*. A device is
+  `Connected` only once the link is encrypted (`onAuthenticationComplete`).
+- **Keys:** six pads send consumer-control usages (previous, play/pause, next,
+  mute, volume down and up), which mean the same on Windows, macOS, Linux, Android
+  and iOS. `sendKey` (modifier bits + a keyboard usage) is in the interface for the
+  custom layouts to come.
+- **NimBLE is trimmed** by `examples/CYD/build_opt.h`: peripheral only (central and
+  observer roles off) and one connection.
+- **Measured:** the CI compile of `cyd-ble` reports the flash and static RAM next to
+  the default build (see the pull request that added it). The heap while the radio is
+  on has not been measured on a device: watch *About > Lowest free* with the Deck open.
+- **Tests:** `SimHid` plays the radio and the computer (`connect()`, `disconnect()`),
+  so `tests/test_deck.cpp` covers the radio's lifetime, the keys sent, forgetting,
+  a failing radio, every size and the idle repaint, and a board without Bluetooth.
 ## Pushed values (the Values app)
 
 Scripts on the home network can show live numbers on the device: `POST /api/push` on

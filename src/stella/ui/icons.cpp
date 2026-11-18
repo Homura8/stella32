@@ -176,6 +176,86 @@ void lock(Canvas &c, const Rect &box, Color color) {
   c.strokeArc((int)f.cx, (int)f.Y(0.02f), r + (int)(f.stroke / 2), (int)(f.stroke + 0.5f), -90.f, 180.f, color);
 }
 
+namespace {
+
+// Coverage of a triangle (anti-aliased by the distance to its nearest edge, in pixels).
+float triangleCoverage(float px, float py, float x0, float y0, float x1, float y1, float x2, float y2) {
+  auto edge = [&](float ax, float ay, float bx, float by) {
+    const float dx = bx - ax, dy = by - ay;
+    const float len = sqrtf(dx * dx + dy * dy);
+    return len > 0.f ? ((px - ax) * dy - (py - ay) * dx) / len : 0.f;
+  };
+  // Orient every edge so the inside is positive, whichever way the corners run.
+  const float turn = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+  const float side = turn > 0.f ? -1.f : 1.f;
+  const float a = side * edge(x0, y0, x1, y1), b = side * edge(x1, y1, x2, y2), c = side * edge(x2, y2, x0, y0);
+  return clamp01(fminf(fminf(a, b), c) + 0.5f);  // the signed distance to the nearest edge
+}
+
+float barCoverage(float px, float py, float x0, float y0, float x1, float y1) {
+  return clamp01(fminf(px - x0, x1 - px) + 0.5f) * clamp01(fminf(py - y0, y1 - py) + 0.5f);
+}
+
+}  // namespace
+
+void playPause(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  const float x0 = f.X(-0.40f), x1 = f.X(-0.02f), y0 = f.Y(-0.30f), y1 = f.Y(0.30f), ym = f.Y(0.f);
+  const float b0 = f.X(0.10f), b1 = f.X(0.18f), b2 = f.X(0.28f), b3 = f.X(0.36f);
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    float v = triangleCoverage(px, py, x0, y0, x1, ym, x0, y1);
+    v = fmaxf(v, barCoverage(px, py, b0, y0, b1, y1));
+    return fmaxf(v, barCoverage(px, py, b2, y0, b3, y1));
+  });
+}
+
+void skipNext(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  const float x0 = f.X(-0.34f), x1 = f.X(0.14f), y0 = f.Y(-0.30f), y1 = f.Y(0.30f), ym = f.Y(0.f);
+  const float b0 = f.X(0.22f), b1 = f.X(0.32f);
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    return fmaxf(triangleCoverage(px, py, x0, y0, x1, ym, x0, y1), barCoverage(px, py, b0, y0, b1, y1));
+  });
+}
+
+void skipPrevious(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  const float x0 = f.X(0.34f), x1 = f.X(-0.14f), y0 = f.Y(-0.30f), y1 = f.Y(0.30f), ym = f.Y(0.f);
+  const float b0 = f.X(-0.32f), b1 = f.X(-0.22f);
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    return fmaxf(triangleCoverage(px, py, x0, y0, x1, ym, x0, y1), barCoverage(px, py, b0, y0, b1, y1));
+  });
+}
+
+void speaker(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // A small box, a cone, and two sound waves.
+  const float bx0 = f.X(-0.42f), bx1 = f.X(-0.24f), by0 = f.Y(-0.12f), by1 = f.Y(0.12f);
+  const float cx1 = f.X(-0.02f), cy0 = f.Y(-0.30f), cy1 = f.Y(0.30f);
+  const float ox = f.X(-0.02f), oy = f.Y(0.f), r1 = 0.20f * f.s, r2 = 0.36f * f.s;
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    float v = barCoverage(px, py, bx0, by0, bx1, by1);
+    v = fmaxf(v, triangleCoverage(px, py, bx1, by0, cx1, cy0, cx1, cy1));
+    v = fmaxf(v, triangleCoverage(px, py, bx1, by0, bx1, by1, cx1, cy1));
+    const float dx = px - ox, dy = py - oy;
+    if (dx > 0.f && fabsf(dy) < dx * 1.0f + 1.f) {  // within ~45 degrees to the right
+      const float d = sqrtf(dx * dx + dy * dy);
+      v = fmaxf(v, fmaxf(clamp01(1.1f - fabsf(d - r1)), clamp01(1.1f - fabsf(d - r2))));
+    }
+    return v;
+  });
+}
+
+void bluetooth(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // The rune: a stem with two angled strokes crossing on its right.
+  seg(c, f, 0.f, -0.36f, 0.f, 0.36f, color, 1.1f);
+  seg(c, f, 0.f, -0.36f, 0.24f, -0.14f, color, 1.1f);
+  seg(c, f, 0.24f, -0.14f, -0.22f, 0.20f, color, 1.1f);
+  seg(c, f, 0.f, 0.36f, 0.24f, 0.14f, color, 1.1f);
+  seg(c, f, 0.24f, 0.14f, -0.22f, -0.20f, color, 1.1f);
+}
+
 void calendar(Canvas &c, const Rect &box, Color color) {
   const Frame f = frame(box);
   // A rounded page with a solid header band, two binder rings and three date dots.
