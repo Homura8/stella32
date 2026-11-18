@@ -628,7 +628,7 @@ void Runtime::updatePower(uint32_t now) {
   const uint32_t idle = elapsedMs(now, lastInteraction_);
   PowerState next = PowerState::Active;
   if (settings_.sleepAfterSec && idle >= settings_.sleepAfterSec * 1000u) next = PowerState::Off;
-  else if (settings_.dimAfterSec && idle >= settings_.dimAfterSec * 1000u) next = PowerState::Dimmed;
+  else if (settings_.dimAfterSec && idle >= settings_.dimAfterSec * 1000u && !topKeepsBright()) next = PowerState::Dimmed;
   if (next == power_ || (next == PowerState::Active)) return;  // only touch wakes
   if (power_ == PowerState::Off && next == PowerState::Dimmed) return;
   power_ = next;
@@ -660,8 +660,8 @@ void Runtime::applyBrightness() {
   }
   // Bedside comfort: the night sky also caps the backlight.
   if (settings_.nightDim && timePhase_ == SkyPhase::Night) level = nightBrightness(level);
-  if (power_ == PowerState::Dimmed) level = level / 2 < 16 ? 16 : level / 2;
-  if (topFullscreen()) level = level / 3 < 16 ? 16 : level / 3;  // idle face: dim
+  if (power_ == PowerState::Dimmed && !topKeepsBright()) level = level / 2 < 16 ? 16 : level / 2;
+  if (topFullscreen() && !topKeepsBright()) level = level / 3 < 16 ? 16 : level / 3;  // idle face: dim
   level = backlightDuty(level);  // perceived level -> PWM duty
   if (power_ == PowerState::Off) level = 0;
   if (holdDuty_ >= 0) level = (uint8_t)holdDuty_;  // calibration: an exact backlight

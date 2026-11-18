@@ -78,6 +78,7 @@ class GreetingApp : public App {
    public:
     explicit GreetingScreen(GreetingApp &app) : app_(app) {}
     bool fullscreen() const override { return true; }
+    bool keepsBright() const override { return true; }  // it is read: not an idle face, not dimmed while it is up
     void layout(const Rect &area, const Theme &t) override;
     void draw(Canvas &c, const Theme &t) override;
     bool onEvent(const Event &e, AppContext &ctx) override;
