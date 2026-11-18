@@ -109,15 +109,20 @@ void UpdateService::configure(HttpService *http, FirmwareSlot *slot, Platform *p
   slot_ = slot;
   platform_ = platform;
   copyText(current_, sizeof(current_), currentVersion ? currentVersion : "");
-  copyText(manifestUrl_, sizeof(manifestUrl_), manifestUrl ? manifestUrl : "");
-  enabled_ = http && http->available() && slot && slot->available() && strncmp(manifestUrl_, "https://", 8) == 0;
+  // An address that does not fit is refused, never silently cut short (a
+  // truncated URL is just another place that answers "not found").
+  const bool fits = !manifestUrl || strlen(manifestUrl) < sizeof(manifestUrl_);
+  copyText(manifestUrl_, sizeof(manifestUrl_), manifestUrl && fits ? manifestUrl : "");
+  enabled_ = fits && http && http->available() && slot && slot->available() && strncmp(manifestUrl_, "https://", 8) == 0;
   status_ = UpdateStatus{};
   if (enabled_) {
     status_.state = UpdateState::Idle;
   } else {
     status_.state = UpdateState::Unavailable;
     copyText(status_.error, sizeof(status_.error),
-             !slot || !slot->available() ? "Needs the two-slot layout (flash by USB once)" : "No update server set");
+             !fits                       ? "The update address is too long"
+             : !slot || !slot->available() ? "Needs the two-slot layout (flash by USB once)"
+                                           : "No update server set");
   }
   topic_.publish(status_);
 }

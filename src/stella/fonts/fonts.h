@@ -18,7 +18,13 @@ struct FontSet {
 };
 
 extern const FontSet kCompact;  // ~320x240 panels
+#ifdef STELLA_COMPACT_FONTS_ONLY
+// A board whose panels are all compact (examples/CYD/build_opt.h) leaves the
+// large set out of flash; a larger panel would simply use the compact one.
+inline const FontSet &kRegular = kCompact;
+#else
 extern const FontSet kRegular;  // ~480x320 and larger
+#endif
 
 }  // namespace fonts
 }  // namespace stella

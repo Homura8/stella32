@@ -133,6 +133,16 @@ or display I/O.
   by occurrence, with python-dateutil and zoneinfo (the reference values are in
   the test), feeds it one byte at a time, streams 7 MB in bounded memory and
   truncates or mangles it everywhere; the suite also passes under ASan/UBSan.
+- **Requests are checked whole.** A request is built in a buffer sized with
+  room to spare and is refused, never sent, if it does not fit (Weather:
+  `WeatherService::buildUrl`; the update address is refused at start-up if it
+  is longer than its buffer). The host tests' fake network is as strict as the
+  real servers: `SimHttp::validateUrl` answers 400 to an address that is not
+  https, has a space, an empty parameter, an unknown or misspelt variable or
+  an out-of-range value (Open-Meteo's rules are encoded in
+  `host/host_board.cpp`). When a service gains a request, teach the fake the
+  server's rules and test every real request against it
+  (`tests/test_request_audit.cpp`).
 - **Freshness** (`service/data_status.h`): every data service keeps its last
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
@@ -441,13 +451,13 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,579,103 B of a 1,966,080 B app slot (80%); mbedTLS/HTTPS is most of it |
+| Program (flash) | 1,467,591 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it (1,579,103 B / 80% before the large font set was left out) |
 | Static RAM (globals) | 94,556 B; 233,124 B left for stacks and heap (the setup server's and the remote server's request slots are ~7 KB of it; watch *Lowest free* in About) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
-| Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |
+| Fonts (flash) | ~170 KB for both densities (the bedside numerals are ~56 KB of it); the CYD build carries only the compact set (`STELLA_COMPACT_FONTS_ONLY`, set in `examples/CYD/build_opt.h`; a board with a panel of 300 px or more on its short side leaves it unset) |
 
 ## Roadmap
 
