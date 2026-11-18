@@ -37,12 +37,44 @@ MoonPhase moonPhase(int64_t epochSeconds) {
   return MoonPhase{index, kNames[index], (float)((1 - cos(angle)) / 2)};
 }
 
-void formatLongDate(const LocalTime &t, char *out, size_t capacity) {
+void formatLongDate(const LocalTime &t, char *out, size_t capacity, uint8_t dateOrder) {
   if (!t.valid) {
     snprintf(out, capacity, "Waiting for the time");
     return;
   }
-  snprintf(out, capacity, "%s %d %s", weekdayName(t.weekday), t.day, monthName(t.month));
+  if (dateOrder == 1) snprintf(out, capacity, "%s %s %d", weekdayName(t.weekday), monthName(t.month), t.day);
+  else snprintf(out, capacity, "%s %d %s", weekdayName(t.weekday), t.day, monthName(t.month));
+}
+
+void formatShortDate(const LocalTime &t, char *out, size_t capacity, uint8_t dateOrder) {
+  if (!t.valid) {
+    snprintf(out, capacity, "--");
+    return;
+  }
+  if (dateOrder == 1) snprintf(out, capacity, "%.3s %.3s %d", weekdayName(t.weekday), monthName(t.month), t.day);
+  else snprintf(out, capacity, "%.3s %d %.3s", weekdayName(t.weekday), t.day, monthName(t.month));
+}
+
+void describeNextSun(AppContext &ctx, char *out, size_t capacity) {
+  out[0] = '\0';
+  const SystemStatus st = ctx.status();
+  const LocalTime now = ctx.localTime();
+  if (!now.valid) return;
+  if (st.sunPolar == 1) return (void)snprintf(out, capacity, "The Sun stays up today");
+  if (st.sunPolar == 2) return (void)snprintf(out, capacity, "The Sun stays down today");
+  if (st.sunrise == 0 || st.sunset == 0) return;
+  const bool rise = now.epoch < st.sunrise || now.epoch >= st.sunset;
+  const LocalTime at = ctx.localTimeAt(rise ? st.sunrise : st.sunset);
+  char clock[12];
+  ctx.formatTime(at, clock, sizeof(clock));
+  snprintf(out, capacity, "%s %s%s", rise ? "Sunrise" : "Sunset", clock,
+           ctx.settings().clock24h ? "" : at.hour < 12 ? " AM" : " PM");
+}
+
+int displayTemperature(int celsius, bool fahrenheit) {
+  if (!fahrenheit) return celsius;
+  const int tenths = celsius * 18;  // nearest degree: round half away from zero
+  return (tenths + (tenths >= 0 ? 5 : -5)) / 10 + 32;
 }
 
 void describeWait(int minutes, char *out, size_t capacity) {

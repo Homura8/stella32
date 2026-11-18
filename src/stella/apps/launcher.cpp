@@ -175,8 +175,9 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   else snprintf(clock, sizeof(clock), "--:--");
   snprintf(greeting, sizeof(greeting), "%s", greetingFor(now));
   if (now.valid) {
-    snprintf(date, sizeof(date), "%.3s %d %.3s \xc2\xb7 %s", weekdayName(now.weekday), now.day, monthName(now.month),
-             phaseName(ctx.theme().phase));
+    char day[24];
+    formatShortDate(now, day, sizeof(day), ctx.settings().dateOrder);
+    snprintf(date, sizeof(date), "%s \xc2\xb7 %s", day, phaseName(ctx.theme().phase));
   } else {
     snprintf(date, sizeof(date), "Set the time in Settings");
   }

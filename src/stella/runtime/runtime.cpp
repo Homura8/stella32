@@ -612,7 +612,7 @@ void Runtime::maybeIdleFace() {
   for (size_t i = 0; i < appCount_; ++i) {
     if (!(apps_[i].app->info().flags & kAppIdleFace)) continue;
     if (foreground_ != home_ && foreground_ != (int)i) return;
-    launch(apps_[i].app->info().id, "bedside");
+    launch(apps_[i].app->info().id, settings_.idleFace == 1 ? "dashboard" : "bedside");
     return;
   }
 }
@@ -668,8 +668,17 @@ void Runtime::applyPanelTrim(bool force) {
 void Runtime::applySettings(const SystemSettings &s) {
   const bool timezoneChanged = strcmp(s.timezone, settings_.timezone) != 0;
   const bool autoUpdateWasOn = settings_.autoUpdate;
+  const bool unitsWereF = settings_.fahrenheit;
   settings_ = s;
   settings_.sanitize();
+  // Texts that apps offer to others (the weather on the bedside face) are
+  // written in the chosen units, so every app gets to refresh them now.
+  if (settings_.fahrenheit != unitsWereF) {
+    for (size_t i = 0; i < appCount_; ++i) {
+      apps_[i].wakeArmed = true;
+      apps_[i].wakeAt = millis();
+    }
+  }
   // Turning the daily check on looks right away (quietly) instead of tomorrow.
   if (settings_.autoUpdate && !autoUpdateWasOn) {
     updater_.setAutoCheck(true);
@@ -719,6 +728,9 @@ SystemStatus Runtime::status() const {
   s.uiStackFree = uiStackFree_.load();
   s.serviceStackFree = serviceStackFree_.load();
   s.panelTrim = board_.display && board_.display->supportsPanelTrim();
+  s.sunrise = sunRise_;
+  s.sunset = sunSet_;
+  s.sunPolar = sunPolar_;
   for (size_t i = 0; i < appCount_; ++i) {
     const int64_t t = apps_[i].nextAlarm;
     if (t > 0 && (s.nextAlarm == 0 || t < s.nextAlarm)) s.nextAlarm = t;

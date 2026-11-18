@@ -322,6 +322,14 @@ void capture(int width, int height, const std::string &root) {
     s.run(200);
     save(32, "home-editor");
     s.os.goHome();
+    s.os.launch("settings", "units");
+    s.run(200);
+    save(35, "units");
+    s.os.goHome();
+    s.os.launch("settings", "idle");
+    s.run(200);
+    save(36, "idle-face");
+    s.os.goHome();
     s.run(100);
 
     // The bedside clock, with the alarm set earlier.
@@ -329,6 +337,11 @@ void capture(int width, int height, const std::string &root) {
     s.os.launch("clock", "bedside");
     s.run(300);
     save(21, "bedside");
+    // The dashboard idle face (Settings > Idle face > Dashboard), same state.
+    s.os.goHome();
+    s.os.launch("clock", "dashboard");
+    s.run(300);
+    save(37, "dashboard");
   }
 }
 

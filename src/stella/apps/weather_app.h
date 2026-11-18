@@ -130,6 +130,7 @@ class WeatherApp : public App {
     WeatherApp &app_;
     Rect hero_, icon_, temp_, condition_, place_, chips_[3], days_[WeatherReport::kDays], status_;
     int dayCards_ = 3;
+    bool fahrenheit_ = false;  // from the settings at the last refresh
     WeatherSnapshot snap_;
     char statusText_[48] = {0};
     char sunRise_[8] = {0}, sunSet_[8] = {0};  // "6:04" and "8:41"; empty when unknown
@@ -156,6 +157,7 @@ class WeatherApp : public App {
     WeatherApp &app_;
     Rect summary_, chart_, details_;
     WeatherReport report_;
+    bool fahrenheit_ = false;
     char summaryText_[64] = {0}, detailText_[48] = {0};
     char labels_[WeatherReport::kHours][6] = {};
   };

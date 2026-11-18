@@ -14,9 +14,9 @@ using namespace layout;
 
 namespace {
 
-// Day chips in Monday-first order (weekday numbers, 0 = Sunday).
-constexpr uint8_t kChipDay[7] = {1, 2, 3, 4, 5, 6, 0};
-const char *const kChipLabel[7] = {"M", "T", "W", "T", "F", "S", "S"};
+// Day chips start on Monday or Sunday (Settings > Units): the weekday number of
+// chip i is weekdayInColumn(), 0 = Sunday. Labels are indexed by weekday.
+const char *const kChipLabel[7] = {"S", "M", "T", "W", "T", "F", "S"};
 const char *const kShortDay[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 int wrap(int value, int modulo) { return ((value % modulo) + modulo) % modulo; }
@@ -67,7 +67,7 @@ int nextAlarm(const AlarmBook &book, const LocalTime &now, int &minutes) {
   return best;
 }
 
-void describeDays(uint8_t days, char *out, size_t capacity) {
+void describeDays(uint8_t days, char *out, size_t capacity, bool weekStartsSunday) {
   days &= kEveryDay;
   if (days == 0) snprintf(out, capacity, "Once");
   else if (days == kEveryDay) snprintf(out, capacity, "Every day");
@@ -76,7 +76,8 @@ void describeDays(uint8_t days, char *out, size_t capacity) {
   else {
     size_t used = 0;
     out[0] = 0;
-    for (uint8_t day : kChipDay) {
+    for (int i = 0; i < 7; ++i) {
+      const int day = weekdayInColumn(i, weekStartsSunday);
       if (!(days & (1u << day))) continue;
       const int n = snprintf(out + used, capacity - used, "%s%s", used ? ", " : "", kShortDay[day]);
       if (n < 0 || (size_t)n >= capacity - used) break;
@@ -263,7 +264,7 @@ void AlarmsApp::ListScreen::refresh(AppContext &ctx) {
     const AlarmEntry &a = book.alarms[i];
     char time[sizeof(times_[0])], suffix[sizeof(suffixes_[0])], days[sizeof(days_[0])];
     app_.formatAlarm(ctx, a.hour, a.minute, time, sizeof(time), suffix, sizeof(suffix));
-    describeDays(a.days, days, sizeof(days));
+    describeDays(a.days, days, sizeof(days), ctx.settings().weekStartsSunday);
     if (strcmp(time, times_[i]) || strcmp(suffix, suffixes_[i]) || strcmp(days, days_[i]) || a.enabled != enabled_[i]) {
       memcpy(times_[i], time, sizeof(time));
       memcpy(suffixes_[i], suffix, sizeof(suffix));
@@ -430,6 +431,7 @@ void AlarmsApp::EditScreen::arrange() {
 }
 
 void AlarmsApp::EditScreen::onShow(AppContext &ctx) {
+  sundayFirst_ = ctx.settings().weekStartsSunday;
   const bool clock24h = ctx.settings().clock24h;
   if (clock24h != clock24h_) {
     clock24h_ = clock24h;
@@ -459,7 +461,7 @@ void AlarmsApp::EditScreen::setTime(int hour, int minute, AppContext &ctx) {
 
 void AlarmsApp::EditScreen::refreshSummary(AppContext &ctx) {
   char days[32], text[sizeof(summaryText_)];
-  describeDays(entry_.days, days, sizeof(days));
+  describeDays(entry_.days, days, sizeof(days), sundayFirst_);
   AlarmEntry probe = entry_;
   probe.enabled = 1;
   const int minutes = minutesUntil(probe, ctx.localTime());
@@ -510,15 +512,16 @@ void AlarmsApp::EditScreen::draw(Canvas &c, const Theme &t) {
 
   for (int i = 0; i < 7; ++i) {
     const Rect chip = grid(daysRow_, 7, 1, i, t.m.gapS);
-    const bool on = entry_.days & (1u << kChipDay[i]);
+    const int day = weekdayInColumn(i, sundayFirst_);
+    const bool on = entry_.days & (1u << day);
     const int radius = chip.h / 2;
     if (on) {
       c.fillRoundRect(chip, radius, p.accent, pressedDay_ == i ? 210 : 255);
-      c.drawTextIn(*t.font.body, kChipLabel[i], chip, p.accentText, Align::Center);
+      c.drawTextIn(*t.font.body, kChipLabel[day], chip, p.accentText, Align::Center);
     } else {
       paintGlass(c, t, chip, radius, Elevation::Flat);
       if (pressedDay_ == i) c.fillRoundRect(chip, radius, p.accent, 46);
-      c.drawTextIn(*t.font.body, kChipLabel[i], chip, p.textMuted, Align::Center);
+      c.drawTextIn(*t.font.body, kChipLabel[day], chip, p.textMuted, Align::Center);
     }
   }
 
@@ -564,7 +567,7 @@ bool AlarmsApp::EditScreen::onEvent(const Event &e, AppContext &ctx) {
     const bool tapped = trackPress(chip.inset(0, -t.dp(2)), e, pressed, ctx, daysRow_);
     if (pressed != (pressedDay_ == i)) pressedDay_ = pressed ? i : -1;
     if (tapped) {
-      entry_.days ^= (uint8_t)(1u << kChipDay[i]);
+      entry_.days ^= (uint8_t)(1u << weekdayInColumn(i, sundayFirst_));
       ctx.invalidate(daysRow_);
       refreshSummary(ctx);
       return true;

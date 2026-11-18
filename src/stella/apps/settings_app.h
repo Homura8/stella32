@@ -6,6 +6,13 @@
 namespace stella {
 namespace apps {
 
+// One labelled row of a ChoicesScreen.
+struct ChoiceRow {
+  const char *label;
+  const char *const *choices;
+  uint8_t count;
+};
+
 class SettingsApp : public App {
  public:
   SettingsApp();
@@ -13,6 +20,9 @@ class SettingsApp : public App {
   Screen &root() override { return main_; }
   void onTopic(uint16_t topicId, AppContext &ctx) override;
   void onRoute(const char *route, AppContext &ctx) override;
+  // Where the choices of the Units and Idle face screens are (tests).
+  Rect unitsChoice(int row, int i) const { return units_.choice(row, i); }
+  Rect idleChoice(int row, int i) const { return idle_.choice(row, i); }
 
  private:
   class MainScreen : public Screen {
@@ -24,12 +34,12 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 8;
+    static constexpr int kRows = 10;
     static void drawRow(Canvas &c, const Theme &t, int index, const Rect &row, bool pressed, void *self);
     SettingsApp &app_;
     Rect card_;
     ListView list_;
-    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0}, remoteDetail_[16] = {0};
+    char wifi_[40] = {0}, appearance_[16] = {0}, time_[40] = {0}, sound_[16] = {0}, about_[24] = {0}, remoteDetail_[16] = {0}, unitsDetail_[8] = {0}, idleDetail_[16] = {0};
   };
 
   class WifiScreen : public Screen {
@@ -93,12 +103,12 @@ class SettingsApp : public App {
     void onShow(AppContext &ctx) override;
 
    private:
-    static constexpr int kRows = 6;
+    static constexpr int kRows = 5;
     SettingsApp &app_;
     Rect card_, rows_[kRows], labels_[kRows];
     Slider brightness_;
     Toggle nightDim_;
-    Segmented dim_, off_, bedside_;
+    Segmented dim_, off_;
     ListRow calibrate_;
     char calibrateDetail_[24] = {0};
     bool night_ = false;  // the night phase (by the clock) is on now
@@ -267,6 +277,39 @@ class SettingsApp : public App {
     char installed_[32] = {0}, offered_[40] = {0}, statusText_[128] = {0};
   };
 
+  // A glass card of labelled segmented choices: Settings > Units and Settings >
+  // Idle face. What each row means is data (the labels) and two small functions
+  // (read a row from the settings, write it back).
+  class ChoicesScreen : public Screen {
+   public:
+    using Row = ChoiceRow;
+    using Get = int (*)(const SystemSettings &s, int row);
+    using Set = void (*)(SystemSettings &s, int row, int value);
+    void init(const char *title, const Row *rows, int count, Get get, Set set) {
+      title_ = title;
+      rows_ = rows;
+      count_ = count;
+      get_ = get;
+      set_ = set;
+    }
+    const char *title() const override { return title_; }
+    void layout(const Rect &content, const Theme &t) override;
+    void draw(Canvas &c, const Theme &t) override;
+    bool onEvent(const Event &e, AppContext &ctx) override;
+    void onShow(AppContext &ctx) override;
+    Rect choice(int row, int i) const { return seg_[row].segment(i); }  // tests
+
+   private:
+    static constexpr int kMax = 3;
+    const char *title_ = "";
+    const Row *rows_ = nullptr;
+    int count_ = 0;
+    Get get_ = nullptr;
+    Set set_ = nullptr;
+    Rect card_, rowRects_[kMax], labels_[kMax];
+    Segmented seg_[kMax];
+  };
+
   // Settings > Remote page: the web page on the home network (phone or PC, by
   // name or IP), its PIN, and the wallpaper it uploads. The PIN is shown only here.
   class RemoteScreen : public Screen {
@@ -333,6 +376,7 @@ class SettingsApp : public App {
   CalibrateScreen calibrate_;
   AppearanceScreen appearance_;
   TimeScreen time_;
+  ChoicesScreen units_, idle_;
   SoundScreen sound_{*this};
   LedFindScreen ledFind_;
   LightCalibrateScreen light_;

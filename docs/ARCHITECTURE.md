@@ -163,11 +163,23 @@ twinkle, the big sparkle swells, and the moon and planet shift a pixel; once
 per cycle the moon blinks. Only the spots that change are invalidated, so a
 frame costs a few thousand pixels.
 
+The bedside face also shows the next sun event ("Sunrise 05:59" until
+sunrise, "Sunset 20:10" by day; `describeNextSun`, from `SystemStatus::sunrise`
+/`sunset`, which the Weather place tells the shell about with `setSun`).
+
+The Clock app has a second idle face, the **dashboard**: the time, the date and
+up to three quiet lines (the weather glance, the next alarm, the next sun
+event) on the same dim black, with no animation, so it writes nothing between
+minutes and only the changed line at a minute change. *Settings > Idle face*
+chooses when it starts (*Start*: Off, Night, Always) and which face (*Face*:
+Clock, Dashboard).
+
 An app flagged `kAppIdleFace` offers such a face. After the idle dim, if the
-setting *Bedside* is *Night* (and it is night by the clock) or *Always*, and
-the time is known, the runtime calls `launch(id, "bedside")`, but only when
-Home or that app is in front, so nothing the user is doing is replaced. Any
-tap on the face leaves it (`pop()`), landing on the Clock.
+setting *Start* is *Night* (and it is night by the clock) or *Always*, and
+the time is known, the runtime calls `launch(id, "bedside")` (or `"dashboard"`
+when *Face* is Dashboard), but only when Home or that app is in front, so
+nothing the user is doing is replaced. Any tap on the face leaves it
+(`pop()`), landing on the Clock.
 
 Apps may offer a short line for idle faces with `AppContext::setGlance(icon,
 text)`; the Weather app publishes "17° Partly cloudy" (and withdraws it when

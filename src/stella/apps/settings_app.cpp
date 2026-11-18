@@ -56,7 +56,37 @@ const char *resetName(ResetCause c) {
 
 }  // namespace
 
-SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this), about_(*this) {}
+namespace {
+
+const char *const kTempChoices[] = {"\xc2\xb0""C", "\xc2\xb0""F"};
+const char *const kWeekChoices[] = {"Monday", "Sunday"};
+const char *const kDateChoices[] = {"17 Nov", "Nov 17"};
+const ChoiceRow kUnitsRows[] = {
+    {"Temperature", kTempChoices, 2}, {"Week starts", kWeekChoices, 2}, {"Date", kDateChoices, 2}};
+int unitsGet(const SystemSettings &s, int row) {
+  return row == 0 ? s.fahrenheit : row == 1 ? s.weekStartsSunday : s.dateOrder;
+}
+void unitsSet(SystemSettings &s, int row, int v) {
+  if (row == 0) s.fahrenheit = v != 0;
+  else if (row == 1) s.weekStartsSunday = v != 0;
+  else s.dateOrder = (uint8_t)v;
+}
+
+const char *const kStartChoices[] = {"Off", "Night", "Always"};
+const char *const kFaceChoices[] = {"Clock", "Dashboard"};
+const ChoiceRow kIdleRows[] = {{"Start", kStartChoices, 3}, {"Face", kFaceChoices, 2}};
+int idleGet(const SystemSettings &s, int row) { return row == 0 ? s.bedside : s.idleFace; }
+void idleSet(SystemSettings &s, int row, int v) {
+  if (row == 0) s.bedside = (uint8_t)v;
+  else s.idleFace = (uint8_t)v;
+}
+
+}  // namespace
+
+SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this), about_(*this) {
+  units_.init("Units", kUnitsRows, 3, unitsGet, unitsSet);
+  idle_.init("Idle face", kIdleRows, 2, idleGet, idleSet);
+}
 
 const AppInfo &SettingsApp::info() const {
   static const AppInfo kInfo{"settings", "Settings", icons::gear, 1, 0};
@@ -79,6 +109,8 @@ void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "wifi") == 0) ctx.push(wifi_);
   if (route && strcmp(route, "whatsnew") == 0) ctx.push(whatsNew_);
   if (route && strcmp(route, "remote") == 0) ctx.push(remote_);
+  if (route && strcmp(route, "units") == 0) ctx.push(units_);
+  if (route && strcmp(route, "idle") == 0) ctx.push(idle_);
 }
 
 // ------------------------------------------------------------------ main list
@@ -111,6 +143,8 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
     snprintf(about_, sizeof(about_), "Update %.12s", update.version);
   else if (update.state == UpdateState::Ready)
     snprintf(about_, sizeof(about_), "Restart to update");
+  snprintf(unitsDetail_, sizeof(unitsDetail_), "%s", s.fahrenheit ? "\xc2\xb0""F" : "\xc2\xb0""C");
+  snprintf(idleDetail_, sizeof(idleDetail_), "%s", s.bedside == 0 ? "Off" : s.idleFace == 1 ? "Dashboard" : "Clock");
   const RemoteInfo remote = ctx.remote().status();
   snprintf(remoteDetail_, sizeof(remoteDetail_), "%s", remote.running ? "On" : remote.enabled ? "Waiting" : "Off");
   const NetworkStatus net = ctx.network().status();
@@ -136,7 +170,9 @@ void SettingsApp::MainScreen::drawRow(Canvas &c, const Theme &t, int index, cons
                    {"Time", icons::clock, 2, s.time_},
                    {"About", icons::info, 0, s.about_},
                    {"Home screen", icons::home, 3, nullptr},
-                   {"Remote page", icons::wifi, 2, s.remoteDetail_}};
+                   {"Remote page", icons::wifi, 2, s.remoteDetail_},
+                   {"Units", icons::gear, 0, s.unitsDetail_},
+                   {"Idle face", icons::moon, 1, s.idleDetail_}};
   ListRow r;
   r.bounds = row;
   r.title = rows[index].title;
@@ -157,7 +193,7 @@ bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   const int index = list_.handle(e, ctx);
   if (index < 0) return false;
   Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_,
-                            nullptr, &app_.remote_};
+                            nullptr, &app_.remote_, &app_.units_, &app_.idle_};
   if (targets[index]) ctx.push(*targets[index]);
   else ctx.launch("home", "customise");
   return true;
@@ -855,7 +891,6 @@ bool SettingsApp::SetupScreen::onEvent(const Event &e, AppContext &ctx) {
 
 namespace {
 
-const char *const kBedsideLabels[] = {"Off", "Night", "Always"};
 const char *const kRefreshLabels[] = {"Default", "90 Hz", "100 Hz", "119 Hz"};
 const uint8_t kRefreshHz[] = {0, 90, 100, 119};
 const char *const kTabLabels[] = {"Tone", "Colour", "Panel"};
@@ -886,9 +921,8 @@ void SettingsApp::DisplayScreen::layout(const Rect &content, const Theme &t) {
     if (i == 1) nightDim_.bounds = rows_[i];
     if (i == 2) dim_.bounds = control.inset(0, t.dp(2));
     if (i == 3) off_.bounds = control.inset(0, t.dp(2));
-    if (i == 4) bedside_.bounds = control.inset(0, t.dp(2));
   }
-  calibrate_.bounds = Rect(card_.x, rows_[5].y, card_.w, rows_[5].h);
+  calibrate_.bounds = Rect(card_.x, rows_[4].y, card_.w, rows_[4].h);
   calibrate_.title = "Calibrate";
   calibrate_.icon = nullptr;
   calibrate_.chevron = true;
@@ -906,9 +940,6 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
   off_.labels = kOffLabels;
   off_.count = 4;
   off_.selected = nearestIndex(kOffSeconds, 4, s.sleepAfterSec);
-  bedside_.labels = kBedsideLabels;
-  bedside_.count = 3;
-  bedside_.selected = s.bedside;
   const LocalTime now = ctx.localTime();
   night_ = !now.valid || ctx.status().night;
   snprintf(calibrateDetail_, sizeof(calibrateDetail_), "%s \xc2\xb7 %u%%", toneName(s.colorTone),
@@ -919,8 +950,7 @@ void SettingsApp::DisplayScreen::onShow(AppContext &ctx) {
 void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   const Palette &p = t.color;
   paintGlass(c, t, card_, t.m.radiusCard);
-  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off",
-                                                 "Bedside"};
+  static const char *const kLabels[kRows - 1] = {"Brightness", "Dim at night", "Dim when idle", "Screen off"};
   for (int i = 0; i < kRows - 1; ++i) {
     c.drawTextIn(*t.font.body, kLabels[i], labels_[i], p.text);
     paintHairline(c, t, rows_[i].x, rows_[i].bottom() - 1, rows_[i].w);
@@ -934,7 +964,6 @@ void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   nightDim_.draw(c, t);
   dim_.draw(c, t);
   off_.draw(c, t);
-  bedside_.draw(c, t);
   calibrate_.draw(c, t);
 }
 
@@ -959,11 +988,6 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
   }
   if (off_.handle(e, ctx)) {
     s.sleepAfterSec = kOffSeconds[off_.selected];
-    ctx.applySettings(s);
-    return true;
-  }
-  if (bedside_.handle(e, ctx)) {
-    s.bedside = bedside_.selected;
     ctx.applySettings(s);
     return true;
   }
@@ -1334,6 +1358,52 @@ bool SettingsApp::TimeScreen::onEvent(const Event &e, AppContext &ctx) {
     return true;
   }
   return true;
+}
+
+// ------------------------------------------------------------------ choices
+
+void SettingsApp::ChoicesScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int rowH = cardRowHeight(t, area.h, count_);
+  card_ = Rect(area.x, area.y, area.w, count_ * rowH + 2 * t.dp(4));
+  const Rect inner = card_.inset(t.m.padding, t.dp(4));
+  for (int i = 0; i < count_ && i < kMax; ++i) {
+    rowRects_[i] = Rect(inner.x, inner.y + i * rowH, inner.w, rowH);
+    Rect parts[2];
+    row(rowRects_[i], {px(t.dp(96)), flex()}, t.m.gapM, parts);
+    labels_[i] = parts[0];
+    const int pad = (rowH - t.m.control) / 2 > 0 ? (rowH - t.m.control) / 2 : 0;
+    seg_[i].bounds = parts[1].inset(0, pad + t.dp(2));
+  }
+}
+
+void SettingsApp::ChoicesScreen::onShow(AppContext &ctx) {
+  for (int i = 0; i < count_ && i < kMax; ++i) {
+    seg_[i].labels = rows_[i].choices;
+    seg_[i].count = rows_[i].count;
+    seg_[i].selected = (uint8_t)get_(ctx.settings(), i);
+  }
+}
+
+void SettingsApp::ChoicesScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, card_, t.m.radiusCard);
+  for (int i = 0; i < count_ && i < kMax; ++i) {
+    c.drawTextIn(*t.font.body, rows_[i].label, labels_[i], t.color.text);
+    if (i < count_ - 1) paintHairline(c, t, rowRects_[i].x, rowRects_[i].bottom() - 1, rowRects_[i].w);
+    seg_[i].draw(c, t);
+  }
+}
+
+bool SettingsApp::ChoicesScreen::onEvent(const Event &e, AppContext &ctx) {
+  for (int i = 0; i < count_ && i < kMax; ++i) {
+    if (seg_[i].handle(e, ctx)) {
+      SystemSettings s = ctx.settings();
+      set_(s, i, seg_[i].selected);
+      ctx.applySettings(s);
+      return true;
+    }
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ remote page
