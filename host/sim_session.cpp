@@ -34,6 +34,36 @@ std::string weatherFixture(bool day) {
 
 }  // namespace
 
+// A small calendar for the simulator and the tests: a stand-up and a lecture that repeat, a
+// couple of one-off events, a multi-day trip and a birthday, around Mon 16 Nov 2026 (AEDT).
+const char *const kCalendarFixture =
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Stella//Simulator//EN\r\n"
+    "BEGIN:VTIMEZONE\r\nTZID:Australia/Melbourne\r\n"
+    "BEGIN:DAYLIGHT\r\nTZOFFSETFROM:+1000\r\nTZOFFSETTO:+1100\r\nDTSTART:19701004T020000\r\n"
+    "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=1SU\r\nEND:DAYLIGHT\r\n"
+    "BEGIN:STANDARD\r\nTZOFFSETFROM:+1100\r\nTZOFFSETTO:+1000\r\nDTSTART:19700405T030000\r\n"
+    "RRULE:FREQ=YEARLY;BYMONTH=4;BYDAY=1SU\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+    "BEGIN:VEVENT\r\nUID:standup\r\nSUMMARY:Team stand-up\r\n"
+    "DTSTART;TZID=Australia/Melbourne:20261102T093000\r\nDURATION:PT15M\r\n"
+    "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:lecture\r\nSUMMARY:Chemistry lecture\r\nLOCATION:Room 3.12\r\n"
+    "DTSTART;TZID=Australia/Melbourne:20260810T110000\r\nDTEND;TZID=Australia/Melbourne:20260810T130000\r\n"
+    "RRULE:FREQ=WEEKLY;BYDAY=MO\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:dentist\r\nSUMMARY:Dentist\r\n"
+    "DTSTART;TZID=Australia/Melbourne:20261117T083000\r\nDTEND;TZID=Australia/Melbourne:20261117T091500\r\n"
+    "END:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:study\r\nSUMMARY:Study group\r\nLOCATION:Library, level 2\r\n"
+    "DTSTART;TZID=Australia/Melbourne:20261117T150000\r\nDTEND;TZID=Australia/Melbourne:20261117T170000\r\n"
+    "END:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:trip\r\nSUMMARY:Canberra trip\r\n"
+    "DTSTART;VALUE=DATE:20261119\r\nDTEND;VALUE=DATE:20261123\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:movie\r\nSUMMARY:Movie night\r\nLOCATION:Cinema Nova\r\n"
+    "DTSTART;TZID=Australia/Melbourne:20261120T193000\r\nDTEND;TZID=Australia/Melbourne:20261120T213000\r\n"
+    "END:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nUID:birthday\r\nSUMMARY:Mum's birthday\r\n"
+    "DTSTART;VALUE=DATE:20101128\r\nRRULE:FREQ=YEARLY\r\nEND:VEVENT\r\n"
+    "END:VCALENDAR\r\n";
+
 SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online)
     : dev(width, height) {
   config.serviceThread = threaded;
@@ -49,6 +79,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
     config.wifiPassword = "moonbeam";
   }
   dev.http.routes.push_back({"api.open-meteo.com", weatherFixture(epoch != kEveningEpoch), 200});
+  dev.http.routes.push_back({"calendar.example", kCalendarFixture, 200});
   if (epoch) dev.platform.setEpoch(epoch);
   config.renderBuffer = dev.buffer.data();
   config.renderBufferPixels = dev.buffer.size();
@@ -64,6 +95,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.install(stopwatch);
   os.install(settings);
   os.install(touchTest);
+  os.install(calendar);
   os.start();
   run(online ? 4000 : 100);  // join Wi-Fi and fetch the forecast
 }
@@ -113,7 +145,7 @@ Point SimSession::settingsRow(int i) const {
   const Theme &t = os.theme();
   const Rect c = os.contentRect();
   // Settings' list shrinks its rows when all of them do not fit (see MainScreen::layout).
-  constexpr int kRows = 10;
+  constexpr int kRows = 11;
   const int areaH = c.h - 2 * t.m.gapS;
   int rowH = kRows * t.m.row <= areaH ? t.m.row : areaH / kRows;
   if (rowH < t.dp(32)) rowH = t.dp(32);

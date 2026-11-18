@@ -73,7 +73,8 @@ size_t RemoteConnection::respond(char *head, size_t headCapacity, char *scratch,
 // ---------------------------------------------------------------- service
 
 void RemoteService::configure(RemoteServer *server, WallpaperStore *store, WifiDriver *rng, KeyValueStore *kv,
-                              JobScheduler *jobs, const Topic<NetworkStatus> *network) {
+                              JobScheduler *jobs, const Topic<NetworkStatus> *network, CalendarSourceControl *calendar) {
+  calendar_ = calendar;
   server_ = server;
   store_ = store;
   rng_ = rng;
@@ -296,7 +297,8 @@ void RemoteService::handleRemote(const RemoteRequest &req, RemoteResponse &res) 
     return;
   }
   const bool known = strcmp(path, "/api/check") == 0 || strcmp(path, "/api/wallpaper/remove") == 0 ||
-                     strcmp(path, "/api/veil") == 0;
+                     strcmp(path, "/api/veil") == 0 || strcmp(path, "/api/calendar") == 0 ||
+                     strcmp(path, "/api/calendar/remove") == 0 || strcmp(path, "/api/calendar/status") == 0;
   if (!known) {
     res.status = 404;
     json(res, "{\"error\":\"not found\"}");
@@ -313,6 +315,8 @@ void RemoteService::handleRemote(const RemoteRequest &req, RemoteResponse &res) 
   } else if (strcmp(path, "/api/wallpaper/remove") == 0) {
     removeWallpaper();
     json(res, "{\"ok\":true}");
+  } else if (strncmp(path, "/api/calendar", 13) == 0) {
+    handleCalendar(path, req, res);
   } else {  // /api/veil
     char value[8];
     const char *eq = strchr(req.body, '=');
@@ -323,6 +327,44 @@ void RemoteService::handleRemote(const RemoteRequest &req, RemoteResponse &res) 
       return;
     }
     setVeil((uint8_t)v);
+    json(res, "{\"ok\":true}");
+  }
+}
+
+// The calendar's address: set, forget, or ask whether there is one. The address itself is never
+// sent back or logged; only its host is.
+void RemoteService::handleCalendar(const char *path, const RemoteRequest &req, RemoteResponse &res) {
+  if (!calendar_) {
+    res.status = 503;
+    json(res, "{\"error\":\"no calendar on this device\"}");
+    return;
+  }
+  if (strcmp(path, "/api/calendar/remove") == 0) {
+    calendar_->clearAddress();
+    json(res, "{\"ok\":true}");
+  } else if (strcmp(path, "/api/calendar/status") == 0) {
+    char host[64];
+    calendar_->host(host, sizeof(host));
+    for (char *c = host; *c; ++c)  // the host goes into JSON: keep it to plain characters
+      if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '.' || *c == '-' || *c == ':')) *c = '?';
+    res.length = (size_t)snprintf(res.body, res.capacity, "{\"set\":%s,\"host\":\"%s\"}",
+                                  calendar_->hasAddress() ? "true" : "false", host);
+  } else {  // /api/calendar: the body is the address
+    char url[kCalendarUrlBytes + 1];
+    size_t n = req.bodyLen < sizeof(url) - 1 ? req.bodyLen : sizeof(url) - 1;
+    memcpy(url, req.body, n);
+    while (n > 0 && (url[n - 1] == '\n' || url[n - 1] == '\r' || url[n - 1] == ' ' || url[n - 1] == '\t')) --n;
+    url[n] = '\0';
+    const char *why = "";
+    const bool ok = req.bodyLen < sizeof(url) && calendar_->setAddress(url, &why);
+    volatile char *v = url;  // a copy of the address
+    for (size_t i = 0; i < sizeof(url); ++i) v[i] = 0;
+    if (!ok) {
+      res.status = 400;
+      res.length = (size_t)snprintf(res.body, res.capacity, "{\"error\":\"%s\"}",
+                                    req.bodyLen < sizeof(url) ? why : "That address is too long");
+      return;
+    }
     json(res, "{\"ok\":true}");
   }
 }

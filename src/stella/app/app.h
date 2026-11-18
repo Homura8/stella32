@@ -14,6 +14,7 @@
 #include "../gfx/canvas.h"
 #include "../hal/hal.h"
 #include "../input/event.h"
+#include "../net/calendar_source.h"
 #include "../net/firmware_update.h"
 #include "../net/remote.h"
 #include "../net/http_service.h"
@@ -114,6 +115,10 @@ class ServiceHost {
   virtual bool addJob(Job &job, uint32_t firstDelayMs = 0) = 0;
   virtual bool attachTopic(TopicBase &topic) = 0;
   virtual HttpService &http() = 0;
+  // The calendar's address (set from Settings or the remote page; the calendar service reads it).
+  virtual CalendarSource &calendarFeed() = 0;
+  // The wall clock as epoch seconds; false until the time is known. Safe on the service thread.
+  virtual bool wallClock(int64_t &epochSeconds) = 0;
   // Read-only access to persisted state while installing (e.g. a saved place).
   virtual const SystemSettings &systemSettings() const = 0;
   virtual RecordStatus loadRecordFor(const char *appId, const char *key, uint16_t version, void *data,
@@ -232,6 +237,7 @@ class AppContext : public Invalidator {
   virtual UpdateControl &update() = 0;
   // The web page on the home network and the wallpaper it uploads (Settings > Remote page).
   virtual RemoteControl &remote() = 0;
+  virtual CalendarSourceControl &calendar() = 0;
   // Restart the device shortly (after a short pause so the screen can say so).
   virtual void restartDevice() = 0;
   // Show a system alert owned by the calling app; one with the same tag is
