@@ -186,6 +186,12 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   (the weather in `title`, the next alarm and the next sunrise or sunset in
   `body`, each with its small icon), and "Tap anywhere to return" in `bedStar`.
   The bedside clock gains the same sun line in `caption` under the alarm.
+- **Calendar:** one glass card with a scrolling list (the usual up/down strip). Each
+  event is a row: the day label in `caption` and the accent on the first event of a
+  day ("Today", "Tomorrow", "Thu 19 Nov"), the title in `body`, and "09:30-10:30 ·
+  Room 3.12" in `caption` and `textMuted`; events that are over dim to `textMuted`.
+  A freshness line under the card. With nothing to list: a `headline`, a short
+  `body` hint and, without an address, a *Set up* button that opens Settings.
 - **Weather:** large display-font temperature, condition in `title`, three
   (compact) or four (regular) glass forecast cards, a muted freshness line.
 

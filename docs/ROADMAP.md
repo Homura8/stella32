@@ -180,7 +180,7 @@ Source of truth: the owner's `celestia-nightstand` repository (private;
 | Nightstand | In Stella | Notes |
 | --- | --- | --- |
 | Home with the next class, weather, "daily brief" | Customisable Home + a Calendar app | |
-| University calendar (iCalendar fetch and parse) | **Calendar app** (`net/` parser + app) | **Parser done** (`net/ical*.{h,cpp}`: bounded, streaming, VTIMEZONE zones, all-day, repeats, overrides; checked against python-dateutil). Still to do: the fetch job, freshness/coverage warnings as Nightstand does, the app, and the URL entered on the remote page and never logged |
+| University calendar (iCalendar fetch and parse) | **Calendar app** (`net/` parser + app) | **Built in 0.14.0**: the streaming parser (`net/ical*`), a fetch job with last-good data and a freshness line, an agenda screen, and the address entered on the remote page and never logged. To do: "next class" on Home and the bedside/dashboard faces, event details on tap, several calendars, redirects if a host needs them |
 | Bedside face with "First class 09:00 · wake ~06:50", sleep window | Bedside face lines + a **sleep planner** | Needs the calendar; port `planner.h`'s logic with its tests |
 | Travel (Melbourne bus + train / tram, departures, transfers) | **Transit app**, optional | Very personal and key-gated (PTV); keep the stops and keys on the device only. Port the planner and its 60 reference comparisons if wanted |
 | Network (UniFi inventory and traffic) | **Network app**, optional | Read-only; host and API key entered on the device; the owner uses it, friends will not |

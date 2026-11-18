@@ -14,6 +14,9 @@
 //   POST /api/push             "cpu=37%&temp=61C" (or one pair per line): live values for the
 //                              Values app (see net/values.h); an empty value removes a key
 //   POST /api/push/clear       forget every pushed value
+//   POST /api/calendar         the body is the https address of an iCalendar feed
+//   POST /api/calendar/remove  forget it
+//   POST /api/calendar/status  {"set":true,"host":"..."} (never the address itself)
 //
 // Plain HTTP on a home LAN: the PIN and the picture cross it unencrypted, so
 // this is for a network you trust. Wrong PINs lock the page for five minutes
@@ -27,6 +30,7 @@
 #include "../service/job_scheduler.h"
 #include "../service/topic.h"
 #include "../storage/record.h"
+#include "calendar_source.h"
 #include "http_request.h"
 #include "values.h"
 #include "network_status.h"
@@ -38,13 +42,18 @@ namespace topics {
 constexpr uint16_t kRemote = 4;  // Topic<RemoteInfo>
 }
 
+// How far a new wallpaper is washed toward white (light mode) or black (dark
+// mode), in percent. 35 looked washed out on the CYD's panel, which already
+// lifts pastels; a light touch keeps text readable on the glass cards.
+constexpr uint8_t kDefaultWallpaperVeil = 15;
+
 struct RemoteInfo {
   bool enabled = false;
   bool running = false;           // listening on the home network now
   bool wallpaperSupported = false;
   bool wallpaper = false;         // a valid picture is stored
   bool lockedOut = false;         // too many wrong PINs
-  uint8_t veil = 35;              // 0..90 % wash over the picture
+  uint8_t veil = kDefaultWallpaperVeil;  // 0..90 % wash over the picture
   uint32_t generation = 0;        // changes whenever the picture does
   char host[24] = {0};            // "stella-ab12"
   char ip[16] = {0};
@@ -121,7 +130,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   explicit RemoteService(Topic<RemoteInfo> &topic) : topic_(topic) {}
   // Before the scheduler starts. Any of the devices may be null.
   void configure(RemoteServer *server, WallpaperStore *store, WifiDriver *rng, KeyValueStore *kv, JobScheduler *jobs,
-                 const Topic<NetworkStatus> *network);
+                 const Topic<NetworkStatus> *network, CalendarSourceControl *calendar = nullptr);
   bool wallpaperValid() const { return valid_.load(); }
   // Where pushed values are published (optional; without it /api/push answers 503).
   void setValuesTopic(Topic<PushedValues> *topic) { values_ = topic; }
@@ -163,6 +172,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   void makePin();
   int authorize(const char *pin);  // 0 ok, 401 wrong, 429 locked
   void handlePush(const char *path, const RemoteRequest &request, RemoteResponse &response);
+  void handleCalendar(const char *path, const RemoteRequest &req, RemoteResponse &res);
   void publish();
   void json(RemoteResponse &r, const char *text);
 
@@ -175,6 +185,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   const Topic<NetworkStatus> *network_ = nullptr;
   Topic<PushedValues> *values_ = nullptr;
   PushedValues pushed_;  // the service thread only (the handler runs inside run())
+  CalendarSourceControl *calendar_ = nullptr;
 
   mutable osal::Mutex lock_;  // guards pending_ and pin_
   Pending pending_;
@@ -183,7 +194,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   // Service thread only.
   RemoteInfo info_;
   bool enabled_ = false;
-  uint8_t veil_ = 35;
+  uint8_t veil_ = kDefaultWallpaperVeil;
   uint32_t now_ = 0, lockedUntil_ = 0;
   int failures_ = 0;
   bool locked_ = false;

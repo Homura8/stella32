@@ -8,6 +8,8 @@ namespace {
 // top one matches the running version.
 const ChangelogEntry kChangelog[] = {
     {"0.15.0", {"Values: live numbers", "Sent by a script on your Wi-Fi", "See Settings, Remote page", nullptr}},
+    {"0.14.0", {"Calendar: your next events", "Address: on the remote page", "Settings, then Calendar", nullptr}},
+    {"0.13.1", {"Remote page: no stale error", "Gentler wallpaper defaults", nullptr}},
     {"0.13.0",
      {"Units: \xc2\xb0" "C/\xc2\xb0" "F, week, date", "Idle face: clock or dashboard",
       "Sunrise/sunset on bedside", nullptr}},

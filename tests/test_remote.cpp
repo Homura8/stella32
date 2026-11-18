@@ -8,6 +8,7 @@
 
 #include "sim_session.h"
 #include "stella/net/remote.h"
+#include "stella/net/remote_page.h"
 #include "stella/net/wallpaper.h"
 #include "test.h"
 
@@ -74,12 +75,14 @@ struct Rig {
   Topic<NetworkStatus> net{topics::kNetwork};
   Topic<RemoteInfo> info{topics::kRemote};
   RemoteService service{info};
+  CalendarSource calendar;
   uint32_t now = 1000;
   explicit Rig(bool connected = true) {
     NetworkStatus n;
     n.present = n.connected = connected;
     net.publish(n);
-    service.configure(&server, &store, nullptr, &kv, nullptr, &net);
+    calendar.configure(&kv, nullptr);
+    service.configure(&server, &store, nullptr, &kv, nullptr, &net, &calendar);
   }
   void run(uint32_t ms = 0) {
     now += ms;
@@ -385,7 +388,7 @@ TEST(a_wallpaper_replaces_the_sky_washed_toward_the_theme_and_goes_away_again) {
   const std::string file = makeWallpaper(0xF800, 0x001F);
   CHECK_EQ(send(*handler, post("/api/wallpaper", pinOf(s), file)).status, 200);
   s.run(600);
-  const uint8_t veil = 35 * 255 / 100;
+  const uint8_t veil = kDefaultWallpaperVeil * 255 / 100;
   CHECK(s.dev.display.pixel(3, 100) == blend((Color)0xF800, (Color)0x0000, veil));  // left half red, washed dark
   CHECK(s.dev.display.pixel(316, 100) == blend((Color)0x001F, (Color)0x0000, veil));
   CHECK(s.dev.display.pixel(3, 100) != skyLeft);
@@ -616,4 +619,79 @@ TEST(the_values_app_shows_tiles_dims_the_quiet_ones_and_keeps_a_calm_screen) {
     s.run(5000);
     CHECK_EQ(s.dev.display.pixelsWritten(), 0u);
   }
+}
+
+// ------------------------------------------------------------------ calendar address
+
+TEST(the_calendar_address_is_set_checked_remembered_and_never_sent_back) {
+  Rig r;
+  const std::string url = "https://calendar.example/feeds/private-6f1c2d3e4a5b/basic.ics";
+  // Needs the PIN, like everything else.
+  CHECK_EQ(send(r.service, post("/api/calendar", "", url)).status, 401);
+  CHECK(!r.calendar.hasAddress());
+  CHECK_EQ(send(r.service, post("/api/calendar/status", "")).status, 401);
+  // Not acceptable: not https, a space, no host, too long.
+  const std::string bad[] = {"http://calendar.example/a.ics", "https://calendar.example/a b.ics", "https:///a.ics", "calendar.example",
+                             "", std::string("https://calendar.example/") + std::string(300, 'x')};
+  for (const std::string &b : bad) {
+    const Reply reply = send(r.service, post("/api/calendar", r.pin(), b));
+    CHECK_EQ(reply.status, 400);
+    CHECK(reply.body.find("error") != std::string::npos);
+  }
+  CHECK(!r.calendar.hasAddress());
+  // A good one, with the trailing newline a paste often brings.
+  CHECK_EQ(send(r.service, post("/api/calendar", r.pin(), url + "\n")).status, 200);
+  CHECK(r.calendar.hasAddress());
+  char copy[kCalendarUrlBytes];
+  CHECK(r.calendar.copyAddress(copy) && url == copy);
+  // The status names the host and nothing else: no path, no secret.
+  const Reply status = send(r.service, post("/api/calendar/status", r.pin()));
+  CHECK_EQ(status.status, 200);
+  CHECK(status.body.find("\"set\":true") != std::string::npos && status.body.find("calendar.example") != std::string::npos);
+  CHECK(status.body.find("private") == std::string::npos && status.body.find("basic.ics") == std::string::npos);
+  CHECK(send(r.service, get("/api/status")).body.find("calendar") == std::string::npos);  // nothing without the PIN
+  // It is remembered: a new source on the same store has it.
+  CalendarSource again;
+  again.configure(&r.kv, nullptr);
+  CHECK(again.hasAddress() && again.generation() == 0);
+  char host[64];
+  again.host(host, sizeof(host));
+  CHECK(strcmp(host, "calendar.example") == 0);
+  // Remove.
+  CHECK_EQ(send(r.service, post("/api/calendar/remove", r.pin())).status, 200);
+  CHECK(!r.calendar.hasAddress());
+  CalendarSource gone;
+  gone.configure(&r.kv, nullptr);
+  CHECK(!gone.hasAddress());
+  CHECK(send(r.service, post("/api/calendar/status", r.pin())).body.find("\"set\":false") != std::string::npos);
+}
+
+TEST(the_page_has_a_calendar_section_that_never_displays_the_address) {
+  const std::string page(kRemotePage);
+  CHECK(page.find("id=cal ") != std::string::npos && page.find("/api/calendar/status") != std::string::npos);
+  CHECK(page.find("/api/calendar/remove") != std::string::npos);
+  // The field is cleared after saving, and only the host is shown back.
+  CHECK(page.find("$('cal').value='';") != std::string::npos && page.find("s.host") != std::string::npos);
+}
+
+// Regression (owner, on the CYD): a wrong PIN left "Wrong PIN" at the bottom of the
+// page even after the right one unlocked it. The page now clears its message first.
+TEST(the_page_clears_an_old_error_when_it_unlocks) {
+  const std::string page(kRemotePage);
+  const size_t go = page.find("$('go').onclick");
+  CHECK(go != std::string::npos);
+  const std::string handler = page.substr(go, 260);
+  CHECK(handler.find("say('')") != std::string::npos);                 // cleared on every try
+  CHECK(handler.find("say('');$('top').textContent='Unlocked.'") != std::string::npos);  // and again on success
+}
+
+// The first wallpaper looked washed out and pixelated with the first defaults
+// (35 % wash, the picture softened to a quarter size): they are lighter now.
+TEST(wallpaper_defaults_are_light) {
+  CHECK_EQ(kDefaultWallpaperVeil, 15);
+  const std::string page(kRemotePage);
+  CHECK(page.find("id=veil min=0 max=90 value=15") != std::string::npos);
+  CHECK(page.find("id=soft min=0 max=4 value=1") != std::string::npos);
+  SimSession s(320, 240);
+  CHECK_EQ(s.os.remote().status().veil, kDefaultWallpaperVeil);  // before anything was saved
 }

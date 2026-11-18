@@ -176,6 +176,27 @@ void lock(Canvas &c, const Rect &box, Color color) {
   c.strokeArc((int)f.cx, (int)f.Y(0.02f), r + (int)(f.stroke / 2), (int)(f.stroke + 0.5f), -90.f, 180.f, color);
 }
 
+void calendar(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // A rounded page with a solid header band, two binder rings and three date dots.
+  const float hw = 0.40f * f.s, top = f.Y(-0.32f), bottom = f.Y(0.40f), r = 0.11f * f.s, thick = 0.075f * f.s;
+  const float band = f.Y(-0.08f), midY = (top + bottom) / 2, halfH = (bottom - top) / 2;
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    const float dx = fabsf(px - f.cx) - (hw - r), dy = fabsf(py - midY) - (halfH - r);
+    const float ox = dx > 0 ? dx : 0, oy = dy > 0 ? dy : 0;
+    const float sd = sqrtf(ox * ox + oy * oy) + (dx > dy ? (dx < 0 ? dx : 0) : (dy < 0 ? dy : 0)) - r;  // < 0 inside
+    const float outer = clamp01(0.5f - sd);
+    if (py < band) return outer;
+    return outer * (1.f - clamp01(0.5f - (sd + thick)));
+  });
+  seg(c, f, -0.17f, -0.46f, -0.17f, -0.24f, color, 1.3f);
+  seg(c, f, 0.17f, -0.46f, 0.17f, -0.24f, color, 1.3f);
+  disc(c, f.X(-0.17f), f.Y(0.10f), 0.065f * f.s, color);
+  disc(c, f.cx, f.Y(0.10f), 0.065f * f.s, color);
+  disc(c, f.X(0.17f), f.Y(0.10f), 0.065f * f.s, color);
+  disc(c, f.X(-0.17f), f.Y(0.27f), 0.065f * f.s, color);
+}
+
 void bell(Canvas &c, const Rect &box, Color color) {
   const Frame f = frame(box);
   // Dome and flared body as one shape: the half-width grows down the bell.

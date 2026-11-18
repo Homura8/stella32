@@ -142,6 +142,9 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   UpdateControl &update() override { return updater_; }
   RemoteControl &remote() override { return remote_; }
   PushedValues pushedValues() const override { return pushedValues_.get(); }
+  CalendarSourceControl &calendar() override { return calendarSource_; }
+  CalendarSource &calendarFeed() override { return calendarSource_; }
+  bool wallClock(int64_t &epochSeconds) override;
   void restartDevice() override {
     restartPending_ = true;
     restartAtMs_ = millis() + 900;
@@ -258,6 +261,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   WifiManager wifi_{network_, scan_};
   Topic<UpdateStatus> updateStatus_{topics::kUpdate};
   UpdateService updater_{updateStatus_};
+  CalendarSource calendarSource_;
   Topic<RemoteInfo> remoteInfo_{topics::kRemote};
   RemoteService remote_{remoteInfo_};
   Topic<PushedValues> pushedValues_{topics::kValues};
@@ -306,7 +310,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   bool lightWarm_ = false;
   bool whatsNewPending_ = false;
   bool wallpaperOn_ = false;
-  uint8_t wallpaperVeil_ = 35;
+  uint8_t wallpaperVeil_ = kDefaultWallpaperVeil;
   uint16_t wallpaperPalette_[wallpaper::kColors] = {};
   uint8_t wallpaperRow_[wallpaper::kWidth] = {};
   int64_t sunRise_ = 0, sunSet_ = 0;  // today's, from the Weather place; 0 = unknown
