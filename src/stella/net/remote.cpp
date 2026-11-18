@@ -86,7 +86,7 @@ void RemoteService::configure(RemoteServer *server, WallpaperStore *store, WifiD
   bool pinOk = status == RecordStatus::Ok && strlen(record.pin) == 6;
   for (int i = 0; pinOk && i < 6; ++i) pinOk = record.pin[i] >= '0' && record.pin[i] <= '9';
   enabled_ = status == RecordStatus::Ok && record.enabled != 0;
-  veil_ = status == RecordStatus::Ok && record.veil <= 90 ? record.veil : 35;
+  veil_ = status == RecordStatus::Ok && record.veil <= 90 ? record.veil : kDefaultWallpaperVeil;
   if (pinOk) memcpy(pin_, record.pin, sizeof(pin_));
   else makePin();
   info_.wallpaperSupported = store_ && store_->capacity() >= wallpaper::kTotalBytes;

@@ -7,6 +7,7 @@ namespace {
 // Newest first. Add an entry when STELLA_VERSION goes up; a test checks the
 // top one matches the running version.
 const ChangelogEntry kChangelog[] = {
+    {"0.13.1", {"Remote page: no stale error", "Gentler wallpaper defaults", nullptr}},
     {"0.13.0",
      {"Units: \xc2\xb0" "C/\xc2\xb0" "F, week, date", "Idle face: clock or dashboard",
       "Sunrise/sunset on bedside", nullptr}},
