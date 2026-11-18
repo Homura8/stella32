@@ -388,7 +388,7 @@ TEST(a_wallpaper_replaces_the_sky_washed_toward_the_theme_and_goes_away_again) {
   const std::string file = makeWallpaper(0xF800, 0x001F);
   CHECK_EQ(send(*handler, post("/api/wallpaper", pinOf(s), file)).status, 200);
   s.run(600);
-  const uint8_t veil = 35 * 255 / 100;
+  const uint8_t veil = kDefaultWallpaperVeil * 255 / 100;
   CHECK(s.dev.display.pixel(3, 100) == blend((Color)0xF800, (Color)0x0000, veil));  // left half red, washed dark
   CHECK(s.dev.display.pixel(316, 100) == blend((Color)0x001F, (Color)0x0000, veil));
   CHECK(s.dev.display.pixel(3, 100) != skyLeft);
@@ -522,4 +522,26 @@ TEST(the_page_has_a_calendar_section_that_never_displays_the_address) {
   CHECK(page.find("/api/calendar/remove") != std::string::npos);
   // The field is cleared after saving, and only the host is shown back.
   CHECK(page.find("$('cal').value='';") != std::string::npos && page.find("s.host") != std::string::npos);
+}
+
+// Regression (owner, on the CYD): a wrong PIN left "Wrong PIN" at the bottom of the
+// page even after the right one unlocked it. The page now clears its message first.
+TEST(the_page_clears_an_old_error_when_it_unlocks) {
+  const std::string page(kRemotePage);
+  const size_t go = page.find("$('go').onclick");
+  CHECK(go != std::string::npos);
+  const std::string handler = page.substr(go, 260);
+  CHECK(handler.find("say('')") != std::string::npos);                 // cleared on every try
+  CHECK(handler.find("say('');$('top').textContent='Unlocked.'") != std::string::npos);  // and again on success
+}
+
+// The first wallpaper looked washed out and pixelated with the first defaults
+// (35 % wash, the picture softened to a quarter size): they are lighter now.
+TEST(wallpaper_defaults_are_light) {
+  CHECK_EQ(kDefaultWallpaperVeil, 15);
+  const std::string page(kRemotePage);
+  CHECK(page.find("id=veil min=0 max=90 value=15") != std::string::npos);
+  CHECK(page.find("id=soft min=0 max=4 value=1") != std::string::npos);
+  SimSession s(320, 240);
+  CHECK_EQ(s.os.remote().status().veil, kDefaultWallpaperVeil);  // before anything was saved
 }

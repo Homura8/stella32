@@ -38,13 +38,18 @@ namespace topics {
 constexpr uint16_t kRemote = 4;  // Topic<RemoteInfo>
 }
 
+// How far a new wallpaper is washed toward white (light mode) or black (dark
+// mode), in percent. 35 looked washed out on the CYD's panel, which already
+// lifts pastels; a light touch keeps text readable on the glass cards.
+constexpr uint8_t kDefaultWallpaperVeil = 15;
+
 struct RemoteInfo {
   bool enabled = false;
   bool running = false;           // listening on the home network now
   bool wallpaperSupported = false;
   bool wallpaper = false;         // a valid picture is stored
   bool lockedOut = false;         // too many wrong PINs
-  uint8_t veil = 35;              // 0..90 % wash over the picture
+  uint8_t veil = kDefaultWallpaperVeil;  // 0..90 % wash over the picture
   uint32_t generation = 0;        // changes whenever the picture does
   char host[24] = {0};            // "stella-ab12"
   char ip[16] = {0};
@@ -180,7 +185,7 @@ class RemoteService : public Job, public RemoteHandler, public RemoteControl {
   // Service thread only.
   RemoteInfo info_;
   bool enabled_ = false;
-  uint8_t veil_ = 35;
+  uint8_t veil_ = kDefaultWallpaperVeil;
   uint32_t now_ = 0, lockedUntil_ = 0;
   int failures_ = 0;
   bool locked_ = false;

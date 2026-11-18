@@ -308,7 +308,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   bool lightWarm_ = false;
   bool whatsNewPending_ = false;
   bool wallpaperOn_ = false;
-  uint8_t wallpaperVeil_ = 35;
+  uint8_t wallpaperVeil_ = kDefaultWallpaperVeil;
   uint16_t wallpaperPalette_[wallpaper::kColors] = {};
   uint8_t wallpaperRow_[wallpaper::kWidth] = {};
   int64_t sunRise_ = 0, sunSet_ = 0;  // today's, from the Weather place; 0 = unknown
