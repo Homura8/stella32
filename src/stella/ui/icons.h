@@ -26,6 +26,8 @@ void skipNext(Canvas &c, const Rect &box, Color color);
 void skipPrevious(Canvas &c, const Rect &box, Color color);
 void speaker(Canvas &c, const Rect &box, Color color);
 void bluetooth(Canvas &c, const Rect &box, Color color);
+void bars(Canvas &c, const Rect &box, Color color);  // live values
+void calendar(Canvas &c, const Rect &box, Color color);
 void appearance(Canvas &c, const Rect &box, Color color);
 void check(Canvas &c, const Rect &box, Color color);
 void lock(Canvas &c, const Rect &box, Color color);

@@ -111,6 +111,7 @@ void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "remote") == 0) ctx.push(remote_);
   if (route && strcmp(route, "units") == 0) ctx.push(units_);
   if (route && strcmp(route, "idle") == 0) ctx.push(idle_);
+  if (route && strcmp(route, "calendar") == 0) ctx.push(calendar_);
 }
 
 // ------------------------------------------------------------------ main list
@@ -145,6 +146,7 @@ void SettingsApp::MainScreen::onShow(AppContext &ctx) {
     snprintf(about_, sizeof(about_), "Restart to update");
   snprintf(unitsDetail_, sizeof(unitsDetail_), "%s", s.fahrenheit ? "\xc2\xb0""F" : "\xc2\xb0""C");
   snprintf(idleDetail_, sizeof(idleDetail_), "%s", s.bedside == 0 ? "Off" : s.idleFace == 1 ? "Dashboard" : "Clock");
+  snprintf(calendarDetail_, sizeof(calendarDetail_), "%s", ctx.calendar().hasAddress() ? "On" : "Not set");
   const RemoteInfo remote = ctx.remote().status();
   snprintf(remoteDetail_, sizeof(remoteDetail_), "%s", remote.running ? "On" : remote.enabled ? "Waiting" : "Off");
   const NetworkStatus net = ctx.network().status();
@@ -172,7 +174,8 @@ void SettingsApp::MainScreen::drawRow(Canvas &c, const Theme &t, int index, cons
                    {"Home screen", icons::home, 3, nullptr},
                    {"Remote page", icons::wifi, 2, s.remoteDetail_},
                    {"Units", icons::gear, 0, s.unitsDetail_},
-                   {"Idle face", icons::moon, 1, s.idleDetail_}};
+                   {"Idle face", icons::moon, 1, s.idleDetail_},
+                   {"Calendar", icons::calendar, 2, s.calendarDetail_}};
   ListRow r;
   r.bounds = row;
   r.title = rows[index].title;
@@ -193,7 +196,7 @@ bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   const int index = list_.handle(e, ctx);
   if (index < 0) return false;
   Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_,
-                            nullptr, &app_.remote_, &app_.units_, &app_.idle_};
+                            nullptr, &app_.remote_, &app_.units_, &app_.idle_, &app_.calendar_};
   if (targets[index]) ctx.push(*targets[index]);
   else ctx.launch("home", "customise");
   return true;
@@ -1358,6 +1361,79 @@ bool SettingsApp::TimeScreen::onEvent(const Event &e, AppContext &ctx) {
     return true;
   }
   return true;
+}
+
+// ------------------------------------------------------------------ calendar
+
+void SettingsApp::CalendarScreen::layout(const Rect &content, const Theme &t) {
+  const Rect area = content.inset(t.m.margin, t.m.gapS);
+  const int hintH = t.font.caption->lineHeight * 4 + t.dp(4);
+  const int rowH = cardRowHeight(t, area.h - hintH - t.m.gapS, kRows);
+  card_ = Rect(area.x, area.y, area.w, kRows * rowH + 2 * t.dp(4));
+  const Rect inner = card_.inset(0, t.dp(4));
+  for (int i = 0; i < kRows; ++i) rows_[i] = Rect(inner.x, inner.y + i * rowH, inner.w, rowH);
+  address_.bounds = rows_[0];
+  fetch_.bounds = rows_[1];
+  remove_.bounds = rows_[2];
+  hint_ = Rect(area.x, card_.bottom() + t.m.gapS, area.w, hintH);
+}
+
+void SettingsApp::CalendarScreen::onShow(AppContext &ctx) {
+  has_ = ctx.calendar().hasAddress();
+  ctx.calendar().host(host_, sizeof(host_));
+  address_.title = "Address";
+  address_.detail = has_ ? host_ : "Not set";
+  address_.icon = icons::calendar;
+  address_.tint = 2;
+  address_.separator = true;
+  fetch_.title = "Fetch now";
+  fetch_.icon = icons::cloud;
+  fetch_.tint = 1;
+  fetch_.chevron = false;
+  fetch_.separator = true;
+  remove_.title = "Remove address";
+  remove_.icon = icons::lock;
+  remove_.tint = 0;
+  remove_.chevron = false;
+}
+
+void SettingsApp::CalendarScreen::draw(Canvas &c, const Theme &t) {
+  paintGlass(c, t, card_, t.m.radiusCard);
+  address_.draw(c, t);
+  fetch_.draw(c, t);
+  remove_.draw(c, t);
+  c.drawWrapped(*t.font.caption,
+                has_ ? "The address is private: it stays on this device and is never shown again. Change it on the remote page."
+                     : "Open the remote page (tap Address), enter the PIN and paste your calendar's private iCal address.",
+                hint_.inset(t.dp(4), 0), t.color.textMuted, 4, Align::Center);
+}
+
+bool SettingsApp::CalendarScreen::onEvent(const Event &e, AppContext &ctx) {
+  if (address_.handle(e, ctx)) {
+    ctx.push(app_.remote_);  // where the address is entered
+    return true;
+  }
+  if (fetch_.handle(e, ctx)) {
+    if (has_) {
+      ctx.calendar().refreshNow();
+      ctx.toast("Fetching your calendar");
+    } else {
+      ctx.toast("No address set yet");
+    }
+    return true;
+  }
+  if (remove_.handle(e, ctx)) {
+    if (has_) {
+      ctx.calendar().clearAddress();
+      has_ = false;
+      ctx.calendar().host(host_, sizeof(host_));
+      address_.detail = "Not set";
+      ctx.toast("Calendar address removed");
+      ctx.invalidate(ctx.contentRect());
+    }
+    return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ choices

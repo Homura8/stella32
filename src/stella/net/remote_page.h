@@ -12,7 +12,7 @@ input,button{font:inherit;border-radius:14px;border:0;padding:12px 14px;margin:5
 input[type=password],input[type=text]{background:#2e283f;color:#eee8f5;width:130px}
 button{background:#bdbde7;color:#211e30;font-weight:600}button.q{background:#2e283f;color:#eee8f5;font-weight:400}
 canvas{width:100%;border-radius:14px;background:#2e283f;display:block}input[type=range]{width:100%;padding:0}
-.ok{color:#b3d6cd}.bad{color:#f0a9b5}#app{display:none}</style></head><body>
+code{display:block;background:#2e283f;padding:10px;border-radius:12px;word-break:break-all;color:#eee8f5;font-size:13px}.ok{color:#b3d6cd}.bad{color:#f0a9b5}#app{display:none}</style></head><body>
 <h1>StellaOS</h1><p id=top>Enter the PIN shown on the device (Settings, Remote page).</p>
 <div id=lock><input id=pin type=password inputmode=numeric maxlength=6 placeholder="PIN"> <button id=go>Unlock</button></div>
 <div id=app><h2>Wallpaper</h2>
@@ -20,20 +20,28 @@ canvas{width:100%;border-radius:14px;background:#2e283f;display:block}input[type
 <input type=file id=file accept="image/*">
 <canvas id=cv width=320 height=240></canvas>
 <label>Darken <span id=dv>25</span>%<input type=range id=dark min=0 max=60 value=25></label>
-<label>Soften <span id=sv>2</span><input type=range id=soft min=0 max=4 value=2></label>
+<label>Soften <span id=sv>1</span><input type=range id=soft min=0 max=4 value=1></label>
 <button id=send disabled>Send to Stella</button> <button class=q id=rm>Remove wallpaper</button>
 <h2>How much to wash it back</h2>
 <p>The device lightens the picture in light mode and darkens it in dark mode, so text stays readable.</p>
-<label>Wash <span id=vv>35</span>%<input type=range id=veil min=0 max=90 value=35></label>
+<label>Wash <span id=vv>15</span>%<input type=range id=veil min=0 max=90 value=15></label>
+<h2>Calendar</h2>
+<p>Paste the private iCalendar (.ics) address of your calendar. It is kept on this device and never shown again, only its host name.</p>
+<input type=text id=cal placeholder="https://..." style="width:100%;box-sizing:border-box" autocomplete=off>
+<button id=calsave>Save</button> <button class=q id=calrm>Remove</button><p id=calst></p>
+<h2>Send values</h2>
+<p>A script on this network can show live numbers in the Values app (CPU, a temperature, a sensor). Send name=value pairs; an empty value removes a name:</p>
+<code id=curl></code>
 </div><p id=msg></p>
 <script>
 const $=i=>document.getElementById(i),mk=(C,...a)=>Reflect.construct(C,a);let PIN='',img=null,out=null;
 const say=(t,bad)=>{$('msg').textContent=t;$('msg').className=bad?'bad':'ok'};
 async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'X-Stella-Pin':PIN},body:body});
  let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw Error(j.error||('error '+r.status));return j}
-$('go').onclick=async()=>{PIN=$('pin').value;try{await api('/api/check','');$('lock').style.display='none';$('app').style.display='block';
- $('top').textContent='Unlocked.';const s=await(await fetch('/api/status')).json();$('veil').value=s.veil;$('vv').textContent=s.veil;
- if(!s.supported)say('This device has no room for a wallpaper.',1)}catch(e){say(e.message,1)}};
+$('go').onclick=async()=>{PIN=$('pin').value;say('');try{await api('/api/check','');$('lock').style.display='none';$('app').style.display='block';
+ say('');$('top').textContent='Unlocked.';const s=await(await fetch('/api/status')).json();$('veil').value=s.veil;$('vv').textContent=s.veil;
+ if(!s.supported)say('This device has no room for a wallpaper.',1);calstatus()}catch(e){say(e.message,1)}};
+$('go').addEventListener('click',()=>{$('curl').textContent='curl -d "cpu=37%&temp=61C" -H "X-Stella-Pin: '+$('pin').value+'" http://'+location.host+'/api/push'});
 function crc32(u){let c,t=crc32.t;if(!t){t=crc32.t=mk(Uint32Array,256);for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}}
  c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=t[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
 function draw(){if(!img)return;const cv=$('cv'),x=cv.getContext('2d'),k=+$('soft').value,sw=320>>k,sh=240>>k;
@@ -67,6 +75,9 @@ $('dark').oninput=()=>{$('dv').textContent=$('dark').value;draw()};$('soft').oni
 $('send').onclick=async()=>{$('send').disabled=true;say('Preparing...');await mk(Promise,r=>setTimeout(r,30));try{out=build();say('Sending '+out.length+' bytes...');
  await api('/api/wallpaper',out);say('Done. The wallpaper is on the device.')}catch(e){say(e.message,1)}$('send').disabled=false};
 $('rm').onclick=async()=>{try{await api('/api/wallpaper/remove','');say('Removed.')}catch(e){say(e.message,1)}};
+async function calstatus(){try{const s=await api('/api/calendar/status','');$('calst').textContent=s.set?'Calendar address set ('+s.host+').':'No calendar address yet.'}catch(e){}}
+$('calsave').onclick=async()=>{try{await api('/api/calendar',$('cal').value.trim());$('cal').value='';say('Calendar saved. It will be fetched now.');calstatus()}catch(e){say(e.message,1)}};
+$('calrm').onclick=async()=>{try{await api('/api/calendar/remove','');say('Calendar removed.');calstatus()}catch(e){say(e.message,1)}};
 $('veil').oninput=()=>{$('vv').textContent=$('veil').value};$('veil').onchange=async()=>{try{await api('/api/veil','v='+$('veil').value);say('Saved.')}catch(e){say(e.message,1)}};
 </script></body></html>)STELLAPAGE";
 

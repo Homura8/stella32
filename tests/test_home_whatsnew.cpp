@@ -169,9 +169,9 @@ TEST(about_opens_whats_new_and_it_renders_at_every_size) {
 TEST(home_shows_every_app_in_install_order_by_default) {
   SimSession s(320, 240);
   const HomeLayoutRecord &l = s.launcher.layout();
-  const char *expected[] = {"clock", "weather", "alarms", "timer", "stopwatch", "settings", "touch"};
-  CHECK_EQ(l.count, 7);
-  for (int i = 0; i < 7; ++i) CHECK(strcmp(l.items[i].id, expected[i]) == 0 && l.items[i].visible);
+  const char *expected[] = {"clock", "weather", "alarms", "timer", "stopwatch", "settings", "touch", "values", "calendar"};
+  CHECK_EQ(l.count, 9);
+  for (int i = 0; i < 9; ++i) CHECK(strcmp(l.items[i].id, expected[i]) == 0 && l.items[i].visible);
 }
 
 TEST(hiding_and_moving_apps_changes_home_and_is_saved) {

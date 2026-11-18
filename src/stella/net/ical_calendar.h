@@ -23,7 +23,7 @@ struct ICalOccurrence {
 
 class ICalCalendar : public ICalSink {
  public:
-  static constexpr size_t kMaxEvents = 32;
+  static constexpr size_t kMaxEvents = 24;
 
   // What to keep, as UTC instants. Without a window everything is kept.
   void setWindow(int64_t fromUtc, int64_t toUtc) {

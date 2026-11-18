@@ -88,6 +88,18 @@ void back(Canvas &c, const Rect &box, Color color) {
   seg(c, f, -0.14f, 0.f, 0.12f, 0.30f, color, 1.2f);
 }
 
+void bars(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // Three rising bars on a baseline.
+  const float left[3] = {-0.30f, -0.07f, 0.16f}, top[3] = {0.05f, -0.12f, -0.32f};
+  const int w = (int)(0.16f * f.s + 0.5f) < 2 ? 2 : (int)(0.16f * f.s + 0.5f);
+  const int bottom = (int)f.Y(0.32f);
+  for (int i = 0; i < 3; ++i) {
+    const int x = (int)f.X(left[i]), y = (int)f.Y(top[i]);
+    c.fillRoundRect(Rect(x, y, w, bottom - y), w / 2 + 1, color);
+  }
+}
+
 void chevronRight(Canvas &c, const Rect &box, Color color) {
   const Frame f = frame(box);
   seg(c, f, -0.10f, -0.26f, 0.14f, 0.f, color);
@@ -242,6 +254,27 @@ void bluetooth(Canvas &c, const Rect &box, Color color) {
   seg(c, f, 0.24f, -0.14f, -0.22f, 0.20f, color, 1.1f);
   seg(c, f, 0.f, 0.36f, 0.24f, 0.14f, color, 1.1f);
   seg(c, f, 0.24f, 0.14f, -0.22f, -0.20f, color, 1.1f);
+}
+
+void calendar(Canvas &c, const Rect &box, Color color) {
+  const Frame f = frame(box);
+  // A rounded page with a solid header band, two binder rings and three date dots.
+  const float hw = 0.40f * f.s, top = f.Y(-0.32f), bottom = f.Y(0.40f), r = 0.11f * f.s, thick = 0.075f * f.s;
+  const float band = f.Y(-0.08f), midY = (top + bottom) / 2, halfH = (bottom - top) / 2;
+  c.paint(box.inset(-1), color, 255, [=](float px, float py) {
+    const float dx = fabsf(px - f.cx) - (hw - r), dy = fabsf(py - midY) - (halfH - r);
+    const float ox = dx > 0 ? dx : 0, oy = dy > 0 ? dy : 0;
+    const float sd = sqrtf(ox * ox + oy * oy) + (dx > dy ? (dx < 0 ? dx : 0) : (dy < 0 ? dy : 0)) - r;  // < 0 inside
+    const float outer = clamp01(0.5f - sd);
+    if (py < band) return outer;
+    return outer * (1.f - clamp01(0.5f - (sd + thick)));
+  });
+  seg(c, f, -0.17f, -0.46f, -0.17f, -0.24f, color, 1.3f);
+  seg(c, f, 0.17f, -0.46f, 0.17f, -0.24f, color, 1.3f);
+  disc(c, f.X(-0.17f), f.Y(0.10f), 0.065f * f.s, color);
+  disc(c, f.cx, f.Y(0.10f), 0.065f * f.s, color);
+  disc(c, f.X(0.17f), f.Y(0.10f), 0.065f * f.s, color);
+  disc(c, f.X(-0.17f), f.Y(0.27f), 0.065f * f.s, color);
 }
 
 void bell(Canvas &c, const Rect &box, Color color) {

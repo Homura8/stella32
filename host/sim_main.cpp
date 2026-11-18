@@ -355,6 +355,44 @@ void capture(int width, int height, const std::string &root) {
     deck.dev.hid.connect();
     deck.run(900);
     saveDeck(42, "deck");
+    // The Values app: the instructions first, then a script's numbers.
+    s.os.goHome();
+    s.os.launch("values");
+    s.run(300);
+    save(43, "values-empty");
+    s.os.remote().setEnabled(true);
+    s.run(1500);
+    char pin[8];
+    s.os.remote().pin(pin);
+    RemoteRequest push;
+    push.post = true;
+    push.path = "/api/push";
+    push.pin = pin;
+    const char *body = "CPU=37%&GPU temp=61\xc2\xb0" "C&RAM=12.3 GB&Fan=1180 rpm&Build=passing&Net down=42 Mb/s";
+    push.body = body;
+    push.bodyLen = strlen(body);
+    char reply[256];
+    RemoteResponse response;
+    response.body = reply;
+    response.capacity = sizeof(reply);
+    s.dev.remote.handler->handleRemote(push, response);
+    s.run(400);
+    save(44, "values");
+    // The Calendar: first with no address, then with the simulator's feed.
+    s.os.goHome();
+    s.os.launch("calendar");
+    s.run(300);
+    save(38, "calendar-empty");
+    s.os.goHome();
+    s.os.launch("settings", "calendar");
+    s.run(200);
+    save(40, "settings-calendar");
+    s.os.calendar().setAddress("https://calendar.example/feeds/home/basic.ics");
+    s.run(3000);
+    s.os.goHome();
+    s.os.launch("calendar");
+    s.run(300);
+    save(39, "calendar");
   }
 }
 

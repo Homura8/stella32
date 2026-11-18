@@ -11,6 +11,8 @@ namespace stella {
 namespace host {
 
 // Fixed instants for deterministic screenshots (Australia/Melbourne).
+// The calendar feed the simulator serves at https://calendar.example/... (set an address to use it).
+extern const char *const kCalendarFixture;
 constexpr int64_t kEveningEpoch = 1794828600;  // Mon 16 Nov 2026 22:30 AEDT
 constexpr int64_t kMorningEpoch = 1794784500;  // Mon 16 Nov 2026 10:15 AEDT
 constexpr const char *kMelbourneTz = "AEST-10AEDT,M10.1.0,M4.1.0/3";
@@ -42,6 +44,8 @@ class SimSession {
   apps::TouchTestApp touchTest;
   apps::WeatherApp weather;
   apps::DeckApp deck;  // installed only when the board has Bluetooth (withDeck)
+  apps::ValuesApp values;
+  apps::CalendarApp calendar;
   apps::AlarmsApp alarms;
   apps::TimerApp timer;
   apps::StopwatchApp stopwatch;
