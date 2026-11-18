@@ -421,13 +421,13 @@ Apps get their own namespace (`AppContext::saveAppRecord`).
 
 | Item | Size |
 | --- | --- |
-| Program (flash) | 1,579,103 B of a 1,966,080 B app slot (80%); mbedTLS/HTTPS is most of it |
+| Program (flash) | 1,467,591 B of a 1,966,080 B app slot (74%); mbedTLS/HTTPS is most of it (1,579,103 B / 80% before the large font set was left out) |
 | Static RAM (globals) | 94,556 B; 233,124 B left for stacks and heap (the setup server's and the remote server's request slots are ~7 KB of it; watch *Lowest free* in About) |
 | With DMA (`STELLA_CYD_DMA 1`) | not re-measured since 0.6.0 (then 1,495,365 B flash, 93,412 B static RAM) |
 | Single-app layout (`cyd-huge`) | the same firmware in a 3 MB slot (46%), no updates |
 | Render chunk buffer | 12,800 B (320 x 20 px); a second one with DMA |
 | Service thread stack | 16 KiB (TLS handshakes) |
-| Fonts (both densities, flash) | ~155 KB (the bedside numerals are ~56 KB of it) |
+| Fonts (flash) | ~170 KB for both densities (the bedside numerals are ~56 KB of it); the CYD build carries only the compact set (`STELLA_COMPACT_FONTS_ONLY`, set in `examples/CYD/build_opt.h`; a board with a panel of 300 px or more on its short side leaves it unset) |
 
 ## Roadmap
 
