@@ -354,6 +354,61 @@ class SimLight : public LightSensor {
   }
 };
 
+// A Bluetooth keyboard that records what was sent. A test plays the computer:
+// connect() / disconnect().
+class SimHid : public HidDevice {
+ public:
+  bool present = true;
+  bool failStart = false;
+  int starts = 0, stops = 0, bonds = 0;
+  std::string name;
+  struct Sent {
+    bool consumer;
+    uint8_t modifiers;
+    uint16_t code;  // a consumer usage, or a keyboard usage
+  };
+  std::vector<Sent> sent;
+
+  bool available() const override { return present; }
+  bool start(const char *n) override {
+    ++starts;
+    name = n ? n : "";
+    state_ = failStart ? HidState::Failed : HidState::Advertising;
+    return !failStart;
+  }
+  void stop() override {
+    ++stops;
+    state_ = HidState::Off;
+  }
+  HidState state() const override { return state_; }
+  const char *error() const override { return state_ == HidState::Failed ? "Bluetooth did not start" : ""; }
+  bool sendKey(uint8_t modifiers, uint8_t keycode) override {
+    if (state_ != HidState::Connected) return false;
+    sent.push_back({false, modifiers, keycode});
+    return true;
+  }
+  bool sendConsumer(uint16_t usage) override {
+    if (state_ != HidState::Connected) return false;
+    sent.push_back({true, 0, usage});
+    return true;
+  }
+  int bondCount() const override { return bonds; }
+  void forgetBonds() override { bonds = 0; }
+  // The computer pairs and connects / goes away.
+  void connect() {
+    if (state_ == HidState::Advertising) {
+      state_ = HidState::Connected;
+      bonds = bonds ? bonds : 1;
+    }
+  }
+  void disconnect() {
+    if (state_ == HidState::Connected) state_ = HidState::Advertising;
+  }
+
+ private:
+  HidState state_ = HidState::Off;
+};
+
 // The wallpaper flash: a plain buffer that counts what is done to it.
 class SimWallpaperStore : public WallpaperStore {
  public:
@@ -421,8 +476,14 @@ struct SimDevice {
   SimLight light;
   SimRemoteServer remote;
   SimWallpaperStore wallpaper;
+  SimHid hid;
+  bool withHid = false;  // a board with Bluetooth (the Deck tests and screenshots)
   std::vector<Color> buffer;
-  Board board() { return Board{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware, &led, &light, &remote, &wallpaper}; }
+  Board board() {
+    Board b{&display, &touch, &platform, &storage, &wifi, &http, &sound, &setup, &firmware, &led, &light, &remote, &wallpaper};
+    if (withHid) b.hid = &hid;
+    return b;
+  }
 };
 
 }  // namespace host

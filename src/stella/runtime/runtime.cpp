@@ -245,6 +245,11 @@ uint32_t Runtime::step() {
 
   updatePower(now);
 
+  // The radio shares memory and the antenna with the update download: no Bluetooth while it runs.
+  if (board_.hid && board_.hid->state() != HidState::Off &&
+      updater_.status().state == UpdateState::Downloading)
+    board_.hid->stop();
+
   if (updateUnconfirmed_ && frames_ > 0 && reached(now, confirmAtMs_)) {
     updateUnconfirmed_ = false;
     board_.platform->confirmUpdate();

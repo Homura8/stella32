@@ -7,6 +7,7 @@
 
 #include "../core/color.h"
 #include "../core/geometry.h"
+#include "hid.h"
 #include "network.h"
 #include "update.h"
 
@@ -177,6 +178,7 @@ struct Board {
   LightSensor *light = nullptr;      // optional; ambient light
   RemoteServer *remote = nullptr;    // optional; the web page on the home network
   WallpaperStore *wallpaper = nullptr;  // optional; a picture behind the glass
+  HidDevice *hid = nullptr;          // optional; Bluetooth keyboard and media keys (the Deck app)
 };
 
 }  // namespace stella

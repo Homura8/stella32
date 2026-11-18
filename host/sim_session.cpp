@@ -34,8 +34,9 @@ std::string weatherFixture(bool day) {
 
 }  // namespace
 
-SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online)
+SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online, bool withDeck)
     : dev(width, height) {
+  dev.withHid = withDeck;
   config.serviceThread = threaded;
   config.updateManifestUrl = "https://updates.example/stella/manifest.json";
   // The board's usual LED wiring; ledMode stays 1 (alerts and progress).
@@ -64,6 +65,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.install(stopwatch);
   os.install(settings);
   os.install(touchTest);
+  if (withDeck) os.install(deck);
   os.start();
   run(online ? 4000 : 100);  // join Wi-Fi and fetch the forecast
 }

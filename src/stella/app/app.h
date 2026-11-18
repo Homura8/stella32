@@ -232,6 +232,9 @@ class AppContext : public Invalidator {
   virtual UpdateControl &update() = 0;
   // The web page on the home network and the wallpaper it uploads (Settings > Remote page).
   virtual RemoteControl &remote() = 0;
+  // The Bluetooth keyboard, or nullptr when this build has none. The runtime switches it off while
+  // an update downloads, so an app must not assume it stays on.
+  virtual HidDevice *hid() = 0;
   // Restart the device shortly (after a short pause so the screen can say so).
   virtual void restartDevice() = 0;
   // Show a system alert owned by the calling app; one with the same tag is

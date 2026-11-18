@@ -141,6 +141,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   NetworkControl &network() override { return wifi_; }
   UpdateControl &update() override { return updater_; }
   RemoteControl &remote() override { return remote_; }
+  HidDevice *hid() override { return board_.hid; }
   void restartDevice() override {
     restartPending_ = true;
     restartAtMs_ = millis() + 900;
