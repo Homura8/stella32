@@ -281,10 +281,9 @@ const AppInfo &WeatherApp::info() const {
 
 void WeatherApp::onInstall(ServiceHost &host) {
   uint8_t saved = 0;
-  place_ = host.loadRecordFor(info().id, "place", kPlaceVersion, &saved, sizeof(saved)) == RecordStatus::Ok &&
-                   saved < kPlaceCount
-               ? saved
-               : defaultPlaceFor(host.systemSettings().timezone);
+  placeChosen_ = host.loadRecordFor(info().id, "place", kPlaceVersion, &saved, sizeof(saved)) == RecordStatus::Ok &&
+                 saved < kPlaceCount;
+  place_ = placeChosen_ ? saved : defaultPlaceFor(host.systemSettings().timezone);
   service_.setPlace(place_);
   service_.attach(host.http());
   host.attachTopic(topic_);
@@ -318,7 +317,20 @@ bool WeatherApp::publishGlance(AppContext &ctx) {
 // Apps that were never opened get no topic notifications, so the glance is
 // also published from here: soon while there is nothing yet, then every 10 min
 // (which also withdraws data that has grown too old).
+// Until a city has been chosen, the weather is for the time zone's city: choosing a zone in
+// Settings > Time then gives a newcomer their own weather without a second step.
+void WeatherApp::followZone(AppContext &ctx) {
+  if (placeChosen_) return;
+  const uint8_t wanted = defaultPlaceFor(ctx.settings().timezone);
+  if (wanted == place_) return;
+  place_ = wanted;
+  service_.setPlace(place_);
+  ctx.requestJob(service_);
+  publishSun(ctx);
+}
+
 uint32_t WeatherApp::onWake(AppContext &ctx) {
+  followZone(ctx);
   publishSun(ctx);
   return publishGlance(ctx) ? 10u * 60u * 1000u : 30u * 1000u;
 }
@@ -343,7 +355,11 @@ void WeatherApp::onRoute(const char *route, AppContext &ctx) {
 }
 
 void WeatherApp::choosePlace(uint8_t place, AppContext &ctx) {
-  if (place == place_) return;
+  placeChosen_ = true;  // from now on the city is the person's, whatever the time zone says
+  if (place == place_) {
+    ctx.saveAppRecord("place", kPlaceVersion, &place_, sizeof(place_));
+    return;
+  }
   place_ = place;
   ctx.saveAppRecord("place", kPlaceVersion, &place_, sizeof(place_));
   service_.setPlace(place_);
@@ -452,7 +468,10 @@ void WeatherApp::MainScreen::updateSun(AppContext &ctx) {
   }
 }
 
-void WeatherApp::MainScreen::onShow(AppContext &ctx) { refresh(ctx); }
+void WeatherApp::MainScreen::onShow(AppContext &ctx) {
+  app_.followZone(ctx);
+  refresh(ctx);
+}
 
 uint32_t WeatherApp::MainScreen::onTick(AppContext &ctx) {
   char status[sizeof(statusText_)];

@@ -237,16 +237,22 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   }
   char title[sizeof(noteTitle_)], text[sizeof(noteText_)];
   const NetworkStatus net = ctx.network().status();
-  const bool setup = net.present && net.state == WifiState::NotConfigured;
-  if (setup != setupNote_) {
+  const bool wifiSetup = net.present && net.state == WifiState::NotConfigured;
+  const bool zoneAsk = !wifiSetup && net.present && net.connected && !ctx.status().zoneChosen;
+  const bool setup = wifiSetup || zoneAsk;
+  if (setup != setupNote_ || zoneAsk != noteZone_) {
+    noteZone_ = zoneAsk;
     setupNote_ = setup;
     arrange();
     if (page_ >= pageCount()) page_ = 0;
     ctx.invalidate(ctx.contentRect());
   }
-  if (setup) {
+  if (wifiSetup) {
     snprintf(title, sizeof(title), "Set up Wi-Fi");
     snprintf(text, sizeof(text), "For the time and the weather");
+  } else if (zoneAsk) {
+    snprintf(title, sizeof(title), "Choose your time zone");
+    snprintf(text, sizeof(text), "So the clock and weather match you");
   } else if (now.valid) {
     const MoonPhase moon = moonPhase(now.epoch);
     snprintf(title, sizeof(title), "%s", moon.name);
@@ -322,7 +328,7 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
     const int r = t.m.icon / 2 + t.dp(2);
     if (notePressed_) c.fillRoundRect(note_, t.m.radiusCard, p.accent, 40);
     paintBubble(c, t, inner.x + r, inner.centerY(), r, setupNote_ ? 2 : 1);
-    (setupNote_ ? icons::wifi : icons::moon)(c, center(Rect(inner.x, inner.y, 2 * r, inner.h), t.dp(16), t.dp(16)),
+    (noteZone_ ? icons::clock : setupNote_ ? icons::wifi : icons::moon)(c, center(Rect(inner.x, inner.y, 2 * r, inner.h), t.dp(16), t.dp(16)),
                                              p.accent);
     inner = Rect(inner.x + 2 * r + t.m.gapM, inner.y, inner.w - 2 * r - t.m.gapM, inner.h);
     Rect lines[2];
@@ -356,7 +362,7 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
 bool LauncherApp::HomeScreen::onEvent(const Event &e, AppContext &ctx) {
   const Theme &t = ctx.theme();
   if (setupNote_ && trackPress(note_, e, notePressed_, ctx, note_.inset(-glassOutset(t)))) {
-    ctx.launch("settings", "wifi");
+    ctx.launch("settings", noteZone_ ? "time" : "wifi");
     return true;
   }
   if (!pager_.empty()) {

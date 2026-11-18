@@ -65,7 +65,7 @@ const char *const kCalendarFixture =
     "END:VCALENDAR\r\n";
 
 
-SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online, bool withDeck)
+SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online, bool withDeck, bool newDevice)
     : dev(width, height) {
   dev.withHid = withDeck;
   config.serviceThread = threaded;
@@ -75,6 +75,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   config.defaults.ledPin[1] = 16;
   config.defaults.ledPin[2] = 17;
   config.defaults.ledInverted = true;
+  config.askTimeZone = newDevice;      // only a brand-new device invites its owner to choose a time zone
   config.defaults.autoUpdate = false;  // the daily check is tested on its own; other tests count requests
   if (online) {
     config.wifiSsid = "Starlight";

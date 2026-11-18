@@ -179,6 +179,7 @@ class WeatherApp : public App {
   };
 
   void choosePlace(uint8_t place, AppContext &ctx);
+  void followZone(AppContext &ctx);  // before a city is chosen, the one for the time zone
   void publishSun(AppContext &ctx);
   bool publishGlance(AppContext &ctx);  // "14° Overcast" for idle faces (the bedside clock); false if none
 
@@ -188,6 +189,7 @@ class WeatherApp : public App {
   HourlyScreen hourly_;
   PlaceScreen places_;
   uint8_t place_ = 0;
+  bool placeChosen_ = false;  // a city was picked (saved); until then the place follows the time zone
 };
 
 }  // namespace apps

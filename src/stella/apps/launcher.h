@@ -43,6 +43,7 @@ class LauncherApp : public App {
   Rect pagerPrev() const { return home_.prevRect(); }
   Rect pagerNext() const { return home_.nextRect(); }
   bool headerFits() const { return home_.wordsFit(); }
+  Rect noteBounds() const { return home_.noteRect(); }  // the invitation under the apps (tests, screenshots)
   Rect greetingRect() const { return home_.greetingRect(); }
   Rect dateRect() const { return home_.dateRect(); }
 
@@ -62,6 +63,7 @@ class LauncherApp : public App {
     Rect nextRect() const { return next_; }
     Rect greetingRect() const { return greeting_; }
     Rect dateRect() const { return date_; }
+    Rect noteRect() const { return note_; }
     bool wordsFit() const { return chooseWords(theme_).fits; }  // the header text is not cut off
 
    private:
@@ -86,7 +88,8 @@ class LauncherApp : public App {
     bool pagerBelow_ = false;   // in the row of page dots, when the header is too narrow for them
     int columns_ = 3, rows_ = 2, gap_ = 8, page_ = 0, pressed_ = -1;
     char timeText_[16] = {0}, greetingText_[32] = {0}, greetingShort_[16] = {0}, dateShort_[24] = {0}, dateText_[48] = {0}, noteTitle_[32] = {0}, noteText_[48] = {0};
-    bool setupNote_ = false, notePressed_ = false;  // note invites Wi-Fi setup
+    bool setupNote_ = false, notePressed_ = false;  // the note invites something: Wi-Fi setup or choosing a time zone
+    bool noteZone_ = false;                          // ... and this is the time zone one
     bool twelveHour_ = false;                       // the time has an AM/PM
     bool prevPressed_ = false, nextPressed_ = false;
   };

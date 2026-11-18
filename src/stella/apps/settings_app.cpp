@@ -108,6 +108,7 @@ void SettingsApp::onTopic(uint16_t topicId, AppContext &ctx) {
 
 void SettingsApp::onRoute(const char *route, AppContext &ctx) {
   if (route && strcmp(route, "wifi") == 0) ctx.push(wifi_);
+  if (route && strcmp(route, "time") == 0) ctx.push(time_);
   if (route && strcmp(route, "whatsnew") == 0) ctx.push(whatsNew_);
   if (route && strcmp(route, "remote") == 0) ctx.push(remote_);
   if (route && strcmp(route, "units") == 0) ctx.push(units_);
@@ -1327,6 +1328,7 @@ void SettingsApp::TimeScreen::layout(const Rect &content, const Theme &t) {
 }
 
 void SettingsApp::TimeScreen::onShow(AppContext &ctx) {
+  ctx.confirmTimeZone();  // the person has seen the time zone: Home stops asking
   clock24_.on = ctx.settings().clock24h;
   int count = 0;
   const TimezonePreset *presets = timezonePresets(count);

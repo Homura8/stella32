@@ -191,6 +191,7 @@ struct SystemStatus {
   uint32_t lastFrameMs = 0;  // render time of the most recent frame
   uint32_t uiStackFree = 0, serviceStackFree = 0;  // lowest free stack seen, bytes
   bool hasLed = false, hasLight = false, hasSound = false;  // what this board has
+  bool zoneChosen = true;  // false on a new device until its owner has seen Settings > Time
   bool night = false;      // it is night by the sky's clock (real sunset to sunrise when known), whatever sky is pinned
   int8_t ambient = -1;     // ambient light 0..100 % when the sensor is calibrated, else -1
   bool panelTrim = false;  // the display supports VCOM / refresh adjustment
@@ -246,6 +247,8 @@ class AppContext : public Invalidator {
   virtual HidDevice *hid() = 0;
   // The live values scripts have pushed (net/values.h); empty until something arrives.
   virtual PushedValues pushedValues() const = 0;
+  // Settings > Time was opened: the time zone has been looked at, so Home stops asking.
+  virtual void confirmTimeZone() = 0;
   virtual CalendarSourceControl &calendar() = 0;
   // Restart the device shortly (after a short pause so the screen can say so).
   virtual void restartDevice() = 0;

@@ -24,7 +24,7 @@ class SimSession {
   // online = true pre-provisions the simulated "Starlight" network, so Wi-Fi
   // connects and the weather fixture loads during construction.
   SimSession(int width, int height, int64_t epoch = kEveningEpoch, Appearance appearance = Appearance::Auto,
-             bool threaded = false, bool online = true, bool withDeck = false);
+             bool threaded = false, bool online = true, bool withDeck = false, bool newDevice = false);
 
   // Run the UI loop for `ms` of simulated time, honouring its sleep requests.
   void run(uint32_t ms);

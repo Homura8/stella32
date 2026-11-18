@@ -309,3 +309,51 @@ TEST(a_new_person_sees_only_useful_apps_and_finds_the_touch_test_in_settings) {
     if (strcmp(s.launcher.layout().items[i].id, "values") == 0) listed = !s.launcher.layout().items[i].visible;
   CHECK(listed);
 }
+
+// A person new to the OS: after Wi-Fi, Home asks once for a time zone (the clock and the
+// weather follow it), and the weather is for that zone's city until a city is chosen.
+TEST(a_new_device_asks_for_a_time_zone_once) {
+  SimSession s(320, 240, kEveningEpoch, Appearance::Auto, false, /*online=*/true, /*withDeck=*/false, /*newDevice=*/true);
+  s.os.goHome();
+  s.run(500);
+  CHECK(!s.os.status().zoneChosen);
+  tapRect(s, s.launcher.noteBounds());  // "Choose your time zone"
+  CHECK(strcmp(foregroundId(s.os), "settings") == 0);
+  CHECK(strcmp(topTitle(s.os), "Time") == 0);
+  CHECK(s.os.status().zoneChosen);  // opening the screen is enough: it has been seen
+  uint8_t chosen = 0;
+  CHECK(loadRecord(&s.dev.storage, "sys", "setup", 1, &chosen, sizeof(chosen)) == RecordStatus::Ok && chosen == 1);
+  // Home no longer asks: its note is the moon again, and tapping it does nothing.
+  s.os.goHome();
+  s.run(500);
+  tapRect(s, s.launcher.noteBounds());
+  CHECK(strcmp(foregroundId(s.os), "home") == 0);
+}
+
+TEST(a_device_with_settings_already_saved_is_never_asked_for_a_zone) {
+  SimSession s(320, 240);  // the simulator's ordinary device does not ask
+  CHECK(s.os.status().zoneChosen);
+}
+
+TEST(the_weather_follows_the_time_zone_until_a_city_is_chosen) {
+  SimSession s(320, 240);
+  CHECK(strstr(s.dev.http.lastUrl.c_str(), "latitude=-37.81") != nullptr);  // Melbourne
+  SystemSettings st = s.os.settings();
+  snprintf(st.timezone, sizeof(st.timezone), "%s", "JST-9");
+  s.os.applySettings(st);
+  s.os.launch("weather");
+  s.run(2000);
+  CHECK(strstr(s.dev.http.lastUrl.c_str(), "latitude=35.68") != nullptr);  // Tokyo, with no step in between
+  // A city picked by hand stays, whatever the zone does afterwards.
+  s.os.launch("weather", "places");
+  const Rect c = s.os.contentRect();
+  const Theme &t = s.os.theme();
+  s.tap(c.centerX(), c.y + t.m.gapS + t.dp(4) + 0 * t.dp(30) + t.dp(15));  // row 0
+  s.run(500);
+  const std::string picked = s.dev.http.lastUrl;
+  st.timezone[0] = 'E'; st.timezone[1] = 'S'; st.timezone[2] = 'T'; st.timezone[3] = '5'; st.timezone[4] = 0;
+  s.os.applySettings(st);
+  s.os.launch("weather");
+  s.run(2000);
+  CHECK(s.dev.http.lastUrl == picked);
+}
