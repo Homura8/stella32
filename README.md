@@ -88,6 +88,24 @@ returns to the previous one. Your settings and Wi-Fi are kept. Signing updates
 is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
 `--profile cyd-huge` builds the single-app layout (no updates).
 
+### A gift build
+
+A device made for one person: it opens on a message (a starry page, then a few short
+pages about the device) until the last page has been read, then keeps the message on
+Home as an app. It is not part of an ordinary StellaOS, and the words are not in this
+repository: copy `examples/CYD/gift.example.h` to `gift.h` next to `CYD.ino`, put your
+words in it (`gift.h` is git-ignored), then remove the `//` before `#define STELLA_GIFT 1`
+at the top of `CYD.ino` (Arduino IDE) or build with:
+
+```bash
+arduino-cli compile --profile cyd --build-property "compiler.cpp.extra_flags=-DSTELLA_GIFT=1" examples/CYD
+```
+
+The device saves the words the first time it starts with them, so the message **stays
+through later updates**, also to an ordinary build (only *Settings > Reset* removes it).
+To test it, open the message app on Home and unplug: it comes back first at the next
+start. See [Architecture > Gift builds](docs/ARCHITECTURE.md).
+
 ## Repository guide
 
 | Path | Contents |
@@ -218,7 +236,15 @@ is optional extra security: see [Architecture > Updates](docs/ARCHITECTURE.md).
     locks for five minutes), and whether the .local name works on your phone
     (iPhones and Macs do; some Android browsers need the IP). Report anything
     odd in the picture's colours.
-22. Leave it running overnight; no `restarting` line in the log and the
+22. *Settings > Reset* (last row): the question names what goes; *Keep everything*
+    returns; *Erase* says so, restarts, and the device comes up as a first run (no
+    Wi-Fi, "Set up Wi-Fi" on Home, and the time-zone card after joining one).
+23. *Gift build* (`STELLA_GIFT`, words in `gift.h`): it should open on the starry message at power-on;
+    Continue and Next through five pages to Done (Home). Power-cycle: Home. Open
+    *Birthday* on Home, unplug, power on: the message comes first. Back goes back a
+    page; the web address on page 4 is whole, not cut. Then flash the *ordinary* build
+    (or update over the air): the message app is still on Home and the words are intact.
+24. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Roadmap

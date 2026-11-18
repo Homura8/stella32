@@ -1,6 +1,8 @@
 # Pinned builds for the ESP32-2432S028R. From the repository root:
 #   arduino-cli compile --profile cyd examples/CYD        two 1.9 MB app slots: over-the-air updates (default)
 #   arduino-cli compile --profile cyd-huge examples/CYD   one 3 MB app, no updates (for when the OS outgrows a slot)
+#   arduino-cli compile --profile cyd --build-property "compiler.cpp.extra_flags=-DSTELLA_GIFT=1" examples/CYD
+#                                                          a gift build: opens on a message (gift.example.h) first
 #   arduino-cli compile --profile cyd-ble examples/CYD     the default plus the Deck app (a Bluetooth media-key pad); see
 #                                                          docs/ARCHITECTURE.md, "Bluetooth deck", for what it costs
 # Switching between them needs one USB flash (the partition table changes);

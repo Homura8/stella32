@@ -208,6 +208,12 @@ bool Runtime::start() {
   foreground_ = -1;
   launch(apps_[home_].app->info().id);
   for (size_t i = 0; i < appCount_; ++i) {
+    if (apps_[i].app->launchAtBoot()) {  // an app that wants to be seen first (a greeting)
+      launch(apps_[i].app->info().id);
+      break;
+    }
+  }
+  for (size_t i = 0; i < appCount_; ++i) {
     apps_[i].wakeArmed = true;  // every app's first onWake() runs on the first step
     apps_[i].wakeAt = now;
   }

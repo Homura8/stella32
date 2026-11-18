@@ -153,6 +153,9 @@ class App {
     (void)ctx;
     return kNoTick;
   }
+  // True if this app should open first when the system starts, instead of Home (a build made
+  // for one purpose, such as a greeting that has not been seen yet). Asked once, after onInstall().
+  virtual bool launchAtBoot() const { return false; }
   // The user answered one of this app's alerts (kAlertPrimary/Secondary) or
   // it timed out (kAlertTimedOut). Not called for dismissAlert().
   virtual void onAlert(uint16_t tag, int action, AppContext &ctx) {

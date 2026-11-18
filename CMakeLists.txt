@@ -32,6 +32,8 @@ file(GLOB STELLA_HOST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/host/*.cpp)
 list(FILTER STELLA_HOST_SOURCES EXCLUDE REGEX "/host/(sim|bench)_main.cpp$")
 add_library(stella_host STATIC ${STELLA_HOST_SOURCES})
 target_include_directories(stella_host PUBLIC ${CMAKE_SOURCE_DIR}/host)
+# The simulator and tests read the gift build's words (examples/CYD/gift.example.h).
+target_include_directories(stella_host PUBLIC ${CMAKE_SOURCE_DIR}/examples/CYD)
 target_link_libraries(stella_host PUBLIC stella)
 target_compile_options(stella_host PRIVATE ${STELLA_WARNINGS} ${STELLA_SAN})
 

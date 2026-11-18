@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "gift.example.h"
 #include "sim_session.h"
 #include "test.h"
 
@@ -48,8 +49,8 @@ void push(SimSession &s, const char *path, const std::string &body) {
   s.dev.remote.handler->handleRemote(req, res);
 }
 
-const char *const kApps[] = {"home", "clock", "weather", "alarms", "timer", "stopwatch", "settings", "values", "calendar", "deck", "touch"};
-const char *const kRoutes[] = {nullptr, "customise", "wifi", "remote", "units", "idle", "calendar", "whatsnew", "places", "bedside", "dashboard"};
+const char *const kApps[] = {"home", "clock", "weather", "alarms", "timer", "stopwatch", "settings", "values", "calendar", "deck", "touch", "greeting"};
+const char *const kRoutes[] = {nullptr, "customise", "wifi", "remote", "units", "idle", "calendar", "whatsnew", "places", "bedside", "dashboard", "reset"};
 
 void checkConsistent(SimSession &s, int width, int height, const char *what) {
   CHECK(s.os.foreground() != nullptr);
@@ -88,7 +89,11 @@ void checkConsistent(SimSession &s, int width, int height, const char *what) {
 
 // One monkey: `steps` random actions with checks every 25, at one screen size.
 void runMonkey(int width, int height, uint32_t seed, int steps) {
-  std::unique_ptr<SimSession> s(new SimSession(width, height, kMorningEpoch, Appearance::Auto, false, true, /*withDeck=*/true));
+  SimOptions options;
+  options.epoch = kMorningEpoch;
+  options.withDeck = true;
+  options.gift = &giftContent();  // the greeting app is installed too, and comes up first
+  std::unique_ptr<SimSession> s(new SimSession(width, height, options));
   gSeed = seed;
   Rng rng{seed ? seed : 1u};
   std::vector<std::string> visited;

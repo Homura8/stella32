@@ -66,7 +66,14 @@ const char *const kCalendarFixture =
 
 
 SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearance, bool threaded, bool online, bool withDeck, bool newDevice)
+    : SimSession(width, height, SimOptions{epoch, appearance, threaded, online, withDeck, newDevice, nullptr, nullptr}) {}
+
+SimSession::SimSession(int width, int height, const SimOptions &options)
     : dev(width, height) {
+  const int64_t epoch = options.epoch;
+  const Appearance appearance = options.appearance;
+  const bool threaded = options.threaded, online = options.online, withDeck = options.withDeck, newDevice = options.newDevice;
+  if (options.savedStorage) dev.storage = *options.savedStorage;
   dev.withHid = withDeck;
   config.serviceThread = threaded;
   config.updateManifestUrl = "https://updates.example/stella/manifest.json";
@@ -101,6 +108,8 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.install(values);
   os.install(calendar);
   if (withDeck) os.install(deck);
+  if (options.gift) greeting.offer(*options.gift);
+  os.install(greeting);
   os.start();
   run(online ? 4000 : 100);  // join Wi-Fi and fetch the forecast
 }

@@ -3,6 +3,8 @@
 // helpers to drive it with taps and time. Used by tests and the simulator.
 #include <stdint.h>
 
+#include <memory>
+
 #include "host_board.h"
 #include "stella/apps/apps.h"
 #include "stella/runtime/runtime.h"
@@ -17,6 +19,15 @@ constexpr int64_t kEveningEpoch = 1794828600;  // Mon 16 Nov 2026 22:30 AEDT
 constexpr int64_t kMorningEpoch = 1794784500;  // Mon 16 Nov 2026 10:15 AEDT
 constexpr const char *kMelbourneTz = "AEST-10AEDT,M10.1.0,M4.1.0/3";
 
+// Everything a test may choose about the simulated device.
+struct SimOptions {
+  int64_t epoch = kEveningEpoch;
+  Appearance appearance = Appearance::Auto;
+  bool threaded = false, online = true, withDeck = false, newDevice = false;
+  const apps::GreetingContent *gift = nullptr;  // a gift build: offer these words to the Greeting app
+  const MemoryStore *savedStorage = nullptr;    // start with what an earlier run had saved (a power cycle)
+};
+
 class SimSession {
  public:
   // threaded = false runs background jobs synchronously inside run(), so
@@ -25,6 +36,7 @@ class SimSession {
   // connects and the weather fixture loads during construction.
   SimSession(int width, int height, int64_t epoch = kEveningEpoch, Appearance appearance = Appearance::Auto,
              bool threaded = false, bool online = true, bool withDeck = false, bool newDevice = false);
+  SimSession(int width, int height, const SimOptions &options);
 
   // Run the UI loop for `ms` of simulated time, honouring its sleep requests.
   void run(uint32_t ms);
@@ -49,6 +61,7 @@ class SimSession {
   apps::AlarmsApp alarms;
   apps::TimerApp timer;
   apps::StopwatchApp stopwatch;
+  apps::GreetingApp greeting;  // always installed; dormant until it has words (SimOptions::gift offers some)
   RuntimeConfig config;
 };
 

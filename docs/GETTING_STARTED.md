@@ -53,6 +53,8 @@ Two more are off until you want them (*Settings > Home screen*):
 - **Web page**: a page on your home network for a wallpaper, the calendar link
   and pushing numbers to Stats. It is off until you switch it on, and it shows
   its address and a PIN on the device.
+- **Reset**: erases everything saved on the device (Wi-Fi, settings, alarms, wallpaper)
+  and starts again as new. It asks first; the software stays.
 
 ## Good to know
 
