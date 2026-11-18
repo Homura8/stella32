@@ -185,3 +185,16 @@ Stella should feel calm, soft and deliberate.
   results, flash/RAM impact for firmware changes, dependency changes, known
   limitations, and the hardware checks the owner should perform.
 - Never merge pull requests; merging is reserved for the owner.
+- **Work in batches, not in parallel PRs.** Features that will be tested on the
+  device together go on **one branch as separate, focused commits and one pull
+  request** with one version bump. Parallel PRs that each bump the version,
+  the changelog and the README row, add a screenshot, regenerate `remote_page.h`
+  and append to the same app lists all conflict with each other as soon as the
+  first one merges. So: bump the version, the changelog entry and the README row
+  once, in the batch's last commit; regenerate generated files
+  (`tools/screenshots.py`, `tools/make_remote_page.py`) last, after merging `main`
+  into the branch, never by hand-merging them; add new app-list lines, topics and
+  endpoints at the end of their lists. A separate PR is for something that must
+  stand apart (an opt-in build with its own risk, say) and then touches none of
+  the shared lines above. When `main` moves, update every open PR's branch
+  yourself and say what was resolved.
