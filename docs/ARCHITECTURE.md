@@ -571,8 +571,9 @@ too. The app stays on Home as its own name so it can be reopened.
 
 `tests/test_greeting.cpp` covers all of that (including an update to a build with no words
 of its own and a torn set) and that every page fits at the four screen sizes and no word,
-a web address say, is cut at 320 px and wider. Limits: name 15 characters, headline 63, wish
-95, up to eight pages of 199; longer text is cut.
+a web address say, is cut at 320 px and wider. Limits: name 15 characters, headline 47, wish
+79, up to six pages of 183; longer text is cut. (The words sit in RAM in every build, about 1.2 KB, so the limits are
+kept small: the optional DMA build is within a few hundred bytes of the chip's static RAM.)
 
 An update from Settings > About installs the published (ordinary) firmware, which keeps
 the message as above. `STELLA_UPDATE_URL ""` in `secrets.h` switches the update check off.

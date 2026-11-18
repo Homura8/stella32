@@ -17,11 +17,11 @@ namespace apps {
 // The words, as a build author writes them. Every string must outlive the call
 // (string literals do).
 struct GreetingContent {
-  static constexpr int kMaxPages = 8;
+  static constexpr int kMaxPages = 6;
   const char *name = "Hello";   // its name on Home (15 characters at most)
-  const char *headline = "";    // the first page: the big line (63 characters) ...
-  const char *wish = "";        // ... and a softer line under it (95)
-  const char *pages[kMaxPages] = {};  // then short pages, each a few lines (199 characters), read one at a time
+  const char *headline = "";    // the first page: the big line (47 characters) ...
+  const char *wish = "";        // ... and a softer line under it (79)
+  const char *pages[kMaxPages] = {};  // then short pages, each a few lines (183 characters), read one at a time
   int pageCount = 0;
 };
 
@@ -29,7 +29,7 @@ struct GreetingContent {
 // storage): fixed buffers, no heap. Longer text is cut to fit, so keep to the limits above.
 struct GreetingWords {
   static constexpr int kMaxPages = GreetingContent::kMaxPages;
-  static constexpr int kNameLen = 16, kHeadlineLen = 64, kWishLen = 96, kPageLen = 200;
+  static constexpr int kNameLen = 16, kHeadlineLen = 48, kWishLen = 80, kPageLen = 184;  // kept small: this sits in RAM in every build
   char name[kNameLen];
   char headline[kHeadlineLen];
   char wish[kWishLen];

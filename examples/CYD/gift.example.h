@@ -12,7 +12,7 @@
 // The device saves the words the first time it starts with them (and again if you
 // change them), so the message stays through any later update, even to an
 // ordinary build that has no words of its own. Limits: name 15 characters,
-// headline 63, wish 95, up to 8 pages of 199 characters. Each page is read one at a
+// headline 47, wish 79, up to 6 pages of 183 characters. Each page is read one at a
 // time on the 320x240 screen, so keep them to a few lines;
 // tests/test_greeting.cpp checks these words fit at every screen size.
 #include <Stella.h>
