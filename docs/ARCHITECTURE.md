@@ -113,6 +113,26 @@ or display I/O.
   (`net/http_request.*`: method, path and a form body of at most 512 bytes;
   header lines are inspected and dropped, so nothing grows), answers as soon
   as a request is complete and closes sockets that stay silent for 2.5 s.
+- **Calendars** (`net/ical.*`, `net/ical_calendar.*`; no app uses them yet).
+  `ICalParser` reads an iCalendar file as a stream, like `JsonParser`: any
+  chunk size, one unfolded line of at most 320 bytes held at a time (a longer
+  line such as DESCRIPTION is cut and counted), at most eight nested parts, up
+  to four VTIMEZONE blocks (a standard and a daylight rule each, as Google and
+  Apple write them, so "9:00 Australia/Melbourne" is right on both sides of a
+  clock change without a tz database). Each finished VEVENT goes to an
+  `ICalSink` and is forgotten. `ICalCalendar` is the sink an app would use: it
+  keeps only events that can matter for a window (past one-offs stream by and
+  are counted), holds a series as one entry (32 events, ~6 KB; overflow is
+  counted in `dropped()`), and `occurrences(from, to, resolver, out, max)`
+  expands DAILY/WEEKLY/MONTHLY/YEARLY rules (INTERVAL, COUNT, UNTIL, BYDAY with
+  ordinals, BYMONTHDAY, BYMONTH, WKST, EXDATE) and applies RECURRENCE-ID
+  overrides and cancellations. Floating times and all-day dates are read in the
+  device's zone through `ICalResolver`. Anything it cannot follow (BYSETPOS,
+  hourly rules, RDATE) degrades to one occurrence and is counted in `Stats`,
+  never guessed. `tests/test_ical.cpp` compares a realistic export, occurrence
+  by occurrence, with python-dateutil and zoneinfo (the reference values are in
+  the test), feeds it one byte at a time, streams 7 MB in bounded memory and
+  truncates or mangles it everywhere; the suite also passes under ASan/UBSan.
 - **Requests are checked whole.** A request is built in a buffer sized with
   room to spare and is refused, never sent, if it does not fit (Weather:
   `WeatherService::buildUrl`; the update address is refused at start-up if it
