@@ -451,7 +451,13 @@ new firmware, with no USB cable and nothing to set up beyond one flash.
 screen): the update job makes a quiet check two minutes after boot and then
 once a day, only from a calm state (never over an offer or a result nobody has
 seen), and shows nothing of a failure (it retries after 30 minutes, backing off
-to 6 hours); an offer appears as "Update x.y.z" on Settings' About row
+to 6 hours); an offer appears as "Update x.y.z" on Settings' About row **and as a card
+on Home** (*Update available · StellaOS x.y.z is ready to install*; while it installs
+*Installing the update · NN %*, and when it waits *Update ready · Restart to use x.y.z*).
+A tap on the card opens the update screen, where Install and Restart are; it installs
+nothing itself. Once the person has looked at an offered version the card stops showing
+it until the next restart or a newer version. The Wi-Fi and time-zone invitations come
+first, and turning *Check daily* off means nothing is offered unasked
 (`net/firmware_update.*`, `tools/update_tool.py`):
 
 1. **Publishing is automatic.** The `Publish update` workflow runs on every

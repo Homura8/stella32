@@ -56,6 +56,13 @@ Two more are off until you want them (*Settings > Home screen*):
 - **Reset**: erases everything saved on the device (Wi-Fi, settings, alarms, wallpaper)
   and starts again as new. It asks first; the software stays.
 
+## Updates
+
+Once a day (when Wi-Fi is on) the device looks for a newer version by itself. If it finds one, Home
+says so: tap the card, then *Install*, then *Restart now*. Nothing installs unless you tap, and after
+the restart keep it powered for a minute so the new version is kept. *Settings > About > Software
+update* has a *Check daily* switch if you would rather it didn't look.
+
 ## Good to know
 
 - Everything is saved on the device and survives a restart.

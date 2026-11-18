@@ -16,7 +16,7 @@ management and versioned settings.
 
 | | |
 | --- | --- |
-| Version | 0.17.1 (a fullscreen screen that is read is not dimmed like an idle face), 0.17.0 (Settings > Reset: erase everything saved and start again as new; a Greeting app and an opt-in gift build), 0.16.0 (polish for newcomers: a header that is never cut off, clearer names, 36 time zones and ~57 weather places, a time-zone prompt on first run, a getting-started guide, a random-input stability test), 0.15.0 (the Stats app: numbers pushed from a script), 0.14.0 (the Calendar app: events from an iCal feed, set on the remote page), 0.13.1 (remote page fix, gentler wallpaper defaults), 0.13.0 (units: °C/°F, week start, date order; a dashboard idle face; sunrise/sunset on the bedside clock), 0.12.0 (a web page on your Wi-Fi, wallpaper from your phone), 0.11.1 (the weather request fixed), 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
+| Version | 0.18.0 (Home shows a card when an update is ready, installing, or waiting for a restart), 0.17.1 (a fullscreen screen that is read is not dimmed like an idle face), 0.17.0 (Settings > Reset: erase everything saved and start again as new; a Greeting app and an opt-in gift build), 0.16.0 (polish for newcomers: a header that is never cut off, clearer names, 36 time zones and ~57 weather places, a time-zone prompt on first run, a getting-started guide, a random-input stability test), 0.15.0 (the Stats app: numbers pushed from a script), 0.14.0 (the Calendar app: events from an iCal feed, set on the remote page), 0.13.1 (remote page fix, gentler wallpaper defaults), 0.13.0 (units: °C/°F, week start, date order; a dashboard idle face; sunrise/sunset on the bedside clock), 0.12.0 (a web page on your Wi-Fi, wallpaper from your phone), 0.11.1 (the weather request fixed), 0.11.0 (the sky follows the real sunrise and sunset), 0.10.0 (What's new after an update, a customisable Home), 0.9.0 (the next hours and a rain outlook), 0.8.4 (a bigger time on Home), 0.8.3 (sunrise and sunset on Weather), 0.8.2 (Home header with the time, StellaOS name), 0.8.1 (brighter alert LED), 0.8.0: status LED, Find my LED, ambient-light dimming with a calibration (0.7.x added update diagnostics and gentler flash writes; the screen-transition experiment was removed again) |
 | First board | ESP32-2432S028R "Cheap Yellow Display" (2.8" 320x240, XPT2046) |
 | Host tests | 219 tests under ASan + UBSan, incl. touch-driven Wi-Fi onboarding, alarms, the stopwatch and the update flow; screenshots at 320x240 and 480x320 |
 | Firmware build | Compiles with Arduino-ESP32 3.3.12: 1.48 MB flash (75% of a 1.9 MB update slot), 84 KB static RAM (25%) |
@@ -244,7 +244,12 @@ start. See [Architecture > Gift builds](docs/ARCHITECTURE.md).
     *Birthday* on Home, unplug, power on: the message comes first. Back goes back a
     page; the web address on page 4 is whole, not cut. Then flash the *ordinary* build
     (or update over the air): the message app is still on Home and the words are intact.
-24. Leave it running overnight; no `restarting` line in the log and the
+24. *Update card*: with *Check daily* on and a newer version published, Home shows
+    "Update available" (within a few minutes of boot); tap it: the update screen opens
+    (nothing installs yet); go back to Home and the card is gone until the next restart.
+    Install: the card shows the progress, then "Update ready"; Restart now; keep it powered
+    for a minute afterwards.
+25. Leave it running overnight; no `restarting` line in the log and the
    minimum heap in the `health` line stays stable.
 
 ## Roadmap
