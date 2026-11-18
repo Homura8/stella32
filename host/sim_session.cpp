@@ -95,6 +95,7 @@ SimSession::SimSession(int width, int height, int64_t epoch, Appearance appearan
   os.install(stopwatch);
   os.install(settings);
   os.install(touchTest);
+  os.install(values);
   os.install(calendar);
   os.start();
   run(online ? 4000 : 100);  // join Wi-Fi and fetch the forecast

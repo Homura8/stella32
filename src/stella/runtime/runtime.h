@@ -27,7 +27,7 @@
 #include "event_queue.h"
 
 #ifndef STELLA_VERSION
-#define STELLA_VERSION "0.14.0"
+#define STELLA_VERSION "0.15.0"
 #endif
 
 namespace stella {
@@ -141,6 +141,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   NetworkControl &network() override { return wifi_; }
   UpdateControl &update() override { return updater_; }
   RemoteControl &remote() override { return remote_; }
+  PushedValues pushedValues() const override { return pushedValues_.get(); }
   CalendarSourceControl &calendar() override { return calendarSource_; }
   CalendarSource &calendarFeed() override { return calendarSource_; }
   bool wallClock(int64_t &epochSeconds) override;
@@ -263,6 +264,7 @@ class Runtime : public AppContext, public TopicNotifier, public ServiceHost {
   CalendarSource calendarSource_;
   Topic<RemoteInfo> remoteInfo_{topics::kRemote};
   RemoteService remote_{remoteInfo_};
+  Topic<PushedValues> pushedValues_{topics::kValues};
   HttpService http_;
   TopicBase *topics_[kMaxTopics] = {};
   size_t topicCount_ = 0;

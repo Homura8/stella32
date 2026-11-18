@@ -43,6 +43,7 @@ class SimSession {
   apps::SettingsApp settings;
   apps::TouchTestApp touchTest;
   apps::WeatherApp weather;
+  apps::ValuesApp values;
   apps::CalendarApp calendar;
   apps::AlarmsApp alarms;
   apps::TimerApp timer;

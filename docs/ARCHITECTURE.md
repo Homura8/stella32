@@ -164,6 +164,26 @@ or display I/O.
   good value and says *why* it might be old (Weather: "Offline · from 12 min
   ago").
 
+## Pushed values (the Values app)
+
+Scripts on the home network can show live numbers on the device: `POST /api/push` on
+the remote page (behind the PIN, `X-Stella-Pin`) takes `name=value` pairs separated by
+`&` or line breaks (`curl -d "cpu=37%&temp=61C" -H "X-Stella-Pin: 123456" http://stella-ab12.local/api/push`;
+the page shows the exact command once unlocked), an empty value removes a name, and
+`/api/push/clear` forgets all of them. `net/values.cpp` (`applyPush`) is the whole parser
+and is bounded because every byte is untrusted: at most eight values, keys of letters,
+digits, space, `_`, `-` and `.` (13 characters), values of 21 bytes of valid UTF-8 with
+control characters dropped and `%XX` decoded only where two hex digits follow (so `50%`
+stays `50%`); a full set replaces the value that has been quiet longest; the body is the
+connection's usual 512-byte form limit. The values live in RAM only, in a
+`Topic<PushedValues>` (id 5) published by `RemoteService` from the service thread, and
+each remembers when it last arrived. The Values app (`apps/values_app.*`) shows one tile
+per value (the grid fits the count: one, 2x2, 3x2 or 4x2), picks the largest font each
+value fits, and dims a tile that has been quiet ten minutes with "12 min ago". With no
+values it shows how to send them. It repaints only when something arrives or a minute
+changes what the dimming says. `tests/test_remote.cpp` covers the parser table, the
+hostile bodies, the endpoint (PIN, 400, 413, 503, clear) and the screen at every size.
+
 ## Fullscreen screens and the idle face
 
 A `Screen` may be `fullscreen()`: the shell then draws no sky and no status bar
