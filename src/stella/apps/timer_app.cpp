@@ -175,8 +175,11 @@ void TimerApp::TimerScreen::refresh(AppContext &ctx) {
     describeDuration(app_.durationMs_, duration, sizeof(duration));
     snprintf(caption, sizeof(caption), "%s timer", duration);
   }
-  if (strcmp(digits, digitsText_)) {
+  // The digits are drawn bright while running and muted otherwise, so a change of state
+  // repaints them even when the numbers are the same (pausing, or finishing).
+  if (strcmp(digits, digitsText_) || app_.running_ != digitsRunning_) {
     memcpy(digitsText_, digits, sizeof(digits));
+    digitsRunning_ = app_.running_;
     ctx.invalidate(digits_);
   }
   if (strcmp(caption, captionText_)) {

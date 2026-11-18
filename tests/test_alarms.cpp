@@ -164,6 +164,25 @@ TEST(timer_pause_resume_reset_and_plus_minute) {
   CHECK(sameAsFullRedraw(s));
 }
 
+// Regression (found by the monkey test): the big digits are bright while the timer runs and
+// muted when it does not, but they were only repainted when the numbers changed, so pausing
+// (same numbers) left them in the running colour.
+TEST(pausing_the_timer_repaints_its_digits_in_the_muted_colour) {
+  SimSession s(320, 240);
+  startFiveMinuteTimer(s);
+  s.run(2000);
+  const std::vector<Color> running = s.dev.display.framebuffer();
+  tapRect(s, timerButton(s, 2));  // Pause: the numbers are the same, the state is not
+  s.run(300);
+  CHECK(!s.timer.running());
+  CHECK(s.dev.display.framebuffer() != running);  // and the screen shows it
+  CHECK(sameAsFullRedraw(s));
+  // Resuming brightens them again.
+  tapRect(s, timerButton(s, 2));
+  s.run(300);
+  CHECK(sameAsFullRedraw(s));
+}
+
 TEST(alert_wakes_the_display_and_keeps_it_awake) {
   SimSession s(320, 240);
   SystemSettings p = s.os.settings();

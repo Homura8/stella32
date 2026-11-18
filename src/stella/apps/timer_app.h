@@ -40,6 +40,7 @@ class TimerApp : public App {
     Segmented presets_;
     Button reset_, plus_, start_;
     char digitsText_[12] = {0}, captionText_[40] = {0};
+    bool digitsRunning_ = false;  // whether the digits were last drawn as running
     int progressW_ = -1;
   };
 
