@@ -14,7 +14,7 @@ namespace apps {
 using namespace layout;
 
 const AppInfo &ValuesApp::info() const {
-  static const AppInfo kInfo{"values", "Values", icons::bars, 0, 0};
+  static const AppInfo kInfo{"values", "Stats", icons::bars, 0, kAppOptional};
   return kInfo;
 }
 
@@ -62,7 +62,7 @@ void ValuesApp::ValuesScreen::refresh(AppContext &ctx) {
   }
   if (countChanged || tiles_[0].empty() != (values_.count == 0)) arrange();
   const RemoteInfo remote = ctx.remote().status();
-  snprintf(hint_, sizeof(hint_), "Send name=value pairs to http://%s.local/api/push with your PIN (Settings, Remote page).",
+  snprintf(hint_, sizeof(hint_), "Numbers from your computer show here. Send name=value pairs to http://%s.local/api/push (PIN: Settings, Web page).",
            remote.host[0] ? remote.host : "stella-xxxx");
   if (isVisible()) ctx.invalidate(ctx.contentRect());
 }
@@ -88,7 +88,7 @@ void ValuesApp::ValuesScreen::draw(Canvas &c, const Theme &t) {
     const Rect box = message_.inset(t.m.padding, 0);
     Rect parts[4];
     column(box, {flex(), px(t.font.headline->lineHeight), px(4 * t.font.body->lineHeight), flex()}, t.m.gapM, parts);
-    c.drawTextIn(*t.font.headline, "No values yet", parts[1], p.text, Align::Center);
+    c.drawTextIn(*t.font.headline, "Nothing to show yet", parts[1], p.text, Align::Center);
     c.drawWrapped(*t.font.body, hint_, parts[2], p.textMuted, 4, Align::Center);
     return;
   }

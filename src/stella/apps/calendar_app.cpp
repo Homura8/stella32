@@ -278,7 +278,7 @@ void CalendarApp::AgendaScreen::refresh(AppContext &ctx) {
   // The message for an empty list.
   if (!snap_.hasAddress) {
     copyText(title_, sizeof(title_), "No calendar yet");
-    copyText(hint_, sizeof(hint_), "Open the remote page and paste the private address of your calendar (.ics).");
+    copyText(hint_, sizeof(hint_), "Open Settings, then Web page, and paste the private address of your calendar (.ics).");
   } else if (!snap_.status.hasData) {
     copyText(title_, sizeof(title_), "Your calendar");
     copyText(hint_, sizeof(hint_), "The first fetch is on its way.");

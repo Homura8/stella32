@@ -62,7 +62,7 @@ void LauncherApp::syncLayout(AppContext &ctx) {
     if (present) continue;
     HomeLayoutRecord::Item &item = next.items[next.count++];
     copyText(item.id, sizeof(item.id), info->id);
-    item.visible = 1;
+    item.visible = (info->flags & kAppOptional) ? 0 : 1;
   }
   layout_ = next;
 }
@@ -104,7 +104,15 @@ void LauncherApp::HomeScreen::arrange() {
   const int wordsH = t.font.title->lineHeight + t.font.body->lineHeight;
   const int headerH = timeH > wordsH ? timeH : wordsH;
   const int gridH = rows_ * tileH + (rows_ - 1) * gap_;
-  const int dotsH = paged ? t.dp(10) : 0;
+  // The page buttons sit beside the greeting when that leaves room for the date
+  // at its smallest size; on a narrow screen they go below the apps instead, so
+  // the words are never cut off.
+  const int timeW = Canvas::textWidth(big, "88:88") +
+                    (twelveHour_ ? t.dp(4) + Canvas::textWidth(*t.font.title, "AM") : 0);
+  const int pagerW = t.dp(72);
+  const int wordsW = area_.w - pagerW - t.m.gapM - timeW - t.m.gapM;
+  pagerBelow_ = paged && wordsW < Canvas::textWidth(*t.font.caption, "Wed 28 Sep") + t.dp(6);
+  const int dotsH = !paged ? 0 : pagerBelow_ ? t.m.control : t.dp(10);
   const int noteH = rows_ == 1 ? t.m.row + t.dp(8) : 0;
   const int used = headerH + gridH + (paged ? t.dp(4) + dotsH : 0) + noteH;
   const int slots = noteH ? 4 : 3;  // gaps: above, between, [before the note], below
@@ -122,24 +130,28 @@ void LauncherApp::HomeScreen::arrange() {
     dots_ = Rect();
   }
   note_ = noteH ? Rect(area_.x, y + space, area_.w, noteH) : Rect();
-  // With several pages, a pill of previous/next buttons sits at the right end
-  // of the header; swiping still works too.
+  // With several pages, a pill of previous/next buttons: at the right end of the
+  // header, or (narrow screens) in the row of page dots; swiping works too.
   Rect textArea = header_;
-  if (paged) {
-    pager_ = trailing(header_, t.dp(88));
+  if (paged && !pagerBelow_) {
+    pager_ = trailing(header_, pagerW);
     pager_ = center(pager_, pager_.w, t.m.control);
     Rect halves[2];
     row(pager_, {flex(), flex()}, 0, halves);
     prev_ = halves[0];
     next_ = halves[1];
     textArea.w = area_.w - pager_.w - t.m.gapM;
+  } else if (paged) {
+    const int pages = pageCount();
+    const int width = 2 * t.dp(44) + pages * t.dp(10) + t.dp(8);
+    pager_ = center(dots_, width < dots_.w ? width : dots_.w, t.m.control);
+    prev_ = leading(pager_, t.dp(44));
+    next_ = trailing(pager_, t.dp(44));
   } else {
     pager_ = prev_ = next_ = Rect();
   }
   // The time (as wide as "88:88", plus a small AM/PM in the 12-hour style) on
   // the left, the words right-aligned beside it.
-  const int timeW = Canvas::textWidth(big, "88:88") +
-                    (twelveHour_ ? t.dp(4) + Canvas::textWidth(*t.font.title, "AM") : 0);
   Rect parts[2];
   row(textArea, {px(timeW), flex()}, t.m.gapM, parts);
   time_ = Rect(parts[0].x, header_.y, parts[0].w, headerH);
@@ -147,6 +159,25 @@ void LauncherApp::HomeScreen::arrange() {
   column(center(parts[1], parts[1].w, wordsH), {px(t.font.title->lineHeight), px(t.font.body->lineHeight)}, 0, lines);
   greeting_ = lines[0];
   date_ = lines[1];
+}
+
+// What the header says: the full words in the biggest font that fits, then the short forms.
+LauncherApp::HomeScreen::Words LauncherApp::HomeScreen::chooseWords(const Theme &t) const {
+  Words w;
+  w.greeting = greetingText_;
+  w.greetingFont = t.font.title;
+  if (Canvas::textWidth(*w.greetingFont, w.greeting) > greeting_.w) w.greetingFont = t.font.body;
+  if (Canvas::textWidth(*w.greetingFont, w.greeting) > greeting_.w) {
+    w.greeting = greetingShort_;
+    w.greetingFont = t.font.body;
+    if (Canvas::textWidth(*w.greetingFont, w.greeting) > greeting_.w) w.greetingFont = t.font.caption;
+  }
+  w.date = dateText_;
+  w.dateFont = t.font.body;
+  if (Canvas::textWidth(*w.dateFont, w.date) > date_.w) w.dateFont = t.font.caption;
+  if (Canvas::textWidth(*w.dateFont, w.date) > date_.w) w.date = dateShort_;
+  w.fits = Canvas::textWidth(*w.greetingFont, w.greeting) <= greeting_.w && Canvas::textWidth(*w.dateFont, w.date) <= date_.w;
+  return w;
 }
 
 bool LauncherApp::HomeScreen::showPage(int page, AppContext &ctx) {
@@ -174,12 +205,17 @@ void LauncherApp::HomeScreen::refreshText(AppContext &ctx) {
   if (now.valid) ctx.formatTime(now, clock, sizeof(clock));
   else snprintf(clock, sizeof(clock), "--:--");
   snprintf(greeting, sizeof(greeting), "%s", greetingFor(now));
+  copyText(greetingShort_, sizeof(greetingShort_), greetingShortFor(now));
   if (now.valid) {
-    char day[24];
-    formatShortDate(now, day, sizeof(day), ctx.settings().dateOrder);
-    snprintf(date, sizeof(date), "%s \xc2\xb7 %s", day, phaseName(ctx.theme().phase));
+    formatShortDate(now, date, sizeof(date), ctx.settings().dateOrder);
+    char dayOnly[sizeof(dateText_)];
+    copyText(dayOnly, sizeof(dayOnly), date);
+    // the date without its weekday, for the tightest fit
+    const char *space = strchr(dayOnly, ' ');
+    copyText(dateShort_, sizeof(dateShort_), space ? space + 1 : dayOnly);
   } else {
-    snprintf(date, sizeof(date), "Set the time in Settings");
+    snprintf(date, sizeof(date), "No time yet");
+    copyText(dateShort_, sizeof(dateShort_), date);
   }
   if (strcmp(clock, timeText_) != 0) {
     memcpy(timeText_, clock, sizeof(clock));
@@ -259,11 +295,10 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
   const int baseline = time_.y + (time_.h - (big.ascent + big.descent)) / 2 + big.ascent;
   c.drawText(big, digits, time_.x, baseline, p.text);
   if (suffix[0]) c.drawText(*t.font.title, suffix, time_.x + Canvas::textWidth(big, digits) + t.dp(4), baseline, p.textMuted);
-  // The words: the larger size when it fits beside the time, else the smaller.
-  const Font &words = Canvas::textWidth(*t.font.title, greetingText_) <= greeting_.w ? *t.font.title : *t.font.body;
-  const Font &small = Canvas::textWidth(*t.font.body, dateText_) <= date_.w ? *t.font.body : *t.font.caption;
-  c.drawTextIn(words, greetingText_, greeting_, p.text, Align::Right);
-  c.drawTextIn(small, dateText_, date_, p.textMuted, Align::Right);
+  // The words: the largest size that fits beside the time, then the short forms.
+  const Words w = chooseWords(t);
+  c.drawTextIn(*w.greetingFont, w.greeting, greeting_, p.text, Align::Right);
+  c.drawTextIn(*w.dateFont, w.date, date_, p.textMuted, Align::Right);
 
   for (int slot = 0; slot < perPage(); ++slot) {
     const int index = page_ * perPage() + slot;
@@ -304,7 +339,7 @@ void LauncherApp::HomeScreen::draw(Canvas &c, const Theme &t) {
     const int r = pager_.h / 2;
     if (prevPressed_) c.fillRoundRect(prev_, r, p.accent, 46);
     if (nextPressed_) c.fillRoundRect(next_, r, p.accent, 46);
-    c.vline(pager_.centerX(), pager_.y + t.dp(8), pager_.h - t.dp(16), p.line, p.lineAlpha);
+    if (!pagerBelow_) c.vline(pager_.centerX(), pager_.y + t.dp(8), pager_.h - t.dp(16), p.line, p.lineAlpha);
     const int icon = t.dp(14);
     const Color faint = blend(p.glass, p.textMuted, 110);
     icons::back(c, center(prev_, icon, icon), page_ > 0 ? p.accent : faint);

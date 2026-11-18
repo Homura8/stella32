@@ -37,7 +37,7 @@ bool fitTouchAxis(const int *measured, const int *target, int n, int16_t &scale1
 }
 
 const AppInfo &TouchTestApp::info() const {
-  static const AppInfo kInfo{"touch", "Touch test", icons::touch, 0, 0};
+  static const AppInfo kInfo{"touch", "Touch test", icons::touch, 0, kAppHidden};  // opened from Settings > Display > Touch;
   return kInfo;
 }
 

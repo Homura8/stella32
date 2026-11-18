@@ -11,6 +11,7 @@ namespace apps {
 const char *weekdayName(int weekday);  // 0 = Sunday
 const char *monthName(int month);      // 1 = January
 const char *greetingFor(const LocalTime &t);  // "Good morning" ...
+const char *greetingShortFor(const LocalTime &t);  // "Morning" ... for tight spaces
 
 struct MoonPhase {
   uint8_t index;       // 0 new .. 4 full .. 7 waning crescent

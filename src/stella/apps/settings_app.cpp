@@ -72,9 +72,9 @@ void unitsSet(SystemSettings &s, int row, int v) {
   else s.dateOrder = (uint8_t)v;
 }
 
-const char *const kStartChoices[] = {"Off", "Night", "Always"};
+const char *const kStartChoices[] = {"Never", "At night", "Always"};
 const char *const kFaceChoices[] = {"Clock", "Dashboard"};
-const ChoiceRow kIdleRows[] = {{"Start", kStartChoices, 3}, {"Face", kFaceChoices, 2}};
+const ChoiceRow kIdleRows[] = {{"Show", kStartChoices, 3}, {"Style", kFaceChoices, 2}};
 int idleGet(const SystemSettings &s, int row) { return row == 0 ? s.bedside : s.idleFace; }
 void idleSet(SystemSettings &s, int row, int v) {
   if (row == 0) s.bedside = (uint8_t)v;
@@ -85,7 +85,8 @@ void idleSet(SystemSettings &s, int row, int v) {
 
 SettingsApp::SettingsApp() : main_(*this), wifi_(*this), setup_(*this), display_(*this), about_(*this) {
   units_.init("Units", kUnitsRows, 3, unitsGet, unitsSet);
-  idle_.init("Idle face", kIdleRows, 2, idleGet, idleSet);
+  idle_.init("Screensaver", kIdleRows, 2, idleGet, idleSet,
+             "After the screen dims (Settings, Display), a calm full-screen clock or dashboard takes over. Tap to leave it.");
 }
 
 const AppInfo &SettingsApp::info() const {
@@ -134,7 +135,11 @@ void SettingsApp::MainScreen::layout(const Rect &content, const Theme &t) {
 void SettingsApp::MainScreen::onShow(AppContext &ctx) {
   const SystemSettings &s = ctx.settings();
   snprintf(appearance_, sizeof(appearance_), "%s", kAppearanceLabels[(int)s.appearance]);
-  snprintf(time_, sizeof(time_), "%s \xc2\xb7 %s", s.clock24h ? "24 h" : "12 h", zoneLabel(s.timezone));
+  // "24 h · Melbourne": the first city of the zone's label, so the row never gets cut off.
+  char city[24];
+  copyText(city, sizeof(city), zoneLabel(s.timezone));
+  if (char *slash = strstr(city, " / ")) *slash = '\0';
+  snprintf(time_, sizeof(time_), "%s \xc2\xb7 %s", s.clock24h ? "24 h" : "12 h", city);
   if (s.volume == 0) snprintf(sound_, sizeof(sound_), "Off");
   else snprintf(sound_, sizeof(sound_), "%u%%", (unsigned)s.volume);
   // An offered or installed update shows here, so it is seen without digging.
@@ -172,10 +177,10 @@ void SettingsApp::MainScreen::drawRow(Canvas &c, const Theme &t, int index, cons
                    {"Time", icons::clock, 2, s.time_},
                    {"About", icons::info, 0, s.about_},
                    {"Home screen", icons::home, 3, nullptr},
-                   {"Remote page", icons::wifi, 2, s.remoteDetail_},
                    {"Units", icons::gear, 0, s.unitsDetail_},
-                   {"Idle face", icons::moon, 1, s.idleDetail_},
-                   {"Calendar", icons::calendar, 2, s.calendarDetail_}};
+                   {"Screensaver", icons::moon, 1, s.idleDetail_},
+                   {"Calendar", icons::calendar, 2, s.calendarDetail_},
+                   {"Web page", icons::wifi, 2, s.remoteDetail_}};
   ListRow r;
   r.bounds = row;
   r.title = rows[index].title;
@@ -196,7 +201,7 @@ bool SettingsApp::MainScreen::onEvent(const Event &e, AppContext &ctx) {
   const int index = list_.handle(e, ctx);
   if (index < 0) return false;
   Screen *targets[kRows] = {&app_.wifi_, &app_.display_, &app_.sound_, &app_.appearance_, &app_.time_, &app_.about_,
-                            nullptr, &app_.remote_, &app_.units_, &app_.idle_, &app_.calendar_};
+                            nullptr, &app_.units_, &app_.idle_, &app_.calendar_, &app_.remote_};
   if (targets[index]) ctx.push(*targets[index]);
   else ctx.launch("home", "customise");
   return true;
@@ -926,7 +931,12 @@ void SettingsApp::DisplayScreen::layout(const Rect &content, const Theme &t) {
     if (i == 3) off_.bounds = control.inset(0, t.dp(2));
   }
   calibrate_.bounds = Rect(card_.x, rows_[4].y, card_.w, rows_[4].h);
-  calibrate_.title = "Calibrate";
+  calibrate_.title = "Colours";
+  touch_.bounds = Rect(card_.x, rows_[5].y, card_.w, rows_[5].h);
+  touch_.title = "Touch";
+  touch_.detail = "Test and calibrate";
+  touch_.icon = nullptr;
+  touch_.chevron = true;
   calibrate_.icon = nullptr;
   calibrate_.chevron = true;
 }
@@ -968,6 +978,7 @@ void SettingsApp::DisplayScreen::draw(Canvas &c, const Theme &t) {
   dim_.draw(c, t);
   off_.draw(c, t);
   calibrate_.draw(c, t);
+  touch_.draw(c, t);
 }
 
 bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
@@ -992,6 +1003,10 @@ bool SettingsApp::DisplayScreen::onEvent(const Event &e, AppContext &ctx) {
   if (off_.handle(e, ctx)) {
     s.sleepAfterSec = kOffSeconds[off_.selected];
     ctx.applySettings(s);
+    return true;
+  }
+  if (touch_.handle(e, ctx)) {
+    ctx.launch("touch");  // the touch test, which also calibrates
     return true;
   }
   if (calibrate_.handle(e, ctx)) {
@@ -1403,8 +1418,8 @@ void SettingsApp::CalendarScreen::draw(Canvas &c, const Theme &t) {
   fetch_.draw(c, t);
   remove_.draw(c, t);
   c.drawWrapped(*t.font.caption,
-                has_ ? "The address is private: it stays on this device and is never shown again. Change it on the remote page."
-                     : "Open the remote page (tap Address), enter the PIN and paste your calendar's private iCal address.",
+                has_ ? "The address is private: it stays on this device and is never shown again. Change it on the web page."
+                     : "Tap Address to open the web page, enter the PIN and paste your calendar's private iCal address.",
                 hint_.inset(t.dp(4), 0), t.color.textMuted, 4, Align::Center);
 }
 
@@ -1440,8 +1455,10 @@ bool SettingsApp::CalendarScreen::onEvent(const Event &e, AppContext &ctx) {
 
 void SettingsApp::ChoicesScreen::layout(const Rect &content, const Theme &t) {
   const Rect area = content.inset(t.m.margin, t.m.gapS);
-  const int rowH = cardRowHeight(t, area.h, count_);
+  const int noteH = note_text_ ? 3 * t.font.caption->lineHeight + t.dp(4) + t.m.gapS : 0;
+  const int rowH = cardRowHeight(t, area.h - noteH, count_);
   card_ = Rect(area.x, area.y, area.w, count_ * rowH + 2 * t.dp(4));
+  note_ = note_text_ ? Rect(area.x, card_.bottom() + t.m.gapS, area.w, 3 * t.font.caption->lineHeight + t.dp(4)) : Rect();
   const Rect inner = card_.inset(t.m.padding, t.dp(4));
   for (int i = 0; i < count_ && i < kMax; ++i) {
     rowRects_[i] = Rect(inner.x, inner.y + i * rowH, inner.w, rowH);
@@ -1468,6 +1485,7 @@ void SettingsApp::ChoicesScreen::draw(Canvas &c, const Theme &t) {
     if (i < count_ - 1) paintHairline(c, t, rowRects_[i].x, rowRects_[i].bottom() - 1, rowRects_[i].w);
     seg_[i].draw(c, t);
   }
+  if (note_text_) c.drawWrapped(*t.font.caption, note_text_, note_.inset(t.dp(4), 0), t.color.textMuted, 3, Align::Center);
 }
 
 bool SettingsApp::ChoicesScreen::onEvent(const Event &e, AppContext &ctx) {

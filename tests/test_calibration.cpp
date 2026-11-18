@@ -231,7 +231,7 @@ TEST(display_screen_rows_and_calibrate) {
   s.tap(row.x, row.y);  // Display
   const Theme &t = s.os.theme();
   const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
-  const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 5;
+  const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 6;
   const int rowH = want <= fit ? want : fit < t.dp(32) ? t.dp(32) : fit;
   CHECK(rowH >= t.dp(32));
   const int top = area.y + t.dp(4);
@@ -241,7 +241,7 @@ TEST(display_screen_rows_and_calibrate) {
   CHECK(s.os.settings().nightDim != before);
   // Row 4: Calibrate opens the calibration screen.
   s.tap(area.centerX(), top + 4 * rowH + rowH / 2);
-  CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Calibrate") == 0);
+  CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Colours") == 0);
   // Its tabs switch between Tone, Colour and Panel.
   const int tabsW = area.w - t.dp(72) - t.m.gapM;
   s.tap(area.x + tabsW * 5 / 6, area.y + t.m.control / 2);
@@ -259,11 +259,11 @@ TEST(calibration_screens_render_at_every_size) {
     const Point display = s.settingsRow(1);
     s.tap(display.x, display.y);
     const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
-    const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 5;
+    const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 6;
     const int rowH = want <= fit ? want : fit < t.dp(32) ? t.dp(32) : fit;
-    CHECK(area.y + t.dp(4) + 5 * rowH <= area.bottom() + t.dp(8));  // the card fits
+    CHECK(area.y + t.dp(4) + 6 * rowH <= area.bottom() + t.dp(8));  // the card fits
     s.tap(area.centerX(), area.y + t.dp(4) + 4 * rowH + rowH / 2);
-    CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Calibrate") == 0);
+    CHECK(s.os.topScreen()->title() && strcmp(s.os.topScreen()->title(), "Colours") == 0);
     const int tabsW = area.w - t.dp(72) - t.m.gapM;
     for (int tab = 1; tab < 3; ++tab) {
       s.tap(area.x + tabsW * (2 * tab + 1) / 6, area.y + t.m.control / 2);
@@ -318,7 +318,7 @@ TEST(calibrate_reset_restores_the_board_defaults_for_its_tab) {
   const Rect area = s.os.contentRect().inset(t.m.margin, t.m.gapS);
   const int want = t.m.control + t.dp(4), fit = (area.h - 2 * t.dp(4)) / 6;
   const int rowH = want <= fit ? want : fit < t.dp(32) ? t.dp(32) : fit;
-  s.tap(area.centerX(), area.y + t.dp(4) + 5 * rowH + rowH / 2);  // Calibrate
+  s.tap(area.centerX(), area.y + t.dp(4) + 4 * rowH + rowH / 2);  // Colours
   s.tap(area.right() - t.dp(36), area.y + t.m.control / 2);       // Reset (Tone tab)
   CHECK(s.os.settings().whiteLevel == s.os.defaultSettings().whiteLevel);
   CHECK(s.os.settings().warmth == s.os.defaultSettings().warmth);
@@ -343,7 +343,7 @@ TEST(time_zone_list_scrolls_with_its_buttons) {
   const Point down{(int16_t)(list.right() - bw / 2), (int16_t)(list.bottom() - bw / 2)};
   const Point up{(int16_t)(list.right() - bw / 2), (int16_t)(list.y + bw / 2)};
   // The list opens scrolled to the selected zone: page up to the top first.
-  for (int i = 0; i < 3; ++i) s.tap(up.x, up.y);
+  for (int i = 0; i < 14; ++i) s.tap(up.x, up.y);  // (the list is long now)
   const std::vector<Color> top = s.dev.display.framebuffer();
   s.tap(down.x, down.y);
   CHECK(s.dev.display.framebuffer() != top);

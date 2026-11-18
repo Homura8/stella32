@@ -97,6 +97,9 @@ enum AppFlags : uint8_t {
   // clock): after the idle dim, at night, the runtime calls
   // launch(id, "bedside") when the Home screen or this app is in front.
   kAppIdleFace = 1 << 2,
+  // Off on Home until the person turns it on in Settings > Home screen: for apps most
+  // people will not need (a new person should see only what is useful straight away).
+  kAppOptional = 1 << 3,
 };
 
 struct AppInfo {

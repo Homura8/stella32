@@ -3,6 +3,8 @@
 #include <initializer_list>
 #include <string.h>
 
+#include "stella/apps/weather_app.h"
+#include "stella/app/system_settings.h"
 #include "stella/net/posix_zone.h"
 #include "test.h"
 
@@ -82,4 +84,40 @@ TEST(posix_zone_strings_that_are_not_understood_fall_back_to_utc) {
   CHECK(parsePosixZone("EST5EDT", zone));
   CHECK_EQ(zone.offsetAtUtc(1782864000LL), -14400);  // 1 July
   CHECK_EQ(zone.offsetAtUtc(1767225600LL), -18000);  // 1 January
+}
+
+// Settings > Time offers a worldwide list and Weather a worldwide set of places: every zone
+// must be one the device understands, every label must be drawable, and a person who picks a
+// zone must find a place for it.
+TEST(every_time_zone_and_weather_place_is_valid_and_matched) {
+  int count = 0;
+  const TimezonePreset *zones = timezonePresets(count);
+  CHECK(count >= 30);
+  for (int i = 0; i < count; ++i) {
+    ICalZone parsed;
+    CHECK(parsePosixZone(zones[i].posix, parsed));                       // our zone reader understands it
+    CHECK(strlen(zones[i].posix) < sizeof(SystemSettings::timezone));    // and the setting can hold it
+    for (const char *c = zones[i].label; *c; ++c) CHECK((unsigned char)*c >= 32 && (unsigned char)*c < 127);  // plain ASCII
+    for (int j = 0; j < i; ++j) CHECK(strcmp(zones[i].posix, zones[j].posix) != 0);                            // no duplicates
+    // Some place in Weather is the default for this zone.
+    int places = 0;
+    const apps::WeatherPlace *list = apps::weatherPlaces(places);
+    bool found = false;
+    for (int p = 0; p < places; ++p) found |= list[p].timezone && strcmp(list[p].timezone, zones[i].posix) == 0;
+    CHECK(found);
+  }
+  int places = 0;
+  const apps::WeatherPlace *list = apps::weatherPlaces(places);
+  CHECK(places >= 40 && places <= 255);  // a saved choice is one byte
+  for (int p = 0; p < places; ++p) {
+    CHECK(list[p].latitude >= -90 && list[p].latitude <= 90 && list[p].longitude >= -180 && list[p].longitude <= 180);
+    for (const char *c = list[p].name; *c; ++c) CHECK((unsigned char)*c >= 32 && (unsigned char)*c < 127);
+    if (list[p].timezone) {
+      bool known = false;
+      for (int i = 0; i < count; ++i) known |= strcmp(list[p].timezone, zones[i].posix) == 0;
+      CHECK(known);  // a place's zone is one Settings offers
+    }
+  }
+  // The places Weather started with keep their numbers (a saved choice must not move).
+  CHECK(strcmp(list[0].name, "Melbourne") == 0 && strcmp(list[9].name, "New York") == 0 && strcmp(list[11].name, "Greenwich") == 0);
 }

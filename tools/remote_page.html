@@ -6,7 +6,7 @@ input[type=password],input[type=text]{background:#2e283f;color:#eee8f5;width:130
 button{background:#bdbde7;color:#211e30;font-weight:600}button.q{background:#2e283f;color:#eee8f5;font-weight:400}
 canvas{width:100%;border-radius:14px;background:#2e283f;display:block}input[type=range]{width:100%;padding:0}
 code{display:block;background:#2e283f;padding:10px;border-radius:12px;word-break:break-all;color:#eee8f5;font-size:13px}.ok{color:#b3d6cd}.bad{color:#f0a9b5}#app{display:none}</style></head><body>
-<h1>StellaOS</h1><p id=top>Enter the PIN shown on the device (Settings, Remote page).</p>
+<h1>StellaOS</h1><p id=top>Enter the PIN shown on the device (Settings, Web page).</p>
 <div id=lock><input id=pin type=password inputmode=numeric maxlength=6 placeholder="PIN"> <button id=go>Unlock</button></div>
 <div id=app><h2>Wallpaper</h2>
 <p>Any photo. It is cropped to the screen, softened, darkened and reduced to 256 colours here, then sent.</p>
@@ -23,7 +23,7 @@ code{display:block;background:#2e283f;padding:10px;border-radius:12px;word-break
 <input type=text id=cal placeholder="https://..." style="width:100%;box-sizing:border-box" autocomplete=off>
 <button id=calsave>Save</button> <button class=q id=calrm>Remove</button><p id=calst></p>
 <h2>Send values</h2>
-<p>A script on this network can show live numbers in the Values app (CPU, a temperature, a sensor). Send name=value pairs; an empty value removes a name:</p>
+<p>A script on this network can show live numbers in the Stats app (CPU, a temperature, a sensor). Send name=value pairs; an empty value removes a name:</p>
 <code id=curl></code>
 </div><p id=msg></p>
 <script>
