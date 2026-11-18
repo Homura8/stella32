@@ -100,8 +100,8 @@ Wind stays in km/h and times follow the existing 24-hour setting.
 
 The owner wants each device's Home to be configurable. Settings > Home: show or
 hide each app and reorder them (a persisted list in the settings record).
-Defaults: Clock, Weather, Alarms, Timer, Stopwatch, Settings visible; Touch test
-hidden (calibration lives in Settings). Optional apps added later (Calendar,
+Defaults: Clock, Weather, Alarms, Timer, Stopwatch, Settings visible; the Touch test
+is reached from Settings > Display > Touch, Stats and Calendar are off until turned on. Optional apps added later (Calendar,
 Network, Brief) are *off* until set up. The launcher already pages; keep the
 touch targets at `t.dp(32)` and the ListView scroll buttons for the list.
 
@@ -164,7 +164,7 @@ checksum (`storage/record.h` conventions).
 
 ### 5. Dashboard idle face (the desk use) — first page built in 0.13.0
 
-Built: Settings > Idle face (*Start*: Off / Night / Always, *Face*: Clock /
+Built: Settings > Screensaver (*Show*: Never / At night / Always, *Style*: Clock /
 Dashboard). The dashboard page shows the time, the date, the weather, the next
 alarm and the next sunrise or sunset, with no animation. It follows the
 dimming of every fullscreen face (a third of the level, and the ambient-light
@@ -228,7 +228,7 @@ Bluedroid). Plan:
 
 - **mDNS** (`stella.local`), needed by the remote page.
 - **ESP-NOW** between CYDs (e.g. a friend's pair sharing a note or a timer).
-- **Push API** (built in 0.15.0: `POST /api/push`, the Values app) enabling: PC stats (CPU, temperatures, now playing)
+- **Push API** (built in 0.15.0: `POST /api/push`, the Stats app) enabling: PC stats (CPU, temperatures, now playing)
   from a small script, Home Assistant / MQTT values and tap-to-toggle buttons,
   GitHub CI status for the owner's repositories.
 - **Guest Wi-Fi QR code** screen (needs a small QR encoder; check size).

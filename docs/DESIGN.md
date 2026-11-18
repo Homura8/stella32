@@ -178,8 +178,8 @@ All lengths come from `Theme::m` (and `t.dp(n)` for rare custom lengths, where
   `bedMuted`); "Tap anywhere to return" in `bedStar` at the bottom. No
   chrome, no sky gradient. If "88:88" plus AM/PM does not fit the width (a
   portrait panel) the smaller `display` numerals are used.
-  *Settings > Display > Bedside* (Off / Night / Always) chooses when it starts
-  by itself; the Clock's *Bedside* button starts it by hand.
+  *Settings > Screensaver* (Show: Never / At night / Always) chooses when it starts
+  by itself; the Clock's *Night clock* button starts it by hand.
 - **Dashboard idle face:** the same black and dim ink as the bedside clock (no
   sky, no stars, no motion): the time in the `hometime` font in `bedClock`, the
   date in `bedMuted`, then up to three rounded lines on a faint `bedStar` wash
